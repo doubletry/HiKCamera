@@ -124,10 +124,27 @@ class TestBGR8:
     def test_rgb_to_bgr(self):
         w, h = 16, 16
         buf = np.zeros(w * h * 3, dtype=np.uint8)
-        buf[0] = 255  # R of first pixel
+        buf[0] = 255  # R of first pixel (RGB order)
         out = raw_to_numpy(buf, w, h, PixelFormat.RGB8_PACKED, OutputFormat.BGR8)
-        # After RGB→BGR conversion, the first pixel's B channel should be 255
-        assert out[0, 0, 0] == 255
+        # After RGB→BGR conversion, R=255 maps to BGR channel 2
+        assert out[0, 0, 2] == 255
+        assert out[0, 0, 0] == 0  # B channel is zero
+
+    def test_rgba_to_bgra(self):
+        """RGBA8_PACKED (4-ch) should reshape to (H,W,4) before cvtColor."""
+        w, h = 8, 8
+        buf = np.zeros(w * h * 4, dtype=np.uint8)
+        buf[0] = 100  # R of first pixel
+        buf[1] = 200  # G of first pixel
+        buf[2] = 50   # B of first pixel
+        buf[3] = 255  # A of first pixel
+        out = raw_to_numpy(buf, w, h, PixelFormat.RGBA8_PACKED, OutputFormat.BGRA8)
+        assert out.shape == (h, w, 4)
+        # After RGBA→BGRA: B=50, G=200, R=100, A=255
+        assert out[0, 0, 0] == 50   # B
+        assert out[0, 0, 1] == 200  # G
+        assert out[0, 0, 2] == 100  # R
+        assert out[0, 0, 3] == 255  # A
 
 
 # ---------------------------------------------------------------------------
@@ -179,6 +196,22 @@ class TestPacked10:
         with pytest.raises(ImageConversionError):
             _decode_packed10(buf, w, h, PixelFormat.MONO10_PACKED)
 
+    def test_decode_packed10_non_multiple_of_4(self):
+        """Tail pixels (total not a multiple of 4) should be decoded, not left as zero."""
+        # 5 pixels = 1 full group (4 px, 5 bytes) + 1 tail pixel (needs 5 more bytes)
+        w, h = 5, 1
+        # First group: 4 pixels all = 0x000 (all-zero bytes)
+        # Second group: 1 tail pixel with high byte 0x10 and low bits 0x01
+        # pixel value = (0x10 << 2) | 0x01 = 65
+        buf = np.array(
+            [0x00, 0x00, 0x00, 0x00, 0x00,  # group 1: 4 zero pixels
+             0x10, 0x00, 0x00, 0x00, 0x01],  # group 2: tail pixel
+            dtype=np.uint8,
+        )
+        out = _decode_packed10(buf, w, h, PixelFormat.MONO10_PACKED)
+        assert out.shape == (h, w)
+        assert out[0, 4] == 65  # tail pixel should be decoded
+
 
 class TestPacked12:
     def test_decode_packed12_output_shape(self):
@@ -200,6 +233,21 @@ class TestPacked12:
         buf = np.zeros(5, dtype=np.uint8)
         with pytest.raises(ImageConversionError):
             _decode_packed12(buf, w, h, PixelFormat.MONO12_PACKED)
+
+    def test_decode_packed12_odd_pixel_count(self):
+        """When total_pixels is odd the last pixel must still be decoded."""
+        # 3 pixels = 1 full pair (2 px, 3 bytes) + 1 tail pixel (2 bytes)
+        # pair: all zero
+        # tail pixel: high byte 0xAB, low nibble 0x0C → (0xAB << 4) | 0x0C = 2748
+        w, h = 3, 1
+        buf = np.array(
+            [0x00, 0x00, 0x00,  # pair: 2 zero pixels
+             0xAB, 0x0C],       # tail: 1 pixel
+            dtype=np.uint8,
+        )
+        out = _decode_packed12(buf, w, h, PixelFormat.MONO12_PACKED)
+        assert out.shape == (h, w)
+        assert out[0, 2] == (0xAB << 4) | 0x0C
 
 
 # ---------------------------------------------------------------------------

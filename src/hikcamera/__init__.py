@@ -90,4 +90,9 @@ __all__ = [
     "ImageConversionError",
 ]
 
-__version__ = "0.1.0"
+try:
+    from importlib.metadata import version as _metadata_version
+
+    __version__ = _metadata_version("hikcamera")
+except Exception:  # pragma: no cover – fallback for editable/dev installs
+    __version__ = "0.1.0"

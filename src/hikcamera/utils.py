@@ -186,10 +186,13 @@ def _decode(buf: np.ndarray, width: int, height: int, pixel_format: int) -> np.n
     cv2_code, bpp, n_ch = info
 
     if bpp == 8:
-        arr = buf.reshape(height, width * n_ch)
+        if n_ch == 1:
+            arr = buf.reshape(height, width)
+        else:
+            arr = buf.reshape(height, width, n_ch)
         if cv2_code is not None:
             return cv2.cvtColor(arr, cv2_code)
-        return arr.reshape(height, width) if n_ch == 1 else arr.reshape(height, width, n_ch)
+        return arr
     elif bpp == 16:
         # 16-bit little-endian (10 or 12 bit stored in 16-bit words)
         arr16 = buf.view(np.uint16).reshape(height, width)
@@ -230,6 +233,17 @@ def _decode_packed10(buf: np.ndarray, width: int, height: int, pixel_format: int
         idx += 5
         pix += 4
 
+    # Handle remaining 1–3 pixels in the final partial group
+    remaining = total_pixels - pix
+    if remaining > 0:
+        b = buf[idx: idx + 5]
+        if remaining >= 1:
+            out[pix] = (int(b[0]) << 2) | (int(b[4]) & 0x03)
+        if remaining >= 2:
+            out[pix + 1] = (int(b[1]) << 2) | ((int(b[4]) >> 2) & 0x03)
+        if remaining >= 3:
+            out[pix + 2] = (int(b[2]) << 2) | ((int(b[4]) >> 4) & 0x03)
+
     arr16 = out.reshape(height, width)
     bayer_code = _BAYER_16_CODES.get(pixel_format)
     if bayer_code is not None:
@@ -261,6 +275,11 @@ def _decode_packed12(buf: np.ndarray, width: int, height: int, pixel_format: int
         out[pix + 1] = (int(b[1]) << 4) | ((lo >> 4) & 0x0F)
         idx += 3
         pix += 2
+
+    # Handle the final pixel when total_pixels is odd
+    if pix < total_pixels:
+        b = buf[idx: idx + 2]
+        out[pix] = (int(b[0]) << 4) | (int(b[1]) & 0x0F)
 
     arr16 = out.reshape(height, width)
     bayer_code = _BAYER_16_CODES.get(pixel_format)

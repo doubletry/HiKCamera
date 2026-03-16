@@ -379,28 +379,28 @@ def _configure_sdk_argtypes(lib: ctypes.CDLL) -> None:  # noqa: PLR0915
     )
 
     # Integer parameters
-    _set("MV_CC_GetIntValueEx", [c_void_p, c_void_p, POINTER(MVCC_INTVALUE_EX)])
-    _set("MV_CC_SetIntValueEx", [c_void_p, c_void_p, c_int64])
+    _set("MV_CC_GetIntValueEx", [c_void_p, ctypes.c_char_p, POINTER(MVCC_INTVALUE_EX)])
+    _set("MV_CC_SetIntValueEx", [c_void_p, ctypes.c_char_p, c_int64])
 
     # Float parameters
-    _set("MV_CC_GetFloatValue", [c_void_p, c_void_p, POINTER(MVCC_FLOATVALUE)])
-    _set("MV_CC_SetFloatValue", [c_void_p, c_void_p, c_float])
+    _set("MV_CC_GetFloatValue", [c_void_p, ctypes.c_char_p, POINTER(MVCC_FLOATVALUE)])
+    _set("MV_CC_SetFloatValue", [c_void_p, ctypes.c_char_p, c_float])
 
     # Bool parameters
-    _set("MV_CC_GetBoolValue", [c_void_p, c_void_p, POINTER(c_uint)])
-    _set("MV_CC_SetBoolValue", [c_void_p, c_void_p, c_uint])
+    _set("MV_CC_GetBoolValue", [c_void_p, ctypes.c_char_p, POINTER(c_uint)])
+    _set("MV_CC_SetBoolValue", [c_void_p, ctypes.c_char_p, c_uint])
 
     # Enum parameters
-    _set("MV_CC_GetEnumValue", [c_void_p, c_void_p, POINTER(MVCC_ENUMVALUE)])
-    _set("MV_CC_SetEnumValue", [c_void_p, c_void_p, c_uint])
-    _set("MV_CC_SetEnumValueByString", [c_void_p, c_void_p, c_void_p])
+    _set("MV_CC_GetEnumValue", [c_void_p, ctypes.c_char_p, POINTER(MVCC_ENUMVALUE)])
+    _set("MV_CC_SetEnumValue", [c_void_p, ctypes.c_char_p, c_uint])
+    _set("MV_CC_SetEnumValueByString", [c_void_p, ctypes.c_char_p, ctypes.c_char_p])
 
     # String parameters
-    _set("MV_CC_GetStringValue", [c_void_p, c_void_p, POINTER(MVCC_STRINGVALUE)])
-    _set("MV_CC_SetStringValue", [c_void_p, c_void_p, c_void_p])
+    _set("MV_CC_GetStringValue", [c_void_p, ctypes.c_char_p, POINTER(MVCC_STRINGVALUE)])
+    _set("MV_CC_SetStringValue", [c_void_p, ctypes.c_char_p, ctypes.c_char_p])
 
     # Command execution
-    _set("MV_CC_SetCommandValue", [c_void_p, c_void_p])
+    _set("MV_CC_SetCommandValue", [c_void_p, ctypes.c_char_p])
 
     # Pixel conversion
     _set("MV_CC_ConvertPixelType", [c_void_p, POINTER(MV_PIXEL_CONVERT_PARAM)])

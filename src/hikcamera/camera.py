@@ -865,7 +865,7 @@ class HikCamera:
         """
         Set a camera parameter with automatic type dispatch.
 
-        Tries integer → float → bool → string in order.
+        Dispatches by Python type: bool → integer → float → string.
         Silently absorbs :py:exc:`ParameterNotSupportedError` when the
         parameter is absent on this camera model (logs a debug message).
 
