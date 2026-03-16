@@ -8,6 +8,9 @@ Usage::
 
     python save_video.py [--ip IP] [--sn SN] [--output PATH]
                          [--fps FPS] [--duration SECONDS]
+
+Run ``pip install hikcamera`` (or ``pip install -e .`` from the repo root)
+before executing this script.
 """
 
 from __future__ import annotations
@@ -21,8 +24,6 @@ from typing import Any
 
 import cv2
 import numpy as np
-
-sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from hikcamera import (
     AccessMode,

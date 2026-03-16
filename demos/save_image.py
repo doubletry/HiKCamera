@@ -6,6 +6,8 @@ Usage::
     python save_image.py [--ip IP] [--sn SN] [--output PATH] [--format FORMAT]
 
 If neither --ip nor --sn is given, the first discovered camera is used.
+Run ``pip install hikcamera`` (or ``pip install -e .`` from the repo root)
+before executing this script.
 """
 
 from __future__ import annotations
@@ -16,9 +18,6 @@ from pathlib import Path
 
 import cv2
 import numpy as np
-
-# Allow running from the repo root without installing the package
-sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from hikcamera import (
     AccessMode,

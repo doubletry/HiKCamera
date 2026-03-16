@@ -59,6 +59,27 @@ jobs:
       - name: Build wheel and sdist
         run: poetry build
 
+      # -------------------------------------------------------
+      # Smoke-test: install the built wheel and verify it works
+      # -------------------------------------------------------
+      - name: Verify built wheel (import check + demo --help)
+        run: |
+          # Uninstall the editable install used for testing above so the
+          # following steps exercise the freshly-built wheel only.
+          pip uninstall hikcamera -y
+
+          # Install the wheel produced by `poetry build`.
+          pip install dist/*.whl
+
+          # 1. Confirm the package is importable and exposes __version__.
+          python -c "import hikcamera; print('hikcamera', hikcamera.__version__, 'imported OK')"
+
+          # 2. Run each demo with --help.  argparse exits 0 after printing
+          #    help text, which exercises all top-level imports (hikcamera,
+          #    numpy, cv2) without requiring a camera or the MVS SDK.
+          python demos/save_image.py --help
+          python demos/save_video.py --help
+
       - name: Upload dist artefacts
         uses: actions/upload-artifact@v4
         with:
