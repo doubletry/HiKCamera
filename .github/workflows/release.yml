@@ -28,8 +28,11 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Upgrade pip and install build tools
-        run: pip install --upgrade pip build
+      # Install Poetry via pip: on Ubuntu this places `poetry` in the Python
+      # environment's bin directory which actions/setup-python already adds to
+      # PATH, so no additional PATH configuration is needed.
+      - name: Install Poetry
+        run: pip install --upgrade pip poetry
 
       - name: Extract version from tag
         id: get_version
@@ -37,30 +40,24 @@ jobs:
           VERSION="${GITHUB_REF_NAME#v}"
           echo "VERSION=$VERSION" >> "$GITHUB_OUTPUT"
 
-      # Update the version in pyproject.toml directly with Python so we don't
-      # need a Poetry installation just for `poetry version`.
+      # Bump the version in pyproject.toml to match the pushed tag.
       - name: Set package version to tag
-        run: |
-          python3 - << 'PYEOF'
-          import re, pathlib, os
-          version = os.environ["VERSION"]
-          p = pathlib.Path("pyproject.toml")
-          content = p.read_text(encoding="utf-8")
-          content = re.sub(r'^(version\s*=\s*")[^"]*(")', rf'\g<1>{version}\2', content, flags=re.M)
-          p.write_text(content, encoding="utf-8")
-          print(f"Version set to {version}")
-          PYEOF
-        env:
-          VERSION: ${{ steps.get_version.outputs.VERSION }}
+        run: poetry version "${{ steps.get_version.outputs.VERSION }}"
 
+      # Install the package and dev extras via pip so pytest is available.
+      # Disable Poetry's virtualenv so packages install into the active env.
       - name: Install package with dev dependencies (for tests)
-        run: pip install -e ".[dev]"
+        run: |
+          poetry config virtualenvs.create false
+          pip install -e ".[dev]"
 
       - name: Run tests before building
         run: pytest tests/ -q
 
+      # Use `poetry build` to produce the wheel and sdist, consistent with
+      # the project's Poetry-based packaging setup.
       - name: Build wheel and sdist
-        run: python -m build
+        run: poetry build
 
       - name: Upload dist artefacts
         uses: actions/upload-artifact@v4
