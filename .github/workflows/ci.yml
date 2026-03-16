@@ -28,33 +28,21 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
 
-      - name: Install Poetry
-        uses: snok/install-poetry@v1
-        with:
-          version: latest
-          virtualenvs-create: true
-          virtualenvs-in-project: true
+      # Use pip to install the package (editable) together with all dev extras.
+      # poetry-core is used as the build backend automatically; no separate
+      # Poetry installation is required.  This works identically on Linux and
+      # Windows without any PATH or virtual-environment complications.
+      - name: Upgrade pip
+        run: pip install --upgrade pip
 
-      - name: Load cached virtualenv
-        id: cached-poetry-dependencies
-        uses: actions/cache@v4
-        with:
-          path: .venv
-          key: venv-${{ runner.os }}-${{ matrix.python-version }}-${{ hashFiles('**/pyproject.toml') }}
-
-      - name: Install dependencies
-        if: steps.cached-poetry-dependencies.outputs.cache-hit != 'true'
-        run: poetry install --with dev
-
-      - name: Install dependencies (cache hit)
-        if: steps.cached-poetry-dependencies.outputs.cache-hit == 'true'
-        run: poetry install --with dev
+      - name: Install package with dev dependencies
+        run: pip install -e ".[dev]"
 
       - name: Lint with ruff
-        run: poetry run ruff check src/ tests/
+        run: ruff check src/ tests/
 
       - name: Run tests
-        run: poetry run pytest tests/ --cov=hikcamera --cov-report=xml --cov-report=term-missing
+        run: pytest tests/ --cov=hikcamera --cov-report=xml --cov-report=term-missing
 
       - name: Upload coverage report
         if: matrix.os == 'ubuntu-latest'
