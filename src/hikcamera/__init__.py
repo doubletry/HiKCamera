@@ -1,33 +1,36 @@
 """
 HiKCamera – Python library for Hikvision industrial cameras.
+HiKCamera – 海康威视工业相机 Python 库。
 
-Quick start
------------
+Quick start / 快速上手
+----------------------
 
 .. code-block:: python
 
     from hikcamera import HikCamera, AccessMode, OutputFormat
 
-    # Enumerate available cameras
+    # Enumerate available cameras / 枚举可用相机
     cameras = HikCamera.enumerate()
     print(cameras)
 
-    # Open the first camera exclusively
+    # Open the first camera exclusively / 以独占模式打开第一台相机
     with HikCamera.from_device_info(cameras[0]) as cam:
         cam.open(AccessMode.EXCLUSIVE)
 
         # Adjust parameters (silently ignores unsupported ones)
+        # 设置参数（自动忽略不支持的参数）
         cam.set_parameter("ExposureTime", 5000.0)
         cam.set_parameter("Gain", 1.0)
 
-        # Poll for frames
+        # Poll for frames / 轮询取帧
         cam.start_grabbing()
         frame = cam.get_frame(timeout_ms=1000, output_format=OutputFormat.BGR8)
         cam.stop_grabbing()
 
-Public API
-----------
+Public API / 公开接口
+---------------------
 The following names are exported at the package level for convenience:
+以下名称在包级别导出，方便直接使用：
 
 - :py:class:`~hikcamera.camera.HikCamera`
 - :py:class:`~hikcamera.camera.DeviceInfo`
@@ -38,6 +41,7 @@ The following names are exported at the package level for convenience:
 - :py:class:`~hikcamera.enums.PixelFormat`
 - :py:class:`~hikcamera.enums.OutputFormat`
 - All exceptions from :py:mod:`hikcamera.exceptions`
+  （:py:mod:`hikcamera.exceptions` 中的所有异常）
 """
 
 from __future__ import annotations
@@ -62,18 +66,18 @@ from .exceptions import (
 )
 
 __all__ = [
-    # Camera classes
+    # Camera classes / 相机类
     "HikCamera",
     "DeviceInfo",
     "enumerate_cameras",
-    # Enumerations
+    # Enumerations / 枚举类型
     "AccessMode",
     "TransportLayer",
     "StreamingMode",
     "PixelFormat",
     "OutputFormat",
     "MvErrorCode",
-    # Exceptions
+    # Exceptions / 异常
     "HikCameraError",
     "SDKNotFoundError",
     "CameraNotFoundError",
