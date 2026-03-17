@@ -10,7 +10,8 @@ Platform notes
 * **Linux**: ``libMvCameraControl.so``  (installed by the MVS SDK into
   ``/opt/MVS/lib/64/`` or ``/opt/MVS/lib/32/``)
 * **Windows**: ``MvCameraControl.dll``  (installed into
-  ``C:\\Program Files (x86)\\MVS\\Runtime\\Win64_x64\\``)
+  ``C:\\Program Files (x86)\\Common Files\\MVS\\Runtime\\Win64_x64\\``
+  or legacy ``C:\\Program Files (x86)\\MVS\\Runtime\\Win64_x64\\``)
 
 The SDK can be downloaded from
 https://www.hikrobotics.com/cn/machinevision/service/download/?module=0
@@ -33,7 +34,6 @@ from ctypes import (
     c_uint,
     c_uint8,
     c_uint16,
-    c_uint64,
     c_void_p,
 )
 from typing import TYPE_CHECKING
@@ -66,6 +66,8 @@ class MV_GIGE_DEVICE_INFO(Structure):  # noqa: N801
     """GigE device information returned by MV_CC_EnumDevices."""
 
     _fields_ = [
+        ("nIpCfgOption", c_uint),
+        ("nIpCfgCurrent", c_uint),
         ("nCurrentIp", c_uint),
         ("nCurrentSubNetMask", c_uint),
         ("nDefultGateWay", c_uint),
@@ -88,15 +90,15 @@ class MV_USB3_DEVICE_INFO(Structure):  # noqa: N801
         ("CrtlOutEndPoint", c_uint8),
         ("AuxInEndPoint", c_uint8),
         ("AuxOutEndPoint", c_uint8),
-        ("chVendorName", c_char * 32),
-        ("chModelName", c_char * 32),
-        ("chFamilyName", c_char * 32),
-        ("chDeviceVersion", c_char * 32),
-        ("chManufacturerSpecificInfo", c_char * 48),
-        ("chSerialNumber", c_char * 16),
+        ("chVendorName", c_char * 64),
+        ("chModelName", c_char * 64),
+        ("chFamilyName", c_char * 48),
+        ("chDeviceVersion", c_char * 64),
+        ("chManufacturerName", c_char * 64),
+        ("chSerialNumber", c_char * 64),
         ("chUserDefinedName", c_char * 16),
-        ("DeviceGUID", c_uint64),
-        ("DeviceAbility", c_uint),
+        ("nbcdUSB", c_uint),
+        ("nDeviceAddress", c_uint),
         ("nReserved", c_uint * 2),
     ]
 
@@ -149,8 +151,13 @@ class MV_FRAME_OUT_INFO_EX(Structure):  # noqa: N801
         ("nReserved0", c_uint),
         ("nHostTimeStamp", c_int64),
         ("nFrameLen", c_uint),
+        ("nSecondCount", c_uint),
         ("nLostPacket", c_uint),
-        ("nReserved", c_uint * 2),
+        ("nUnparsedChunkNum", c_uint),
+        # SDK union: MV_CHUNK_DATA_CONTENT* | int64 (alignment padding).
+        # We use c_void_p (pointer-sized) which matches on both 32- and 64-bit.
+        ("UnparsedChunkList", c_void_p),
+        ("nReserved", c_uint * 36),
     ]
 
 
@@ -247,6 +254,10 @@ _LIB_PATHS_LINUX = [
 ]
 
 _LIB_PATHS_WINDOWS = [
+    # Current SDK (v4.x) installs into Common Files
+    r"C:\Program Files (x86)\Common Files\MVS\Runtime\Win64_x64\MvCameraControl.dll",
+    r"C:\Program Files (x86)\Common Files\MVS\Runtime\Win32_i86\MvCameraControl.dll",
+    # Legacy SDK paths (v3.x and earlier)
     r"C:\Program Files (x86)\MVS\Runtime\Win64_x64\MvCameraControl.dll",
     r"C:\Program Files\MVS\Runtime\Win64_x64\MvCameraControl.dll",
     r"C:\Program Files (x86)\MVS\Runtime\Win32_i86\MvCameraControl.dll",

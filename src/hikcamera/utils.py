@@ -42,6 +42,14 @@ if TYPE_CHECKING:
 
 # Map PixelFormat → (cv2_bayer_code | None, bits_per_pixel, n_channels_raw)
 # bits_per_pixel is bits per sample (8, 10, 12, 16) for packed/planar logic.
+#
+# NOTE: OpenCV's Bayer naming convention is the *opposite* of the PFNC/SDK
+# convention used by Hikvision cameras.  The SDK reports the pattern from
+# the sensor's perspective (top-left pixel), while OpenCV flips it.
+# Mapping: SDK BayerRG ↔ OpenCV COLOR_BAYER_BG
+#          SDK BayerGR ↔ OpenCV COLOR_BAYER_GB
+#          SDK BayerGB ↔ OpenCV COLOR_BAYER_GR
+#          SDK BayerBG ↔ OpenCV COLOR_BAYER_RG
 _FORMAT_INFO: dict[int, tuple[int | None, int, int]] = {
     # Mono
     PixelFormat.MONO8: (None, 8, 1),
@@ -51,19 +59,20 @@ _FORMAT_INFO: dict[int, tuple[int | None, int, int]] = {
     PixelFormat.MONO12_PACKED: (None, 12, 1),
     PixelFormat.MONO14: (None, 16, 1),
     PixelFormat.MONO16: (None, 16, 1),
-    # Bayer
-    PixelFormat.BAYER_GR8: (cv2.COLOR_BAYER_GR2BGR, 8, 1),
-    PixelFormat.BAYER_RG8: (cv2.COLOR_BAYER_RG2BGR, 8, 1),
-    PixelFormat.BAYER_GB8: (cv2.COLOR_BAYER_GB2BGR, 8, 1),
-    PixelFormat.BAYER_BG8: (cv2.COLOR_BAYER_BG2BGR, 8, 1),
-    PixelFormat.BAYER_GR10: (cv2.COLOR_BAYER_GR2BGR, 16, 1),
-    PixelFormat.BAYER_RG10: (cv2.COLOR_BAYER_RG2BGR, 16, 1),
-    PixelFormat.BAYER_GB10: (cv2.COLOR_BAYER_GB2BGR, 16, 1),
-    PixelFormat.BAYER_BG10: (cv2.COLOR_BAYER_BG2BGR, 16, 1),
-    PixelFormat.BAYER_GR12: (cv2.COLOR_BAYER_GR2BGR, 16, 1),
-    PixelFormat.BAYER_RG12: (cv2.COLOR_BAYER_RG2BGR, 16, 1),
-    PixelFormat.BAYER_GB12: (cv2.COLOR_BAYER_GB2BGR, 16, 1),
-    PixelFormat.BAYER_BG12: (cv2.COLOR_BAYER_BG2BGR, 16, 1),
+    # Bayer 8-bit (SDK pattern → OpenCV swapped pattern)
+    PixelFormat.BAYER_GR8: (cv2.COLOR_BAYER_GB2BGR, 8, 1),
+    PixelFormat.BAYER_RG8: (cv2.COLOR_BAYER_BG2BGR, 8, 1),
+    PixelFormat.BAYER_GB8: (cv2.COLOR_BAYER_GR2BGR, 8, 1),
+    PixelFormat.BAYER_BG8: (cv2.COLOR_BAYER_RG2BGR, 8, 1),
+    # Bayer 10/12-bit planar (stored in 16-bit words)
+    PixelFormat.BAYER_GR10: (cv2.COLOR_BAYER_GB2BGR, 16, 1),
+    PixelFormat.BAYER_RG10: (cv2.COLOR_BAYER_BG2BGR, 16, 1),
+    PixelFormat.BAYER_GB10: (cv2.COLOR_BAYER_GR2BGR, 16, 1),
+    PixelFormat.BAYER_BG10: (cv2.COLOR_BAYER_RG2BGR, 16, 1),
+    PixelFormat.BAYER_GR12: (cv2.COLOR_BAYER_GB2BGR, 16, 1),
+    PixelFormat.BAYER_RG12: (cv2.COLOR_BAYER_BG2BGR, 16, 1),
+    PixelFormat.BAYER_GB12: (cv2.COLOR_BAYER_GR2BGR, 16, 1),
+    PixelFormat.BAYER_BG12: (cv2.COLOR_BAYER_RG2BGR, 16, 1),
     # RGB/BGR – the SDK delivers these as packed interleaved
     PixelFormat.RGB8_PACKED: (cv2.COLOR_RGB2BGR, 8, 3),
     PixelFormat.BGR8_PACKED: (None, 8, 3),
@@ -71,6 +80,7 @@ _FORMAT_INFO: dict[int, tuple[int | None, int, int]] = {
     PixelFormat.BGRA8_PACKED: (None, 8, 4),
     # YUV
     PixelFormat.YUV422_PACKED: (cv2.COLOR_YUV2BGR_UYVY, 8, 2),
+    PixelFormat.YUV422_YUYV_PACKED: (cv2.COLOR_YUV2BGR_YUYV, 8, 2),
     PixelFormat.YCBCR422_8: (cv2.COLOR_YUV2BGR_Y422, 8, 2),
 }
 
@@ -91,15 +101,16 @@ _PACKED12_FORMATS = {
 }
 
 # Bayer conversion codes for 16-bit (10/12-bit unpacked to 16-bit)
+# Same SDK↔OpenCV swap as _FORMAT_INFO above.
 _BAYER_16_CODES: dict[int, int] = {
-    PixelFormat.BAYER_GR10_PACKED: cv2.COLOR_BAYER_GR2BGR,
-    PixelFormat.BAYER_RG10_PACKED: cv2.COLOR_BAYER_RG2BGR,
-    PixelFormat.BAYER_GB10_PACKED: cv2.COLOR_BAYER_GB2BGR,
-    PixelFormat.BAYER_BG10_PACKED: cv2.COLOR_BAYER_BG2BGR,
-    PixelFormat.BAYER_GR12_PACKED: cv2.COLOR_BAYER_GR2BGR,
-    PixelFormat.BAYER_RG12_PACKED: cv2.COLOR_BAYER_RG2BGR,
-    PixelFormat.BAYER_GB12_PACKED: cv2.COLOR_BAYER_GB2BGR,
-    PixelFormat.BAYER_BG12_PACKED: cv2.COLOR_BAYER_BG2BGR,
+    PixelFormat.BAYER_GR10_PACKED: cv2.COLOR_BAYER_GB2BGR,
+    PixelFormat.BAYER_RG10_PACKED: cv2.COLOR_BAYER_BG2BGR,
+    PixelFormat.BAYER_GB10_PACKED: cv2.COLOR_BAYER_GR2BGR,
+    PixelFormat.BAYER_BG10_PACKED: cv2.COLOR_BAYER_RG2BGR,
+    PixelFormat.BAYER_GR12_PACKED: cv2.COLOR_BAYER_GB2BGR,
+    PixelFormat.BAYER_RG12_PACKED: cv2.COLOR_BAYER_BG2BGR,
+    PixelFormat.BAYER_GB12_PACKED: cv2.COLOR_BAYER_GR2BGR,
+    PixelFormat.BAYER_BG12_PACKED: cv2.COLOR_BAYER_RG2BGR,
 }
 
 

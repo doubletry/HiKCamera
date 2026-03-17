@@ -14,7 +14,7 @@ A Python 3.12 library for Hikvision industrial cameras (MVS SDK).
 | **Parameter access** | Get/set integer, float, bool, enum, string GenICam parameters with full exception handling (missing parameters are handled gracefully) |
 | **Frame capture – polling** | `start_grabbing()` + `get_frame()` |
 | **Frame capture – callback** | `start_grabbing(callback=my_fn)` – custom callback receives a numpy array |
-| **Pixel formats** | Mono8/10/12/16, Bayer 8/10/12, RGB/BGR 8, RGBA/BGRA 8, YUV422 |
+| **Pixel formats** | Mono8/10/12/16, Bayer GR/RG/GB/BG 8/10/12 (packed & planar), RGB/BGR 8, RGBA/BGRA 8, YUV422 (UYVY & YUYV) |
 | **Output formats** | `MONO8`, `MONO16`, `BGR8`, `RGB8`, `BGRA8`, `RGBA8` (all as numpy arrays) |
 | **SDK pixel conversion** | `sdk_convert_pixel()` offloads conversion to the native library |
 | **Demos** | Save single image, record video |
@@ -27,7 +27,7 @@ Install the **Hikvision MVS SDK** for your platform from:
 | Platform | Default library path |
 |---|---|
 | Linux (64-bit) | `/opt/MVS/lib/64/libMvCameraControl.so` |
-| Windows (64-bit) | `C:\Program Files (x86)\MVS\Runtime\Win64_x64\MvCameraControl.dll` |
+| Windows (64-bit) | `C:\Program Files (x86)\Common Files\MVS\Runtime\Win64_x64\MvCameraControl.dll` |
 
 You can override the path with the `HIKCAMERA_SDK_PATH` environment variable.
 

@@ -265,3 +265,111 @@ class TestErrorHandling:
         arr = np.zeros(w * h, dtype=np.uint8)
         out = raw_to_numpy(arr, w, h, PixelFormat.MONO8, OutputFormat.MONO8)
         assert out.shape == (h, w)
+
+
+# ---------------------------------------------------------------------------
+# Bayer demosaic tests – verify SDK↔OpenCV convention swap
+# ---------------------------------------------------------------------------
+
+class TestBayerDemosaic:
+    """
+    Verify that the Bayer-to-BGR mapping uses the correct OpenCV codes.
+
+    OpenCV's Bayer naming convention is the *opposite* of the PFNC/SDK
+    convention.  SDK BayerRG → OpenCV COLOR_BAYER_BG, etc.
+
+    We test this by creating a synthetic 4×4 Bayer pattern with a known
+    colour and verifying the resulting BGR image has the expected channel
+    dominance.
+    """
+
+    def test_bayer_rg8_red_dominant_pixel(self):
+        """BayerRG pattern: top-left is R; after demosaic R channel should dominate."""
+        # 4×4 Bayer RG pattern where R pixels are bright, G/B are dark.
+        # RG pattern layout:
+        #   R G R G
+        #   G B G B
+        #   R G R G
+        #   G B G B
+        w, h = 4, 4
+        bayer = np.zeros((h, w), dtype=np.uint8)
+        # Set R positions to 200 (bright), everything else ~0
+        bayer[0, 0] = 200
+        bayer[0, 2] = 200
+        bayer[2, 0] = 200
+        bayer[2, 2] = 200
+        buf = bayer.ravel()
+        out = raw_to_numpy(buf, w, h, PixelFormat.BAYER_RG8, OutputFormat.BGR8)
+        assert out.shape == (h, w, 3)
+        # Centre pixel should have R channel (index 2 in BGR) much larger than B (index 0)
+        centre = out[1, 1]  # interpolated pixel
+        assert centre[2] > centre[0], f"R ({centre[2]}) should be > B ({centre[0]}) for BayerRG"
+
+    def test_bayer_bg8_blue_dominant_pixel(self):
+        """BayerBG pattern: top-left is B; after demosaic B channel should dominate."""
+        w, h = 4, 4
+        bayer = np.zeros((h, w), dtype=np.uint8)
+        # BG pattern: first pixel is B
+        bayer[0, 0] = 200
+        bayer[0, 2] = 200
+        bayer[2, 0] = 200
+        bayer[2, 2] = 200
+        buf = bayer.ravel()
+        out = raw_to_numpy(buf, w, h, PixelFormat.BAYER_BG8, OutputFormat.BGR8)
+        assert out.shape == (h, w, 3)
+        centre = out[1, 1]
+        assert centre[0] > centre[2], f"B ({centre[0]}) should be > R ({centre[2]}) for BayerBG"
+
+    def test_bayer_rg8_output_rgb8(self):
+        """Requesting RGB8 output from BayerRG should also have correct channel order."""
+        w, h = 4, 4
+        bayer = np.zeros((h, w), dtype=np.uint8)
+        bayer[0, 0] = 200
+        bayer[0, 2] = 200
+        bayer[2, 0] = 200
+        bayer[2, 2] = 200
+        buf = bayer.ravel()
+        out = raw_to_numpy(buf, w, h, PixelFormat.BAYER_RG8, OutputFormat.RGB8)
+        assert out.shape == (h, w, 3)
+        # In RGB8 output, R is channel 0
+        centre = out[1, 1]
+        assert centre[0] > centre[2], f"R ({centre[0]}) should be > B ({centre[2]}) in RGB output"
+
+    def test_bayer_gr8_shape(self):
+        """BayerGR8 should produce a valid 3-channel image."""
+        w, h = 8, 8
+        buf = np.random.default_rng(42).integers(0, 256, size=w * h, dtype=np.uint8)
+        out = raw_to_numpy(buf, w, h, PixelFormat.BAYER_GR8, OutputFormat.BGR8)
+        assert out.shape == (h, w, 3)
+        assert out.dtype == np.uint8
+
+    def test_bayer_gb8_shape(self):
+        """BayerGB8 should produce a valid 3-channel image."""
+        w, h = 8, 8
+        buf = np.random.default_rng(42).integers(0, 256, size=w * h, dtype=np.uint8)
+        out = raw_to_numpy(buf, w, h, PixelFormat.BAYER_GB8, OutputFormat.BGR8)
+        assert out.shape == (h, w, 3)
+        assert out.dtype == np.uint8
+
+
+# ---------------------------------------------------------------------------
+# YUV format tests
+# ---------------------------------------------------------------------------
+
+class TestYUVFormats:
+    def test_yuv422_packed_shape(self):
+        """YUV422_PACKED (UYVY) should produce a BGR 3-channel image."""
+        w, h = 8, 4
+        # YUV422 is 2 bytes/pixel
+        buf = np.full(w * h * 2, 128, dtype=np.uint8)
+        out = raw_to_numpy(buf, w, h, PixelFormat.YUV422_PACKED, OutputFormat.BGR8)
+        assert out.shape == (h, w, 3)
+        assert out.dtype == np.uint8
+
+    def test_yuv422_yuyv_packed_shape(self):
+        """YUV422_YUYV_PACKED should produce a BGR 3-channel image."""
+        w, h = 8, 4
+        buf = np.full(w * h * 2, 128, dtype=np.uint8)
+        out = raw_to_numpy(buf, w, h, PixelFormat.YUV422_YUYV_PACKED, OutputFormat.BGR8)
+        assert out.shape == (h, w, 3)
+        assert out.dtype == np.uint8
