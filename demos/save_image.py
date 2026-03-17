@@ -1,13 +1,18 @@
 """
 Demo: Save a single image from a Hikvision camera.
+演示：从海康威视相机保存单张图像。
 
-Usage::
+Usage / 用法::
 
     python save_image.py [--ip IP] [--sn SN] [--output PATH] [--format FORMAT]
 
 If neither --ip nor --sn is given, the first discovered camera is used.
+如果未指定 --ip 或 --sn，则使用第一台发现的相机。
+
 Run ``pip install hikcamera`` (or ``pip install -e .`` from the repo root)
 before executing this script.
+执行此脚本前请先运行 ``pip install hikcamera``（或在仓库根目录下执行
+``pip install -e .``）。
 """
 
 from __future__ import annotations
@@ -55,7 +60,7 @@ def main() -> None:
     output_format = OutputFormat[args.format]
 
     # ---------------------------------------------------------------
-    # Locate camera
+    # Locate camera / 定位相机
     # ---------------------------------------------------------------
     try:
         if args.ip:
@@ -80,7 +85,7 @@ def main() -> None:
         sys.exit(1)
 
     # ---------------------------------------------------------------
-    # Open, configure, capture
+    # Open, configure, capture / 打开、配置、采集
     # ---------------------------------------------------------------
     with cam:
         cam.open(AccessMode.EXCLUSIVE)
@@ -103,7 +108,7 @@ def main() -> None:
         cam.stop_grabbing()
 
     # ---------------------------------------------------------------
-    # Save image
+    # Save image / 保存图像
     # ---------------------------------------------------------------
     output_path = Path(args.output)
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -112,6 +117,7 @@ def main() -> None:
         cv2.imwrite(str(output_path), image)
     elif output_format in (OutputFormat.RGB8, OutputFormat.RGBA8):
         # OpenCV expects BGR; convert before saving
+        # OpenCV 需要 BGR 格式；保存前进行转换
         if output_format == OutputFormat.RGB8:
             save_img = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
         else:

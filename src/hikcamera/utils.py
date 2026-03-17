@@ -1,24 +1,34 @@
 """
 Image conversion utilities.
+图像转换工具模块。
 
 All conversion routines accept raw pixel data (as a ``bytes`` or
 ``ctypes`` array) together with frame metadata and return a ``numpy``
 ``ndarray``.
+所有转换例程接受原始像素数据（``bytes`` 或 ``ctypes`` 数组）以及
+帧元数据，并返回 ``numpy`` ``ndarray``。
 
-Pixel unpacking steps
----------------------
+Pixel unpacking steps / 像素解包步骤
+-------------------------------------
 1. Packed Bayer/mono formats (10-bit packed, 12-bit packed) are unpacked
    to 16-bit planar representation in Python before handing off to OpenCV.
+   紧凑型 Bayer/灰度格式（10 位、12 位紧凑）先在 Python 中解包为
+   16 位平面表示，再交给 OpenCV 处理。
 2. Bayer patterns are demosaiced via :pyfunc:`cv2.cvtColor`.
+   Bayer 图案通过 :pyfunc:`cv2.cvtColor` 进行去马赛克。
 3. The result is reshaped/retyped according to the requested
    :py:class:`~hikcamera.enums.OutputFormat`.
+   结果按照所请求的 :py:class:`~hikcamera.enums.OutputFormat` 重塑/转型。
 
-Note
-----
+Note / 注意
+-----------
 For best performance on high-throughput applications prefer using the
 SDK's built-in ``MV_CC_ConvertPixelType`` (exposed via
 :py:meth:`~hikcamera.camera.HikCamera._sdk_convert`) which offloads
 conversion to the native library.
+在高吞吐量场景下建议使用 SDK 内置的 ``MV_CC_ConvertPixelType``
+（通过 :py:meth:`~hikcamera.camera.HikCamera._sdk_convert` 调用），
+可将转换工作交由原生库完成，获得更佳性能。
 """
 
 from __future__ import annotations
@@ -37,21 +47,26 @@ if TYPE_CHECKING:
     pass  # pragma: no cover
 
 # ---------------------------------------------------------------------------
-# Internal mappings
+# Internal mappings / 内部映射
 # ---------------------------------------------------------------------------
 
 # Map PixelFormat → (cv2_bayer_code | None, bits_per_pixel, n_channels_raw)
+# 映射 PixelFormat → (cv2 Bayer 转换码 | None, 每像素位数, 原始通道数)
 # bits_per_pixel is bits per sample (8, 10, 12, 16) for packed/planar logic.
+# bits_per_pixel 指每个采样的位数（8、10、12、16），用于紧凑/平面格式逻辑。
 #
 # NOTE: OpenCV's Bayer naming convention is the *opposite* of the PFNC/SDK
 # convention used by Hikvision cameras.  The SDK reports the pattern from
 # the sensor's perspective (top-left pixel), while OpenCV flips it.
-# Mapping: SDK BayerRG ↔ OpenCV COLOR_BAYER_BG
-#          SDK BayerGR ↔ OpenCV COLOR_BAYER_GB
-#          SDK BayerGB ↔ OpenCV COLOR_BAYER_GR
-#          SDK BayerBG ↔ OpenCV COLOR_BAYER_RG
+# 注意：OpenCV 的 Bayer 命名约定与海康威视相机使用的 PFNC/SDK 约定*相反*。
+# SDK 从传感器角度（左上角像素）报告图案，而 OpenCV 则翻转。
+# Mapping / 映射关系:
+#   SDK BayerRG ↔ OpenCV COLOR_BAYER_BG
+#   SDK BayerGR ↔ OpenCV COLOR_BAYER_GB
+#   SDK BayerGB ↔ OpenCV COLOR_BAYER_GR
+#   SDK BayerBG ↔ OpenCV COLOR_BAYER_RG
 _FORMAT_INFO: dict[int, tuple[int | None, int, int]] = {
-    # Mono
+    # Mono / 灰度
     PixelFormat.MONO8: (None, 8, 1),
     PixelFormat.MONO10: (None, 16, 1),
     PixelFormat.MONO10_PACKED: (None, 10, 1),
@@ -60,11 +75,13 @@ _FORMAT_INFO: dict[int, tuple[int | None, int, int]] = {
     PixelFormat.MONO14: (None, 16, 1),
     PixelFormat.MONO16: (None, 16, 1),
     # Bayer 8-bit (SDK pattern → OpenCV swapped pattern)
+    # Bayer 8 位（SDK 图案 → OpenCV 翻转后的图案）
     PixelFormat.BAYER_GR8: (cv2.COLOR_BAYER_GB2BGR, 8, 1),
     PixelFormat.BAYER_RG8: (cv2.COLOR_BAYER_BG2BGR, 8, 1),
     PixelFormat.BAYER_GB8: (cv2.COLOR_BAYER_GR2BGR, 8, 1),
     PixelFormat.BAYER_BG8: (cv2.COLOR_BAYER_RG2BGR, 8, 1),
     # Bayer 10/12-bit planar (stored in 16-bit words)
+    # Bayer 10/12 位平面格式（存储在 16 位字中）
     PixelFormat.BAYER_GR10: (cv2.COLOR_BAYER_GB2BGR, 16, 1),
     PixelFormat.BAYER_RG10: (cv2.COLOR_BAYER_BG2BGR, 16, 1),
     PixelFormat.BAYER_GB10: (cv2.COLOR_BAYER_GR2BGR, 16, 1),
@@ -74,6 +91,7 @@ _FORMAT_INFO: dict[int, tuple[int | None, int, int]] = {
     PixelFormat.BAYER_GB12: (cv2.COLOR_BAYER_GR2BGR, 16, 1),
     PixelFormat.BAYER_BG12: (cv2.COLOR_BAYER_RG2BGR, 16, 1),
     # RGB/BGR – the SDK delivers these as packed interleaved
+    # RGB/BGR ── SDK 以交织紧凑格式传递
     PixelFormat.RGB8_PACKED: (cv2.COLOR_RGB2BGR, 8, 3),
     PixelFormat.BGR8_PACKED: (None, 8, 3),
     PixelFormat.RGBA8_PACKED: (cv2.COLOR_RGBA2BGRA, 8, 4),
@@ -85,6 +103,7 @@ _FORMAT_INFO: dict[int, tuple[int | None, int, int]] = {
 }
 
 # Packed Bayer/mono formats that need custom unpacking
+# 需要自定义解包的紧凑型 Bayer/灰度格式
 _PACKED10_FORMATS = {
     PixelFormat.MONO10_PACKED,
     PixelFormat.BAYER_GR10_PACKED,
@@ -101,7 +120,9 @@ _PACKED12_FORMATS = {
 }
 
 # Bayer conversion codes for 16-bit (10/12-bit unpacked to 16-bit)
+# 16 位 Bayer 转换码（10/12 位解包为 16 位）
 # Same SDK↔OpenCV swap as _FORMAT_INFO above.
+# 与上方 _FORMAT_INFO 相同的 SDK↔OpenCV 翻转映射。
 _BAYER_16_CODES: dict[int, int] = {
     PixelFormat.BAYER_GR10_PACKED: cv2.COLOR_BAYER_GB2BGR,
     PixelFormat.BAYER_RG10_PACKED: cv2.COLOR_BAYER_BG2BGR,
@@ -115,7 +136,7 @@ _BAYER_16_CODES: dict[int, int] = {
 
 
 # ---------------------------------------------------------------------------
-# Public API
+# Public API / 公开接口
 # ---------------------------------------------------------------------------
 
 def raw_to_numpy(
@@ -127,41 +148,50 @@ def raw_to_numpy(
 ) -> np.ndarray:
     """
     Convert a raw frame buffer to a numpy array.
+    将原始帧缓冲区转换为 numpy 数组。
 
-    Parameters
-    ----------
+    Parameters / 参数
+    -----------------
     data:
         Raw pixel data – can be ``bytes``, a ctypes ``c_ubyte`` array,
         or an existing ``uint8`` numpy array.
+        原始像素数据 ── 可为 ``bytes``、ctypes ``c_ubyte`` 数组或
+        现有的 ``uint8`` numpy 数组。
     width:
-        Image width in pixels.
+        Image width in pixels. / 图像宽度（像素）。
     height:
-        Image height in pixels.
+        Image height in pixels. / 图像高度（像素）。
     pixel_format:
         Source pixel format (a :py:class:`~hikcamera.enums.PixelFormat`
         value or any raw integer from the SDK).
+        源像素格式（:py:class:`~hikcamera.enums.PixelFormat` 值或 SDK 的原始整数值）。
     output_format:
         Desired output format (default BGR8 for OpenCV compatibility).
+        期望的输出格式（默认 BGR8，兼容 OpenCV）。
 
-    Returns
-    -------
+    Returns / 返回
+    --------------
     numpy.ndarray
         Decoded image in the requested format.
+        按请求格式解码后的图像。
 
-    Raises
-    ------
+    Raises / 异常
+    -------------
     PixelFormatError
         When *pixel_format* is not recognised.
+        当 *pixel_format* 无法识别时抛出。
     ImageConversionError
         When an error occurs during conversion.
+        当转换过程中发生错误时抛出。
     """
     # Normalise raw data to a uint8 numpy array
+    # 将原始数据统一为 uint8 numpy 数组
     if isinstance(data, np.ndarray):
         buf: np.ndarray = data.view(np.uint8).ravel()
     elif isinstance(data, (bytes, bytearray)):
         buf = np.frombuffer(data, dtype=np.uint8)
     else:
-        # ctypes array
+        # ctypes array / ctypes 数组
         buf = np.ctypeslib.as_array(data).ravel()
 
     try:
@@ -175,11 +205,14 @@ def raw_to_numpy(
 
 
 # ---------------------------------------------------------------------------
-# Internal helpers
+# Internal helpers / 内部辅助函数
 # ---------------------------------------------------------------------------
 
 def _decode(buf: np.ndarray, width: int, height: int, pixel_format: int) -> np.ndarray:
-    """Decode raw bytes to a BGR/mono uint8/uint16 ndarray."""
+    """
+    Decode raw bytes to a BGR/mono uint8/uint16 ndarray.
+    将原始字节解码为 BGR/灰度 uint8/uint16 ndarray。
+    """
 
     if pixel_format in _PACKED10_FORMATS:
         return _decode_packed10(buf, width, height, pixel_format)
@@ -206,13 +239,16 @@ def _decode(buf: np.ndarray, width: int, height: int, pixel_format: int) -> np.n
         return arr
     elif bpp == 16:
         # 16-bit little-endian (10 or 12 bit stored in 16-bit words)
+        # 16 位小端序（10 或 12 位存储在 16 位字中）
         arr16 = buf.view(np.uint16).reshape(height, width)
         if cv2_code is not None:
             # cvtColor requires uint16 for 16-bit Bayer
+            # cvtColor 对 16 位 Bayer 需要 uint16 类型
             return cv2.cvtColor(arr16, cv2_code)
         return arr16
     elif bpp in (10, 12):
         # Should have been caught above; fall through with error
+        # 应在上方被捕获；此处直接报错
         pass
 
     raise PixelFormatError(f"Cannot decode pixel format 0x{pixel_format:08X}")
@@ -221,8 +257,10 @@ def _decode(buf: np.ndarray, width: int, height: int, pixel_format: int) -> np.n
 def _decode_packed10(buf: np.ndarray, width: int, height: int, pixel_format: int) -> np.ndarray:
     """
     Unpack 10-bit packed data.
+    解包 10 位紧凑数据。
 
     The HIK/PFNC 10-bit packed format stores 4 pixels in 5 bytes:
+    HIK/PFNC 10 位紧凑格式将 4 个像素存储在 5 个字节中：
     ``[p0[9:2], p1[9:2], p2[9:2], p3[9:2], {p3[1:0],p2[1:0],p1[1:0],p0[1:0]}]``
     """
     total_pixels = width * height
@@ -245,6 +283,7 @@ def _decode_packed10(buf: np.ndarray, width: int, height: int, pixel_format: int
         pix += 4
 
     # Handle remaining 1–3 pixels in the final partial group
+    # 处理最后不完整组中剩余的 1–3 个像素
     remaining = total_pixels - pix
     if remaining > 0:
         b = buf[idx: idx + 5]
@@ -265,8 +304,10 @@ def _decode_packed10(buf: np.ndarray, width: int, height: int, pixel_format: int
 def _decode_packed12(buf: np.ndarray, width: int, height: int, pixel_format: int) -> np.ndarray:
     """
     Unpack 12-bit packed data.
+    解包 12 位紧凑数据。
 
     The HIK/PFNC 12-bit packed format stores 2 pixels in 3 bytes:
+    HIK/PFNC 12 位紧凑格式将 2 个像素存储在 3 个字节中：
     ``[p0[11:4], p1[11:4], {p1[3:0], p0[3:0]}]``
     """
     total_pixels = width * height
@@ -288,6 +329,7 @@ def _decode_packed12(buf: np.ndarray, width: int, height: int, pixel_format: int
         pix += 2
 
     # Handle the final pixel when total_pixels is odd
+    # 当总像素数为奇数时处理最后一个像素
     if pix < total_pixels:
         b = buf[idx: idx + 2]
         out[pix] = (int(b[0]) << 4) | (int(b[1]) & 0x0F)
@@ -302,16 +344,18 @@ def _decode_packed12(buf: np.ndarray, width: int, height: int, pixel_format: int
 def _to_output_format(img: np.ndarray, fmt: OutputFormat) -> np.ndarray:
     """
     Convert a decoded image array to the requested :py:class:`OutputFormat`.
+    将解码后的图像数组转换为请求的 :py:class:`OutputFormat`。
 
-    Parameters
-    ----------
+    Parameters / 参数
+    -----------------
     img:
         Decoded source image (may be mono or BGR, 8-bit or 16-bit).
+        解码后的源图像（可为灰度或 BGR，8 位或 16 位）。
     fmt:
-        Requested output format.
+        Requested output format. / 请求的输出格式。
 
-    Returns
-    -------
+    Returns / 返回
+    --------------
     numpy.ndarray
     """
     is_color = img.ndim == 3
