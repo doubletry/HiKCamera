@@ -1,16 +1,20 @@
 """
 Demo: Capture a sequence of frames and save them as a video file.
+演示：捕获一系列帧并保存为视频文件。
 
 Uses the callback-based acquisition mode so no frames are dropped
 between calls.
+使用基于回调的采集模式以避免帧丢失。
 
-Usage::
+Usage / 用法::
 
     python save_video.py [--ip IP] [--sn SN] [--output PATH]
                          [--fps FPS] [--duration SECONDS]
 
 Run ``pip install hikcamera`` (or ``pip install -e .`` from the repo root)
 before executing this script.
+执行此脚本前请先运行 ``pip install hikcamera``（或在仓库根目录下执行
+``pip install -e .``）。
 """
 
 from __future__ import annotations
@@ -62,7 +66,7 @@ def main() -> None:
     args = parse_args()
 
     # ---------------------------------------------------------------
-    # Locate camera
+    # Locate camera / 定位相机
     # ---------------------------------------------------------------
     try:
         if args.ip:
@@ -84,12 +88,15 @@ def main() -> None:
         sys.exit(1)
 
     # ---------------------------------------------------------------
-    # Thread-safe frame queue
+    # Thread-safe frame queue / 线程安全帧队列
     # ---------------------------------------------------------------
     frame_queue: queue.Queue[np.ndarray] = queue.Queue(maxsize=256)
 
     def on_frame(image: np.ndarray, frame_info: dict[str, Any]) -> None:
-        """Enqueue decoded frames (drop oldest if full to avoid blocking)."""
+        """
+        Enqueue decoded frames (drop oldest if full to avoid blocking).
+        将解码后的帧入队（队列满时丢弃最旧帧以避免阻塞）。
+        """
         try:
             frame_queue.put_nowait(image)
         except queue.Full:
@@ -100,7 +107,7 @@ def main() -> None:
             frame_queue.put_nowait(image)
 
     # ---------------------------------------------------------------
-    # Open and start grabbing
+    # Open and start grabbing / 打开相机并开始取帧
     # ---------------------------------------------------------------
     with cam:
         cam.open(AccessMode.EXCLUSIVE)
@@ -112,10 +119,12 @@ def main() -> None:
             cam.set_parameter("Gain", args.gain)
 
         # Grab the first frame to get image dimensions
+        # 抓取第一帧以获取图像尺寸
         cam.start_grabbing()
         print(f"Grabbing started. Recording for {args.duration:.1f} seconds …")
 
         # Wait for the first frame to determine size
+        # 等待第一帧以确定尺寸
         first_frame: np.ndarray | None = None
         deadline = time.monotonic() + 5.0
         while first_frame is None and time.monotonic() < deadline:
@@ -134,11 +143,11 @@ def main() -> None:
 
         cam.stop_grabbing()
 
-        # Restart with callback
+        # Restart with callback / 以回调模式重新启动
         cam.start_grabbing(callback=on_frame, output_format=OutputFormat.BGR8)
 
         # ---------------------------------------------------------------
-        # Set up video writer
+        # Set up video writer / 设置视频写入器
         # ---------------------------------------------------------------
         output_path = Path(args.output)
         output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -152,6 +161,7 @@ def main() -> None:
 
         # ---------------------------------------------------------------
         # Write first frame then collect remaining frames
+        # 写入第一帧，然后采集剩余帧
         # ---------------------------------------------------------------
         writer.write(first_frame)
         total_frames = 1

@@ -2,6 +2,8 @@
 
 A Python 3.12 library for Hikvision industrial cameras (MVS SDK).
 
+**English** | [中文](README_zh.md)
+
 [![CI](https://github.com/doubletry/HiKCamera/actions/workflows/ci.yml/badge.svg)](https://github.com/doubletry/HiKCamera/actions/workflows/ci.yml)
 
 ## Features
