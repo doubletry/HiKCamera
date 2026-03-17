@@ -94,13 +94,13 @@ class TestLoadSDK:
 # ---------------------------------------------------------------------------
 
 class TestStructDefinitions:
-    """Verify that SDK struct field offsets and sizes are correct."""
+    """Verify that SDK struct field offsets and sizes match the official
+    Hikvision MVS SDK ``CameraParams.h`` header."""
 
     def test_gige_device_info_has_ip_config_fields(self):
         """MV_GIGE_DEVICE_INFO must include nIpCfgOption and nIpCfgCurrent
         before nCurrentIp, matching the official SDK struct layout."""
         gi = MV_GIGE_DEVICE_INFO()
-        # Verify the fields exist
         assert hasattr(gi, "nIpCfgOption")
         assert hasattr(gi, "nIpCfgCurrent")
         assert hasattr(gi, "nCurrentIp")
@@ -120,29 +120,71 @@ class TestStructDefinitions:
         dev.nTLayerType = MV_CC_DEVICE_INFO.MV_GIGE_DEVICE
         dev.SpecialInfo.stGigEInfo = gi
 
-        # Read back through the union
         read_gi = dev.SpecialInfo.stGigEInfo
         assert read_gi.nCurrentIp == 0xC0A80164
         sn = read_gi.chSerialNumber.decode("utf-8", errors="replace").strip("\x00")
         assert sn == "DA12345678"
 
-    def test_usb3_device_info_field_sizes(self):
-        """MV_USB3_DEVICE_INFO should have 64-byte fields for names/serial."""
+    def test_usb3_device_info_has_correct_fields(self):
+        """MV_USB3_DEVICE_INFO should have SDK-correct field layout:
+        StreamEndPoint, EventEndPoint, idVendor, idProduct, nDeviceNumber,
+        chDeviceGUID, and 64-byte char arrays."""
         ui = MV_USB3_DEVICE_INFO()
+        assert hasattr(ui, "StreamEndPoint")
+        assert hasattr(ui, "EventEndPoint")
+        assert hasattr(ui, "idVendor")
+        assert hasattr(ui, "idProduct")
+        assert hasattr(ui, "nDeviceNumber")
+        assert hasattr(ui, "chDeviceGUID")
         assert hasattr(ui, "chVendorName")
         assert hasattr(ui, "chSerialNumber")
         assert hasattr(ui, "nbcdUSB")
         assert hasattr(ui, "nDeviceAddress")
-        # chSerialNumber should be 64 bytes (not 16)
-        assert len(ui.chSerialNumber) <= 64
-        # Verify we can write a long serial number
+        # chSerialNumber should accept 64-byte data
         ui.chSerialNumber = b"A" * 63 + b"\x00"
         assert ui.chSerialNumber == b"A" * 63
 
-    def test_frame_out_info_ex_has_second_count(self):
-        """MV_FRAME_OUT_INFO_EX must include nSecondCount field."""
+    def test_usb3_device_info_idvendor_offset(self):
+        """idVendor should be at offset 4 (after 4 endpoint bytes)."""
+        offset = MV_USB3_DEVICE_INFO.idVendor.offset
+        assert offset == 4, f"idVendor at offset {offset}, expected 4"
+
+    def test_frame_out_info_ex_has_all_chunk_fields(self):
+        """MV_FRAME_OUT_INFO_EX must include all chunk watermark fields
+        between nFrameLen and nLostPacket."""
         fi = MV_FRAME_OUT_INFO_EX()
         assert hasattr(fi, "nSecondCount")
+        assert hasattr(fi, "nCycleCount")
+        assert hasattr(fi, "nCycleOffset")
+        assert hasattr(fi, "fGain")
+        assert hasattr(fi, "fExposureTime")
+        assert hasattr(fi, "nAverageBrightness")
+        assert hasattr(fi, "nRed")
+        assert hasattr(fi, "nGreen")
+        assert hasattr(fi, "nBlue")
+        assert hasattr(fi, "nFrameCounter")
+        assert hasattr(fi, "nTriggerIndex")
+        assert hasattr(fi, "nInput")
+        assert hasattr(fi, "nOutput")
+        assert hasattr(fi, "nOffsetX")
+        assert hasattr(fi, "nOffsetY")
+        assert hasattr(fi, "nChunkWidth")
+        assert hasattr(fi, "nChunkHeight")
+        assert hasattr(fi, "nLostPacket")
         assert hasattr(fi, "nUnparsedChunkNum")
-        # Struct should be large enough for the SDK to write to safely
-        assert ctypes.sizeof(fi) >= 200  # SDK struct is ~220 bytes
+
+    def test_frame_out_info_ex_field_order(self):
+        """nLostPacket must come after the chunk watermark fields,
+        not directly after nFrameLen."""
+        lost_offset = MV_FRAME_OUT_INFO_EX.nLostPacket.offset
+        frame_len_offset = MV_FRAME_OUT_INFO_EX.nFrameLen.offset
+        # There are 15 fields (mix of uint32, float, uint16) between
+        # nFrameLen and nLostPacket, totalling at least 60 bytes
+        assert lost_offset > frame_len_offset + 60, (
+            f"nLostPacket at offset {lost_offset} is too close to "
+            f"nFrameLen at offset {frame_len_offset}"
+        )
+
+    def test_frame_out_info_ex_size(self):
+        """Struct should be large enough for the SDK to write to safely."""
+        assert ctypes.sizeof(MV_FRAME_OUT_INFO_EX) >= 200

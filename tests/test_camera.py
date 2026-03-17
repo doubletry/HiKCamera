@@ -532,6 +532,15 @@ class TestFrameInfoToDict:
         assert "pixel_format" in d
         assert "frame_length" in d
         assert "timestamp_ns" in d
+        # New chunk watermark fields
+        assert "gain" in d
+        assert "exposure_time" in d
+        assert "average_brightness" in d
+        assert "red" in d
+        assert "green" in d
+        assert "blue" in d
+        assert "frame_counter" in d
+        assert "trigger_index" in d
 
     def test_values(self):
         fi = make_frame_info(640, 480, frame_num=7)

@@ -1075,4 +1075,12 @@ def _frame_info_to_dict(frame_info: MV_FRAME_OUT_INFO_EX) -> dict[str, Any]:
         "timestamp_ns": timestamp_ns,
         "host_timestamp_ns": frame_info.nHostTimeStamp,
         "lost_packets": frame_info.nLostPacket,
+        "gain": frame_info.fGain,
+        "exposure_time": frame_info.fExposureTime,
+        "average_brightness": frame_info.nAverageBrightness,
+        "red": frame_info.nRed,
+        "green": frame_info.nGreen,
+        "blue": frame_info.nBlue,
+        "frame_counter": frame_info.nFrameCounter,
+        "trigger_index": frame_info.nTriggerIndex,
     }

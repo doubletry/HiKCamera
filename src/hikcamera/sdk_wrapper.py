@@ -83,20 +83,28 @@ class MV_GIGE_DEVICE_INFO(Structure):  # noqa: N801
 
 
 class MV_USB3_DEVICE_INFO(Structure):  # noqa: N801
-    """USB3 Vision device information."""
+    """USB3 Vision device information.
+
+    Matches the ``MV_USB3_DEVICE_INFO`` struct in the SDK header
+    ``CameraParams.h``.
+    """
 
     _fields_ = [
         ("CrtlInEndPoint", c_uint8),
         ("CrtlOutEndPoint", c_uint8),
-        ("AuxInEndPoint", c_uint8),
-        ("AuxOutEndPoint", c_uint8),
-        ("chVendorName", c_char * 64),
-        ("chModelName", c_char * 64),
-        ("chFamilyName", c_char * 48),
-        ("chDeviceVersion", c_char * 64),
-        ("chManufacturerName", c_char * 64),
-        ("chSerialNumber", c_char * 64),
-        ("chUserDefinedName", c_char * 16),
+        ("StreamEndPoint", c_uint8),
+        ("EventEndPoint", c_uint8),
+        ("idVendor", c_uint16),
+        ("idProduct", c_uint16),
+        ("nDeviceNumber", c_uint),
+        ("chDeviceGUID", c_char * _MV_USB3_DEVICE_INFO_MAX_STR_LEN),
+        ("chVendorName", c_char * _MV_USB3_DEVICE_INFO_MAX_STR_LEN),
+        ("chModelName", c_char * _MV_USB3_DEVICE_INFO_MAX_STR_LEN),
+        ("chFamilyName", c_char * _MV_USB3_DEVICE_INFO_MAX_STR_LEN),
+        ("chDeviceVersion", c_char * _MV_USB3_DEVICE_INFO_MAX_STR_LEN),
+        ("chManufacturerName", c_char * _MV_USB3_DEVICE_INFO_MAX_STR_LEN),
+        ("chSerialNumber", c_char * _MV_USB3_DEVICE_INFO_MAX_STR_LEN),
+        ("chUserDefinedName", c_char * _MV_USB3_DEVICE_INFO_MAX_STR_LEN),
         ("nbcdUSB", c_uint),
         ("nDeviceAddress", c_uint),
         ("nReserved", c_uint * 2),
@@ -139,7 +147,13 @@ class MV_CC_DEVICE_INFO_LIST(Structure):  # noqa: N801
 
 
 class MV_FRAME_OUT_INFO_EX(Structure):  # noqa: N801
-    """Per-frame metadata returned with each captured frame."""
+    """Per-frame metadata returned with each captured frame.
+
+    Matches the ``MV_FRAME_OUT_INFO_EX`` struct in the SDK header
+    ``CameraParams.h``.  The struct includes chunk/watermark fields
+    between ``nFrameLen`` and ``nLostPacket`` that must be present to
+    keep the correct memory layout.
+    """
 
     _fields_ = [
         ("nWidth", c_uint16),
@@ -148,10 +162,31 @@ class MV_FRAME_OUT_INFO_EX(Structure):  # noqa: N801
         ("nFrameNum", c_uint),
         ("nDevTimeStampHigh", c_uint),
         ("nDevTimeStampLow", c_uint),
-        ("nReserved0", c_uint),
+        ("nReserved0", c_uint),           # padding for 8-byte alignment
         ("nHostTimeStamp", c_int64),
         ("nFrameLen", c_uint),
+        # ---- chunk watermark fields ----
         ("nSecondCount", c_uint),
+        ("nCycleCount", c_uint),
+        ("nCycleOffset", c_uint),
+        ("fGain", c_float),
+        ("fExposureTime", c_float),
+        ("nAverageBrightness", c_uint),
+        # white balance
+        ("nRed", c_uint),
+        ("nGreen", c_uint),
+        ("nBlue", c_uint),
+        ("nFrameCounter", c_uint),
+        ("nTriggerIndex", c_uint),
+        # input / output
+        ("nInput", c_uint),
+        ("nOutput", c_uint),
+        # ROI region
+        ("nOffsetX", c_uint16),
+        ("nOffsetY", c_uint16),
+        ("nChunkWidth", c_uint16),
+        ("nChunkHeight", c_uint16),
+        # ---- end of chunk fields ----
         ("nLostPacket", c_uint),
         ("nUnparsedChunkNum", c_uint),
         # SDK union: MV_CHUNK_DATA_CONTENT* | int64 (alignment padding).
@@ -216,7 +251,11 @@ class MVCC_STRINGVALUE(Structure):  # noqa: N801
 
 
 class MV_PIXEL_CONVERT_PARAM(Structure):  # noqa: N801
-    """Parameter block for MV_CC_ConvertPixelType."""
+    """Parameter block for MV_CC_ConvertPixelType.
+
+    Matches the ``MV_CC_PIXEL_CONVERT_PARAM`` struct in the SDK.
+    Note: the SDK field order is ``nDstLen`` *before* ``nDstBufferSize``.
+    """
 
     _fields_ = [
         ("nWidth", c_uint16),
@@ -226,8 +265,8 @@ class MV_PIXEL_CONVERT_PARAM(Structure):  # noqa: N801
         ("nSrcDataLen", c_uint),
         ("enDstPixelType", c_uint),
         ("pDstBuffer", POINTER(c_ubyte)),
-        ("nDstBufferSize", c_uint),
         ("nDstLen", c_uint),
+        ("nDstBufferSize", c_uint),
         ("nReserved", c_uint * 4),
     ]
 

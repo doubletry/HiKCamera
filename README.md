@@ -212,6 +212,27 @@ git tag v1.0.0
 git push origin v1.0.0
 ```
 
+## SDK Compatibility
+
+The ctypes struct definitions in ``sdk_wrapper.py`` are aligned with the
+official Hikvision MVS SDK ``CameraParams.h`` header (tested against
+MVS SDK v4.x).  Key structs:
+
+- **``MV_GIGE_DEVICE_INFO``** – includes ``nIpCfgOption``, ``nIpCfgCurrent``
+  before ``nCurrentIp``; 16-byte ``chSerialNumber``
+- **``MV_USB3_DEVICE_INFO``** – includes ``StreamEndPoint``, ``EventEndPoint``,
+  ``idVendor``, ``idProduct``, ``nDeviceNumber``, ``chDeviceGUID``; all
+  string fields are 64 bytes
+- **``MV_FRAME_OUT_INFO_EX``** – includes all chunk watermark fields
+  (``nSecondCount``, ``fGain``, ``fExposureTime``, ``nRed``/``nGreen``/``nBlue``,
+  ``nFrameCounter``, ``nTriggerIndex``, ROI offsets, etc.) between
+  ``nFrameLen`` and ``nLostPacket``
+- **``MV_CC_PIXEL_CONVERT_PARAM``** – field order matches SDK:
+  ``nDstLen`` before ``nDstBufferSize``
+
+Bayer pattern naming follows the OpenCV convention (opposite of PFNC/SDK):
+SDK ``BayerRG`` → OpenCV ``COLOR_BAYER_BG2BGR``.
+
 ## License
 
 MIT
