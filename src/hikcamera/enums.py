@@ -130,9 +130,9 @@ class TransportLayer(IntFlag):
     这些值对应 SDK 中的 ``MV_TRANSTYPE_*`` 宏定义。
     """
 
-    GIGE = 0x00000001      # GigE Vision (GEV)
-    USB = 0x00000004       # USB3 Vision (U3V)
-    CAMERALINK = 0x00000008  # CameraLink（通过采集卡）
+    GIGE = 0x00000001      # GigE Vision (GEV) / GigE 视觉
+    USB = 0x00000004       # USB3 Vision (U3V) / USB3 视觉
+    CAMERALINK = 0x00000008  # CameraLink (via frame grabber) / CameraLink（通过采集卡）
     ALL = GIGE | USB | CAMERALINK
     """Scan all supported transport layers. / 扫描所有支持的传输层。"""
 

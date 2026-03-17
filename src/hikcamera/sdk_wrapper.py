@@ -20,7 +20,8 @@ Platform notes / 平台说明
   （安装至 ``C:\\Program Files (x86)\\Common Files\\MVS\\Runtime\\Win64_x64\\``
   或旧版 ``C:\\Program Files (x86)\\MVS\\Runtime\\Win64_x64\\``）
 
-The SDK can be downloaded from /SDK 可从以下地址下载：
+The SDK can be downloaded from
+SDK 可从以下地址下载：
 https://www.hikrobotics.com/cn/machinevision/service/download/?module=0
 """
 
