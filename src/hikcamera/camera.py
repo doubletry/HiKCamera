@@ -40,6 +40,7 @@ from __future__ import annotations
 import ctypes
 import ipaddress
 import logging
+import os
 import socket
 import struct
 import threading
@@ -860,6 +861,214 @@ class HikCamera:
         name_bytes = name.encode("utf-8")
         ret = self._sdk.MV_CC_SetCommandValue(self._handle, name_bytes)
         _check(ret, f"MV_CC_SetCommandValue({name!r})")
+
+    # ------------------------------------------------------------------
+    # Configuration file import / export
+    # ------------------------------------------------------------------
+
+    def export_config(self, file_path: str) -> None:
+        """
+        Export the current camera configuration to a file.
+
+        Uses the SDK's ``MV_CC_FeatureSave`` to write all GenICam
+        parameters to an XML-format configuration file.
+
+        Parameters
+        ----------
+        file_path:
+            Destination file path (e.g. ``"camera_config.xml"``).
+
+        Raises
+        ------
+        CameraNotOpenError
+            When the camera is not open.
+        HikCameraError
+            When the SDK call fails.
+        """
+        self._assert_open()
+        path_bytes = os.fsencode(os.path.abspath(file_path))
+        ret = self._sdk.MV_CC_FeatureSave(self._handle, path_bytes)
+        _check(ret, f"MV_CC_FeatureSave({file_path!r})")
+        logger.info("Camera configuration exported to %s", file_path)
+
+    def import_config(self, file_path: str) -> None:
+        """
+        Import camera configuration from a file.
+
+        Uses the SDK's ``MV_CC_FeatureLoad`` to restore GenICam
+        parameters from a previously exported XML configuration file.
+
+        Parameters
+        ----------
+        file_path:
+            Source file path (e.g. ``"camera_config.xml"``).
+
+        Raises
+        ------
+        CameraNotOpenError
+            When the camera is not open.
+        FileNotFoundError
+            When *file_path* does not exist.
+        HikCameraError
+            When the SDK call fails.
+        """
+        self._assert_open()
+        abs_path = os.path.abspath(file_path)
+        if not os.path.isfile(abs_path):
+            raise FileNotFoundError(f"Configuration file not found: {file_path!r}")
+        path_bytes = os.fsencode(abs_path)
+        ret = self._sdk.MV_CC_FeatureLoad(self._handle, path_bytes)
+        _check(ret, f"MV_CC_FeatureLoad({file_path!r})")
+        logger.info("Camera configuration imported from %s", file_path)
+
+    # ------------------------------------------------------------------
+    # User set save / load
+    # ------------------------------------------------------------------
+
+    def save_user_set(self, user_set: str = "UserSet1") -> None:
+        """
+        Save the current camera parameters to a user set stored on the device.
+
+        Parameters
+        ----------
+        user_set:
+            Name of the user set (e.g. ``"UserSet1"``, ``"UserSet2"``,
+            ``"UserSet3"``).  The available sets depend on the camera
+            model.
+
+        Raises
+        ------
+        CameraNotOpenError
+            When the camera is not open.
+        ParameterNotSupportedError
+            When the device does not support user sets.
+        HikCameraError
+            When the SDK call fails.
+        """
+        self._assert_open()
+        self.set_enum_parameter_by_string("UserSetSelector", user_set)
+        self.execute_command("UserSetSave")
+        logger.info("Camera parameters saved to user set %r", user_set)
+
+    def load_user_set(self, user_set: str = "UserSet1") -> None:
+        """
+        Load camera parameters from a user set stored on the device.
+
+        Parameters
+        ----------
+        user_set:
+            Name of the user set to load.
+
+        Raises
+        ------
+        CameraNotOpenError
+            When the camera is not open.
+        ParameterNotSupportedError
+            When the device does not support user sets.
+        HikCameraError
+            When the SDK call fails.
+        """
+        self._assert_open()
+        self.set_enum_parameter_by_string("UserSetSelector", user_set)
+        self.execute_command("UserSetLoad")
+        logger.info("Camera parameters loaded from user set %r", user_set)
+
+    # ------------------------------------------------------------------
+    # Camera information
+    # ------------------------------------------------------------------
+
+    def get_camera_info(self) -> dict[str, Any]:
+        """
+        Retrieve common camera parameters as a dictionary.
+
+        This method can be called any time after :py:meth:`open` (before
+        or during grabbing).  It collects commonly used parameters such
+        as image size, frame rate, exposure, and gain.
+
+        Parameters that are not supported by the camera model are
+        silently omitted from the result.
+
+        Returns
+        -------
+        dict[str, Any]
+            A dictionary with available parameter values.  Typical keys
+            include ``"Width"``, ``"Height"``, ``"PixelFormat"``,
+            ``"ExposureTime"``, ``"Gain"``, ``"AcquisitionFrameRate"``,
+            ``"PayloadSize"``, ``"DeviceModelName"``, etc.
+
+        Raises
+        ------
+        CameraNotOpenError
+            When the camera is not open.
+        """
+        self._assert_open()
+        info: dict[str, Any] = {}
+
+        # Integer parameters
+        for name in (
+            "Width",
+            "Height",
+            "OffsetX",
+            "OffsetY",
+            "PayloadSize",
+            "WidthMax",
+            "HeightMax",
+        ):
+            try:
+                info[name] = self.get_int_parameter(name)
+            except (ParameterNotSupportedError, ParameterError):
+                pass
+
+        # Float parameters
+        for name in (
+            "ExposureTime",
+            "Gain",
+            "AcquisitionFrameRate",
+            "ResultingFrameRate",
+            "Gamma",
+        ):
+            try:
+                info[name] = self.get_float_parameter(name)
+            except (ParameterNotSupportedError, ParameterError):
+                pass
+
+        # Bool parameters
+        for name in (
+            "AcquisitionFrameRateEnable",
+            "GammaEnable",
+        ):
+            try:
+                info[name] = self.get_bool_parameter(name)
+            except (ParameterNotSupportedError, ParameterError):
+                pass
+
+        # Enum parameters (returned as raw integer values)
+        for name in (
+            "PixelFormat",
+            "ExposureAuto",
+            "GainAuto",
+            "BalanceWhiteAuto",
+            "TriggerMode",
+            "TriggerSource",
+        ):
+            try:
+                info[name] = self.get_enum_parameter(name)
+            except (ParameterNotSupportedError, ParameterError):
+                pass
+
+        # String parameters
+        for name in (
+            "DeviceModelName",
+            "DeviceSerialNumber",
+            "DeviceFirmwareVersion",
+            "DeviceUserID",
+        ):
+            try:
+                info[name] = self.get_string_parameter(name)
+            except (ParameterNotSupportedError, ParameterError):
+                pass
+
+        return info
 
     def set_parameter(self, name: str, value: int | float | bool | str) -> None:
         """

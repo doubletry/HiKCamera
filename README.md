@@ -12,6 +12,8 @@ A Python 3.12 library for Hikvision industrial cameras (MVS SDK).
 | **Flexible connection** | Connect by IP address or serial number |
 | **Multiple access modes** | Exclusive, Control, Monitor, Exclusive-With-Switch, Multicast, Unicast |
 | **Parameter access** | Get/set integer, float, bool, enum, string GenICam parameters with full exception handling (missing parameters are handled gracefully) |
+| **Camera information** | `get_camera_info()` retrieves common parameters (image size, frame rate, exposure, gain, pixel format, device model, etc.) in a single call |
+| **Configuration management** | Export/import camera configuration files; save/load device user sets |
 | **Frame capture – polling** | `start_grabbing()` + `get_frame()` |
 | **Frame capture – callback** | `start_grabbing(callback=my_fn)` – custom callback receives a numpy array |
 | **Pixel formats** | Mono8/10/12/16, Bayer GR/RG/GB/BG 8/10/12 (packed & planar), RGB/BGR 8, RGBA/BGRA 8, YUV422 (UYVY & YUYV) |
@@ -150,6 +152,54 @@ with HikCamera.from_device_info(cameras[0]) as cam:
         cam.set_int_parameter("Width", 1920)
     except ParameterReadOnlyError:
         print("Width is read-only while grabbing")
+```
+
+### Get camera information
+
+```python
+from hikcamera import HikCamera, AccessMode
+
+with HikCamera.from_ip("192.168.1.100") as cam:
+    cam.open(AccessMode.EXCLUSIVE)
+
+    # Get all common camera parameters at once
+    info = cam.get_camera_info()
+    print(f"Resolution: {info.get('Width')}x{info.get('Height')}")
+    print(f"Exposure: {info.get('ExposureTime')} µs")
+    print(f"Gain: {info.get('Gain')}")
+    print(f"Frame rate: {info.get('AcquisitionFrameRate')} fps")
+    print(f"Pixel format: {info.get('PixelFormat')}")
+    print(f"Model: {info.get('DeviceModelName')}")
+```
+
+### Export / import camera configuration
+
+```python
+from hikcamera import HikCamera, AccessMode
+
+with HikCamera.from_ip("192.168.1.100") as cam:
+    cam.open(AccessMode.EXCLUSIVE)
+
+    # Export current configuration to a file
+    cam.export_config("camera_config.xml")
+
+    # Import configuration from a file
+    cam.import_config("camera_config.xml")
+```
+
+### Save / load device user sets
+
+```python
+from hikcamera import HikCamera, AccessMode
+
+with HikCamera.from_ip("192.168.1.100") as cam:
+    cam.open(AccessMode.EXCLUSIVE)
+
+    # Save current parameters to user set 1
+    cam.save_user_set("UserSet1")
+
+    # Later, restore parameters from user set 1
+    cam.load_user_set("UserSet1")
 ```
 
 ## Demos
