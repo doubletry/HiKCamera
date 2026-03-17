@@ -7,7 +7,6 @@ on:
 
 permissions:
   contents: write
-  id-token: write  # needed for PyPI trusted publishing
 
 jobs:
   # -------------------------------------------------------------------------
@@ -112,28 +111,3 @@ jobs:
           name: "HiKCamera ${{ github.ref_name }}"
           generate_release_notes: true
           files: dist/*
-
-  # -------------------------------------------------------------------------
-  # 3. Publish to PyPI using trusted publishing (no API token required)
-  # -------------------------------------------------------------------------
-  publish-pypi:
-    name: Publish to PyPI
-    needs: build
-    runs-on: ubuntu-latest
-    environment:
-      name: pypi
-      url: https://pypi.org/project/hikcamera/
-
-    steps:
-      - name: Download dist artefacts
-        uses: actions/download-artifact@v4
-        with:
-          name: dist
-          path: dist/
-
-      - name: Publish to PyPI
-        uses: pypa/gh-action-pypi-publish@release/v1
-        with:
-          # Trusted publishing: no API token needed when the environment
-          # is configured correctly in PyPI project settings.
-          skip-existing: true
