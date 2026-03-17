@@ -76,3 +76,32 @@ class TestPublicAPI:
         import hikcamera
         assert hasattr(hikcamera, "__version__")
         assert isinstance(hikcamera.__version__, str)
+
+
+class TestNewFeatures:
+    """Verify that newly added features are accessible on the HikCamera class."""
+
+    def test_export_config_method(self):
+        from hikcamera import HikCamera
+        assert hasattr(HikCamera, "export_config")
+        assert callable(getattr(HikCamera, "export_config"))
+
+    def test_import_config_method(self):
+        from hikcamera import HikCamera
+        assert hasattr(HikCamera, "import_config")
+        assert callable(getattr(HikCamera, "import_config"))
+
+    def test_save_user_set_method(self):
+        from hikcamera import HikCamera
+        assert hasattr(HikCamera, "save_user_set")
+        assert callable(getattr(HikCamera, "save_user_set"))
+
+    def test_load_user_set_method(self):
+        from hikcamera import HikCamera
+        assert hasattr(HikCamera, "load_user_set")
+        assert callable(getattr(HikCamera, "load_user_set"))
+
+    def test_get_camera_info_method(self):
+        from hikcamera import HikCamera
+        assert hasattr(HikCamera, "get_camera_info")
+        assert callable(getattr(HikCamera, "get_camera_info"))

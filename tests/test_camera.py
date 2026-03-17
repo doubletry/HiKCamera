@@ -548,3 +548,237 @@ class TestFrameInfoToDict:
         assert d["width"] == 640
         assert d["height"] == 480
         assert d["frame_num"] == 7
+
+
+# ---------------------------------------------------------------------------
+# Configuration export / import
+# ---------------------------------------------------------------------------
+
+class TestConfigExportImport:
+    def test_export_config_calls_feature_save(self, mock_sdk, tmp_path):
+        cam = make_camera_with_sdk(mock_sdk)
+        out_file = str(tmp_path / "config.xml")
+        cam.export_config(out_file)
+        mock_sdk.MV_CC_FeatureSave.assert_called_once()
+
+    def test_export_config_not_open_raises(self, mock_sdk, tmp_path):
+        cam = make_camera_with_sdk(mock_sdk, open_it=False)
+        with pytest.raises(CameraNotOpenError):
+            cam.export_config(str(tmp_path / "config.xml"))
+
+    def test_export_config_sdk_failure_raises(self, mock_sdk, tmp_path):
+        from hikcamera.exceptions import HikCameraError
+
+        cam = make_camera_with_sdk(mock_sdk)
+        mock_sdk.MV_CC_FeatureSave.return_value = 0x80000000
+        with pytest.raises(HikCameraError):
+            cam.export_config(str(tmp_path / "config.xml"))
+
+    def test_import_config_calls_feature_load(self, mock_sdk, tmp_path):
+        cam = make_camera_with_sdk(mock_sdk)
+        cfg = tmp_path / "config.xml"
+        cfg.write_text("<config/>")
+        cam.import_config(str(cfg))
+        mock_sdk.MV_CC_FeatureLoad.assert_called_once()
+
+    def test_import_config_not_open_raises(self, mock_sdk, tmp_path):
+        cam = make_camera_with_sdk(mock_sdk, open_it=False)
+        cfg = tmp_path / "config.xml"
+        cfg.write_text("<config/>")
+        with pytest.raises(CameraNotOpenError):
+            cam.import_config(str(cfg))
+
+    def test_import_config_file_not_found_raises(self, mock_sdk, tmp_path):
+        cam = make_camera_with_sdk(mock_sdk)
+        with pytest.raises(FileNotFoundError):
+            cam.import_config(str(tmp_path / "nonexistent.xml"))
+
+    def test_import_config_sdk_failure_raises(self, mock_sdk, tmp_path):
+        from hikcamera.exceptions import HikCameraError
+
+        cam = make_camera_with_sdk(mock_sdk)
+        cfg = tmp_path / "config.xml"
+        cfg.write_text("<config/>")
+        mock_sdk.MV_CC_FeatureLoad.return_value = 0x80000000
+        with pytest.raises(HikCameraError):
+            cam.import_config(str(cfg))
+
+
+# ---------------------------------------------------------------------------
+# User set save / load
+# ---------------------------------------------------------------------------
+
+class TestUserSet:
+    def test_save_user_set(self, mock_sdk):
+        cam = make_camera_with_sdk(mock_sdk)
+        cam.save_user_set("UserSet1")
+        mock_sdk.MV_CC_SetEnumValueByString.assert_called_once()
+        mock_sdk.MV_CC_SetCommandValue.assert_called_once()
+
+    def test_save_user_set_default(self, mock_sdk):
+        cam = make_camera_with_sdk(mock_sdk)
+        cam.save_user_set()
+        # Verify UserSetSelector was set to "UserSet1" (default)
+        call_args = mock_sdk.MV_CC_SetEnumValueByString.call_args
+        assert call_args[0][1] == b"UserSetSelector"
+        assert call_args[0][2] == b"UserSet1"
+
+    def test_save_user_set_not_open_raises(self, mock_sdk):
+        cam = make_camera_with_sdk(mock_sdk, open_it=False)
+        with pytest.raises(CameraNotOpenError):
+            cam.save_user_set()
+
+    def test_save_user_set_not_supported_raises(self, mock_sdk):
+        cam = make_camera_with_sdk(mock_sdk)
+        mock_sdk.MV_CC_SetEnumValueByString.return_value = MvErrorCode.MV_E_SUPPORT
+        with pytest.raises(ParameterNotSupportedError):
+            cam.save_user_set("UserSet1")
+
+    def test_load_user_set(self, mock_sdk):
+        cam = make_camera_with_sdk(mock_sdk)
+        cam.load_user_set("UserSet2")
+        call_args = mock_sdk.MV_CC_SetEnumValueByString.call_args
+        assert call_args[0][2] == b"UserSet2"
+        mock_sdk.MV_CC_SetCommandValue.assert_called_once()
+
+    def test_load_user_set_not_open_raises(self, mock_sdk):
+        cam = make_camera_with_sdk(mock_sdk, open_it=False)
+        with pytest.raises(CameraNotOpenError):
+            cam.load_user_set()
+
+
+# ---------------------------------------------------------------------------
+# Camera info
+# ---------------------------------------------------------------------------
+
+class TestCameraInfo:
+    def _setup_param_responses(self, mock_sdk):
+        """Configure mock SDK to return realistic parameter values."""
+        def get_int_side_effect(handle, name, p_val):
+            values = {
+                b"Width": 1920,
+                b"Height": 1080,
+                b"OffsetX": 0,
+                b"OffsetY": 0,
+                b"PayloadSize": 1920 * 1080,
+                b"WidthMax": 2048,
+                b"HeightMax": 1536,
+            }
+            if name in values:
+                p_val._obj.nCurValue = values[name]
+                return MvErrorCode.MV_OK
+            return MvErrorCode.MV_E_SUPPORT
+
+        def get_float_side_effect(handle, name, p_val):
+            values = {
+                b"ExposureTime": 5000.0,
+                b"Gain": 1.5,
+                b"AcquisitionFrameRate": 30.0,
+                b"ResultingFrameRate": 29.97,
+                b"Gamma": 1.0,
+            }
+            if name in values:
+                p_val._obj.fCurValue = values[name]
+                return MvErrorCode.MV_OK
+            return MvErrorCode.MV_E_SUPPORT
+
+        def get_bool_side_effect(handle, name, p_val):
+            values = {
+                b"AcquisitionFrameRateEnable": 1,
+                b"GammaEnable": 0,
+            }
+            if name in values:
+                p_val._obj.value = values[name]
+                return MvErrorCode.MV_OK
+            return MvErrorCode.MV_E_SUPPORT
+
+        def get_enum_side_effect(handle, name, p_val):
+            values = {
+                b"PixelFormat": 0x01080001,  # MONO8
+                b"ExposureAuto": 0,
+                b"GainAuto": 0,
+            }
+            if name in values:
+                p_val._obj.nCurValue = values[name]
+                return MvErrorCode.MV_OK
+            return MvErrorCode.MV_E_SUPPORT
+
+        def get_string_side_effect(handle, name, p_val):
+            values = {
+                b"DeviceModelName": b"MV-CA013-20UC",
+                b"DeviceSerialNumber": b"SN123456",
+                b"DeviceFirmwareVersion": b"1.0.0",
+            }
+            if name in values:
+                val = values[name]
+                p_val._obj.chCurValue = val + b"\x00" * (256 - len(val))
+                return MvErrorCode.MV_OK
+            return MvErrorCode.MV_E_SUPPORT
+
+        mock_sdk.MV_CC_GetIntValueEx.side_effect = get_int_side_effect
+        mock_sdk.MV_CC_GetFloatValue.side_effect = get_float_side_effect
+        mock_sdk.MV_CC_GetBoolValue.side_effect = get_bool_side_effect
+        mock_sdk.MV_CC_GetEnumValue.side_effect = get_enum_side_effect
+        mock_sdk.MV_CC_GetStringValue.side_effect = get_string_side_effect
+
+    def test_get_camera_info_returns_dict(self, mock_sdk):
+        cam = make_camera_with_sdk(mock_sdk)
+        self._setup_param_responses(mock_sdk)
+        info = cam.get_camera_info()
+        assert isinstance(info, dict)
+
+    def test_get_camera_info_contains_image_dimensions(self, mock_sdk):
+        cam = make_camera_with_sdk(mock_sdk)
+        self._setup_param_responses(mock_sdk)
+        info = cam.get_camera_info()
+        assert info["Width"] == 1920
+        assert info["Height"] == 1080
+
+    def test_get_camera_info_contains_exposure_and_gain(self, mock_sdk):
+        cam = make_camera_with_sdk(mock_sdk)
+        self._setup_param_responses(mock_sdk)
+        info = cam.get_camera_info()
+        assert info["ExposureTime"] == pytest.approx(5000.0)
+        assert info["Gain"] == pytest.approx(1.5)
+
+    def test_get_camera_info_contains_frame_rate(self, mock_sdk):
+        cam = make_camera_with_sdk(mock_sdk)
+        self._setup_param_responses(mock_sdk)
+        info = cam.get_camera_info()
+        assert info["AcquisitionFrameRate"] == pytest.approx(30.0)
+
+    def test_get_camera_info_contains_pixel_format(self, mock_sdk):
+        cam = make_camera_with_sdk(mock_sdk)
+        self._setup_param_responses(mock_sdk)
+        info = cam.get_camera_info()
+        assert info["PixelFormat"] == 0x01080001
+
+    def test_get_camera_info_contains_device_name(self, mock_sdk):
+        cam = make_camera_with_sdk(mock_sdk)
+        self._setup_param_responses(mock_sdk)
+        info = cam.get_camera_info()
+        assert info["DeviceModelName"] == "MV-CA013-20UC"
+        assert info["DeviceSerialNumber"] == "SN123456"
+
+    def test_get_camera_info_skips_unsupported(self, mock_sdk):
+        cam = make_camera_with_sdk(mock_sdk)
+        # All calls return "not supported"
+        mock_sdk.MV_CC_GetIntValueEx.return_value = MvErrorCode.MV_E_SUPPORT
+        mock_sdk.MV_CC_GetFloatValue.return_value = MvErrorCode.MV_E_SUPPORT
+        mock_sdk.MV_CC_GetBoolValue.return_value = MvErrorCode.MV_E_SUPPORT
+        mock_sdk.MV_CC_GetEnumValue.return_value = MvErrorCode.MV_E_SUPPORT
+        mock_sdk.MV_CC_GetStringValue.return_value = MvErrorCode.MV_E_SUPPORT
+        info = cam.get_camera_info()
+        assert info == {}
+
+    def test_get_camera_info_not_open_raises(self, mock_sdk):
+        cam = make_camera_with_sdk(mock_sdk, open_it=False)
+        with pytest.raises(CameraNotOpenError):
+            cam.get_camera_info()
+
+    def test_get_camera_info_contains_bool_params(self, mock_sdk):
+        cam = make_camera_with_sdk(mock_sdk)
+        self._setup_param_responses(mock_sdk)
+        info = cam.get_camera_info()
+        assert info["AcquisitionFrameRateEnable"] is True
+        assert info["GammaEnable"] is False

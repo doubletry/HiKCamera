@@ -104,6 +104,8 @@ class MockSDK:
         self.MV_CC_ConvertPixelType = MagicMock(return_value=MvErrorCode.MV_OK)
         self.MV_GIGE_SetMulticastIP = MagicMock(return_value=MvErrorCode.MV_OK)
         self.MV_CC_GetSDKVersion = MagicMock(return_value=0x03000000)
+        self.MV_CC_FeatureSave = MagicMock(return_value=MvErrorCode.MV_OK)
+        self.MV_CC_FeatureLoad = MagicMock(return_value=MvErrorCode.MV_OK)
 
 
 def make_frame_info(

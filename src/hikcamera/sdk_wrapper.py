@@ -458,5 +458,9 @@ def _configure_sdk_argtypes(lib: ctypes.CDLL) -> None:  # noqa: PLR0915
     # GigE multicast
     _set("MV_GIGE_SetMulticastIP", [c_void_p, c_uint])
 
+    # Feature save / load (camera configuration files)
+    _set("MV_CC_FeatureSave", [c_void_p, ctypes.c_char_p])
+    _set("MV_CC_FeatureLoad", [c_void_p, ctypes.c_char_p])
+
     # SDK version
     _set("MV_CC_GetSDKVersion", [], c_uint)
