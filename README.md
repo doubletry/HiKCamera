@@ -38,10 +38,7 @@ You can override the path with the `HIKCAMERA_SDK_PATH` environment variable.
 ## Installation
 
 ```bash
-# Install with pip (once published to PyPI)
-pip install hikcamera
-
-# Or install from source with Poetry
+# Install from source with Poetry
 git clone https://github.com/doubletry/HiKCamera.git
 cd HiKCamera
 poetry install
@@ -257,7 +254,6 @@ Pushing a version tag triggers the release workflow, which:
 1. Runs the test suite
 2. Builds the wheel and sdist
 3. Creates a GitHub Release with the distribution files
-4. Publishes to PyPI via trusted publishing
 
 ```bash
 git tag v1.0.0

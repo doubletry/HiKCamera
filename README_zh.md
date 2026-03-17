@@ -38,10 +38,7 @@
 ## 安装
 
 ```bash
-# 通过 pip 安装（发布到 PyPI 后）
-pip install hikcamera
-
-# 或从源码通过 Poetry 安装
+# 从源码通过 Poetry 安装
 git clone https://github.com/doubletry/HiKCamera.git
 cd HiKCamera
 poetry install
@@ -257,7 +254,6 @@ poetry run ruff check src/ tests/
 1. 运行测试套件
 2. 构建 wheel 和 sdist
 3. 创建 GitHub Release 并附带分发文件
-4. 通过可信发布机制发布到 PyPI
 
 ```bash
 git tag v1.0.0
