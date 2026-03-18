@@ -83,6 +83,26 @@ from .utils import raw_to_numpy
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
+# Constants / 常量
+# ---------------------------------------------------------------------------
+
+#: Standard Ethernet MTU packet size (bytes).  Works on any network without
+#: jumbo-frame support.
+#: 标准以太网 MTU 包大小（字节），适用于任何不支持巨帧的网络。
+GIGE_PACKET_SIZE_DEFAULT: int = 1500
+
+#: Jumbo-frame packet size (bytes) commonly used for high-throughput GigE
+#: Vision cameras.  Requires all switches/NICs on the path to support ≥ 9 KB
+#: MTU.
+#: 巨帧包大小（字节），常用于高吞吐量 GigE Vision 相机。
+#: 要求路径上所有交换机/网卡支持 ≥ 9 KB MTU。
+GIGE_PACKET_SIZE_JUMBO: int = 8164
+
+# Fallback frame-buffer size when PayloadSize is unavailable (10 MiB).
+# 当 PayloadSize 不可用时的帧缓冲区回退大小（10 MiB）。
+_DEFAULT_FRAME_BUFFER_SIZE: int = 10 * 1024 * 1024
+
+# ---------------------------------------------------------------------------
 # Helpers / 辅助函数
 # ---------------------------------------------------------------------------
 
@@ -483,9 +503,13 @@ class HikCamera:
               ``MV_CC_GetOptimalPacketSize`` and apply it.
               ``None``（默认）── 通过 ``MV_CC_GetOptimalPacketSize`` 自动检测
               最优包大小并应用。
-            * Positive ``int`` – use the given value directly (e.g. 1500,
-              8164).  Only effective for GigE cameras.
-              正整数 ── 直接使用指定值（如 1500、8164）。仅对 GigE 相机有效。
+            * Positive ``int`` – use the given value directly (e.g.
+              :py:data:`GIGE_PACKET_SIZE_DEFAULT`,
+              :py:data:`GIGE_PACKET_SIZE_JUMBO`).  Only effective for GigE
+              cameras.
+              正整数 ── 直接使用指定值（如
+              :py:data:`GIGE_PACKET_SIZE_DEFAULT`、
+              :py:data:`GIGE_PACKET_SIZE_JUMBO`）。仅对 GigE 相机有效。
 
         Raises / 异常
         -------------
@@ -614,8 +638,12 @@ class HikCamera:
         Returns / 返回
         --------------
         int
-            Optimal packet size in bytes (e.g. 1500, 8164).
-            最优包大小（字节），如 1500、8164。
+            Optimal packet size in bytes (typically
+            :py:data:`GIGE_PACKET_SIZE_DEFAULT` or
+            :py:data:`GIGE_PACKET_SIZE_JUMBO`).
+            最优包大小（字节），通常为
+            :py:data:`GIGE_PACKET_SIZE_DEFAULT` 或
+            :py:data:`GIGE_PACKET_SIZE_JUMBO`。
 
         Raises / 异常
         -------------
@@ -639,11 +667,13 @@ class HikCamera:
         Set the GigE streaming packet size (``GevSCPSPacketSize``).
         设置 GigE 流传输包大小（``GevSCPSPacketSize``）。
 
-        A larger packet size (e.g. 8164 for jumbo frames) improves
-        throughput but requires that every network device on the path
-        supports the MTU.  A safe default is 1500.
-        较大的包大小（如 8164 用于巨帧）可提高吞吐量，但要求路径上的
-        所有网络设备都支持该 MTU。安全默认值为 1500。
+        A larger packet size (e.g. :py:data:`GIGE_PACKET_SIZE_JUMBO` for
+        jumbo frames) improves throughput but requires that every network
+        device on the path supports the MTU.  A safe default is
+        :py:data:`GIGE_PACKET_SIZE_DEFAULT`.
+        较大的包大小（如 :py:data:`GIGE_PACKET_SIZE_JUMBO` 用于巨帧）可提高
+        吞吐量，但要求路径上的所有网络设备都支持该 MTU。安全默认值为
+        :py:data:`GIGE_PACKET_SIZE_DEFAULT`。
 
         Parameters / 参数
         -----------------
@@ -1531,7 +1561,7 @@ class HikCamera:
         # Use a reasonable fallback if PayloadSize is unavailable
         # 如果 PayloadSize 不可用，使用合理的回退值
         if payload_size <= 0:
-            payload_size = 10 * 1024 * 1024  # 10 MiB
+            payload_size = _DEFAULT_FRAME_BUFFER_SIZE
 
         if self._frame_buffer is None or self._frame_buffer_size < payload_size:
             self._frame_buffer = (c_ubyte * payload_size)()

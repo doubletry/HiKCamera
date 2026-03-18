@@ -137,16 +137,17 @@ with HikCamera.from_ip("192.168.1.100") as cam:
 您也可以手动指定：
 
 ```python
-from hikcamera import HikCamera, AccessMode
+from hikcamera import HikCamera, AccessMode, GIGE_PACKET_SIZE_DEFAULT, GIGE_PACKET_SIZE_JUMBO
 
 # 自动检测最优包大小（默认行为）
 with HikCamera.from_ip("192.168.1.100") as cam:
     cam.open(AccessMode.EXCLUSIVE)  # 自动应用最优包大小
     ...
 
-# 手动指定包大小（如 1500 标准 MTU，8164 巨帧）
+# 手动指定包大小（如 GIGE_PACKET_SIZE_DEFAULT 标准 MTU，
+# GIGE_PACKET_SIZE_JUMBO 巨帧）
 with HikCamera.from_ip("192.168.1.100") as cam:
-    cam.open(AccessMode.EXCLUSIVE, packet_size=8164)
+    cam.open(AccessMode.EXCLUSIVE, packet_size=GIGE_PACKET_SIZE_JUMBO)
     ...
 
 # 打开后查询或修改包大小
@@ -154,7 +155,7 @@ with HikCamera.from_ip("192.168.1.100") as cam:
     cam.open(AccessMode.EXCLUSIVE)
     print(cam.get_packet_size())          # 当前包大小
     print(cam.get_optimal_packet_size())  # SDK 推荐的最优值
-    cam.set_packet_size(1500)             # 手动覆盖
+    cam.set_packet_size(GIGE_PACKET_SIZE_DEFAULT)  # 手动覆盖
 ```
 
 ### 带错误处理的参数访问

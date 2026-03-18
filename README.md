@@ -137,16 +137,17 @@ By default, `open()` automatically detects and sets the optimal packet size
 for GigE cameras.  You can also specify a manual value:
 
 ```python
-from hikcamera import HikCamera, AccessMode
+from hikcamera import HikCamera, AccessMode, GIGE_PACKET_SIZE_DEFAULT, GIGE_PACKET_SIZE_JUMBO
 
 # Auto-detect optimal packet size (default)
 with HikCamera.from_ip("192.168.1.100") as cam:
     cam.open(AccessMode.EXCLUSIVE)  # optimal packet size applied automatically
     ...
 
-# Manual packet size (e.g. 1500 for standard MTU, 8164 for jumbo frames)
+# Manual packet size (e.g. GIGE_PACKET_SIZE_DEFAULT for standard MTU,
+# GIGE_PACKET_SIZE_JUMBO for jumbo frames)
 with HikCamera.from_ip("192.168.1.100") as cam:
-    cam.open(AccessMode.EXCLUSIVE, packet_size=8164)
+    cam.open(AccessMode.EXCLUSIVE, packet_size=GIGE_PACKET_SIZE_JUMBO)
     ...
 
 # Query or change packet size after opening
@@ -154,7 +155,7 @@ with HikCamera.from_ip("192.168.1.100") as cam:
     cam.open(AccessMode.EXCLUSIVE)
     print(cam.get_packet_size())       # current packet size
     print(cam.get_optimal_packet_size())  # SDK-recommended optimal size
-    cam.set_packet_size(1500)          # manual override
+    cam.set_packet_size(GIGE_PACKET_SIZE_DEFAULT)  # manual override
 ```
 
 ### Parameter access with error handling

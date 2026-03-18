@@ -46,7 +46,13 @@ The following names are exported at the package level for convenience:
 
 from __future__ import annotations
 
-from .camera import DeviceInfo, HikCamera, enumerate_cameras
+from .camera import (
+    GIGE_PACKET_SIZE_DEFAULT,
+    GIGE_PACKET_SIZE_JUMBO,
+    DeviceInfo,
+    HikCamera,
+    enumerate_cameras,
+)
 from .enums import AccessMode, MvErrorCode, OutputFormat, PixelFormat, StreamingMode, TransportLayer
 from .exceptions import (
     CameraAlreadyOpenError,
@@ -70,6 +76,9 @@ __all__ = [
     "HikCamera",
     "DeviceInfo",
     "enumerate_cameras",
+    # Constants / 常量
+    "GIGE_PACKET_SIZE_DEFAULT",
+    "GIGE_PACKET_SIZE_JUMBO",
     # Enumerations / 枚举类型
     "AccessMode",
     "TransportLayer",

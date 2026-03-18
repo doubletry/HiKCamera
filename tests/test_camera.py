@@ -11,7 +11,15 @@ from unittest.mock import patch
 import numpy as np
 import pytest
 
-from hikcamera.camera import DeviceInfo, HikCamera, _frame_info_to_dict, _int_to_ip, _ip_to_int
+from hikcamera.camera import (
+    GIGE_PACKET_SIZE_DEFAULT,
+    GIGE_PACKET_SIZE_JUMBO,
+    DeviceInfo,
+    HikCamera,
+    _frame_info_to_dict,
+    _int_to_ip,
+    _ip_to_int,
+)
 from hikcamera.enums import AccessMode, MvErrorCode, OutputFormat, PixelFormat, StreamingMode
 from hikcamera.exceptions import (
     CameraAlreadyOpenError,
@@ -227,7 +235,7 @@ class TestOpenClose:
     def test_open_auto_packet_size(self, mock_sdk):
         """open() with default packet_size=None auto-configures optimal size."""
         cam = make_camera_with_sdk(mock_sdk, open_it=False)
-        mock_sdk.MV_CC_GetOptimalPacketSize.return_value = 8164
+        mock_sdk.MV_CC_GetOptimalPacketSize.return_value = GIGE_PACKET_SIZE_JUMBO
         cam.open(AccessMode.EXCLUSIVE)
         assert cam.is_open
         mock_sdk.MV_CC_GetOptimalPacketSize.assert_called_once()
@@ -235,17 +243,17 @@ class TestOpenClose:
         calls = mock_sdk.MV_CC_SetIntValueEx.call_args_list
         gev_calls = [c for c in calls if c[0][1] == b"GevSCPSPacketSize"]
         assert len(gev_calls) == 1
-        assert gev_calls[0][0][2] == 8164
+        assert gev_calls[0][0][2] == GIGE_PACKET_SIZE_JUMBO
 
     def test_open_manual_packet_size(self, mock_sdk):
         """open() with explicit packet_size applies the given value."""
         cam = make_camera_with_sdk(mock_sdk, open_it=False)
-        cam.open(AccessMode.EXCLUSIVE, packet_size=1500)
+        cam.open(AccessMode.EXCLUSIVE, packet_size=GIGE_PACKET_SIZE_DEFAULT)
         assert cam.is_open
         calls = mock_sdk.MV_CC_SetIntValueEx.call_args_list
         gev_calls = [c for c in calls if c[0][1] == b"GevSCPSPacketSize"]
         assert len(gev_calls) == 1
-        assert gev_calls[0][0][2] == 1500
+        assert gev_calls[0][0][2] == GIGE_PACKET_SIZE_DEFAULT
         # GetOptimalPacketSize should NOT be called for manual override
         mock_sdk.MV_CC_GetOptimalPacketSize.assert_not_called()
 
@@ -264,8 +272,8 @@ class TestOpenClose:
 class TestPacketSize:
     def test_get_optimal_packet_size(self, mock_sdk):
         cam = make_camera_with_sdk(mock_sdk)
-        mock_sdk.MV_CC_GetOptimalPacketSize.return_value = 8164
-        assert cam.get_optimal_packet_size() == 8164
+        mock_sdk.MV_CC_GetOptimalPacketSize.return_value = GIGE_PACKET_SIZE_JUMBO
+        assert cam.get_optimal_packet_size() == GIGE_PACKET_SIZE_JUMBO
 
     def test_get_optimal_packet_size_failure(self, mock_sdk):
         cam = make_camera_with_sdk(mock_sdk)
@@ -280,28 +288,28 @@ class TestPacketSize:
 
     def test_set_packet_size(self, mock_sdk):
         cam = make_camera_with_sdk(mock_sdk)
-        cam.set_packet_size(8164)
+        cam.set_packet_size(GIGE_PACKET_SIZE_JUMBO)
         calls = mock_sdk.MV_CC_SetIntValueEx.call_args_list
         gev_calls = [c for c in calls if c[0][1] == b"GevSCPSPacketSize"]
         assert len(gev_calls) == 1
-        assert gev_calls[0][0][2] == 8164
+        assert gev_calls[0][0][2] == GIGE_PACKET_SIZE_JUMBO
 
     def test_get_packet_size(self, mock_sdk):
         cam = make_camera_with_sdk(mock_sdk)
 
         def side_effect(handle, name, p_val):
             if name == b"GevSCPSPacketSize":
-                p_val._obj.nCurValue = 1500
+                p_val._obj.nCurValue = GIGE_PACKET_SIZE_DEFAULT
                 return MvErrorCode.MV_OK
             return MvErrorCode.MV_E_SUPPORT
 
         mock_sdk.MV_CC_GetIntValueEx.side_effect = side_effect
-        assert cam.get_packet_size() == 1500
+        assert cam.get_packet_size() == GIGE_PACKET_SIZE_DEFAULT
 
     def test_set_packet_size_not_open(self, mock_sdk):
         cam = make_camera_with_sdk(mock_sdk, open_it=False)
         with pytest.raises(CameraNotOpenError):
-            cam.set_packet_size(8164)
+            cam.set_packet_size(GIGE_PACKET_SIZE_JUMBO)
 
     def test_get_packet_size_not_open(self, mock_sdk):
         cam = make_camera_with_sdk(mock_sdk, open_it=False)

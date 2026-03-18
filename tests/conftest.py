@@ -19,6 +19,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
+from hikcamera.camera import GIGE_PACKET_SIZE_JUMBO
 from hikcamera.enums import MvErrorCode
 from hikcamera.sdk_wrapper import (
     MV_CC_DEVICE_INFO,
@@ -103,7 +104,7 @@ class MockSDK:
         self.MV_CC_SetCommandValue = MagicMock(return_value=MvErrorCode.MV_OK)
         self.MV_CC_ConvertPixelType = MagicMock(return_value=MvErrorCode.MV_OK)
         self.MV_GIGE_SetMulticastIP = MagicMock(return_value=MvErrorCode.MV_OK)
-        self.MV_CC_GetOptimalPacketSize = MagicMock(return_value=8164)
+        self.MV_CC_GetOptimalPacketSize = MagicMock(return_value=GIGE_PACKET_SIZE_JUMBO)
         self.MV_CC_GetSDKVersion = MagicMock(return_value=0x03000000)
         self.MV_CC_FeatureSave = MagicMock(return_value=MvErrorCode.MV_OK)
         self.MV_CC_FeatureLoad = MagicMock(return_value=MvErrorCode.MV_OK)
