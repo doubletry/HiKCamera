@@ -104,11 +104,11 @@ _DEFAULT_FRAME_BUFFER_SIZE: int = 10 * 1024 * 1024
 
 # GenICam node names that are enum type.  Used by :py:meth:`set_parameter` to
 # dispatch string values through ``set_enum_parameter_by_string`` instead of
-# ``set_string_parameter``.  Extend this set if your camera exposes additional
-# enum nodes that you want to set via the convenience API.
+# ``set_string_parameter``.  For enum nodes not listed here, call
+# ``set_enum_parameter_by_string`` directly.
 # GenICam 枚举类型节点名称。:py:meth:`set_parameter` 使用此集合将字符串值
 # 通过 ``set_enum_parameter_by_string`` 分派，而非 ``set_string_parameter``。
-# 如果您的相机提供了额外的枚举节点并希望通过便捷 API 设置，可扩展此集合。
+# 对于此处未列出的枚举节点，请直接调用 ``set_enum_parameter_by_string``。
 _KNOWN_ENUM_PARAMETERS: frozenset[str] = frozenset({
     "AcquisitionMode",
     "BalanceWhiteAuto",
