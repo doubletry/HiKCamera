@@ -325,6 +325,25 @@ class TestPacketSize:
         with pytest.raises(CameraNotOpenError):
             cam.get_packet_size()
 
+    def test_get_optimal_packet_size_missing_symbol(self, mock_sdk):
+        """SDK without MV_CC_GetOptimalPacketSize raises HikCameraError."""
+        cam = make_camera_with_sdk(mock_sdk)
+        del mock_sdk.MV_CC_GetOptimalPacketSize
+        with pytest.raises(HikCameraError, match="not available"):
+            cam.get_optimal_packet_size()
+
+    def test_open_packet_size_zero_raises(self, mock_sdk):
+        """open(packet_size=0) raises ValueError."""
+        cam = make_camera_with_sdk(mock_sdk, open_it=False)
+        with pytest.raises(ValueError, match="positive integer"):
+            cam.open(packet_size=0)
+
+    def test_open_packet_size_negative_raises(self, mock_sdk):
+        """open(packet_size=-1) raises ValueError."""
+        cam = make_camera_with_sdk(mock_sdk, open_it=False)
+        with pytest.raises(ValueError, match="positive integer"):
+            cam.open(packet_size=-1)
+
 
 # ---------------------------------------------------------------------------
 # Grabbing
@@ -622,6 +641,18 @@ class TestParameters:
         cam = make_camera_with_sdk(mock_sdk)
         cam.set_parameter("SomeVendorSpecificParam", "hello")
         mock_sdk.MV_CC_SetStringValue.assert_called()
+
+    def test_set_parameter_int_rejects_bool(self, mock_sdk):
+        """bool is subclass of int, but schema int should reject bool."""
+        cam = make_camera_with_sdk(mock_sdk)
+        with pytest.raises(ParameterValueError, match="expects int"):
+            cam.set_parameter("Width", True)
+
+    def test_set_parameter_float_rejects_bool(self, mock_sdk):
+        """bool is subclass of int, but schema float should reject bool."""
+        cam = make_camera_with_sdk(mock_sdk)
+        with pytest.raises(ParameterValueError, match="expects float"):
+            cam.set_parameter("ExposureTime", False)
 
     def test_get_parameter_returns_default_on_not_supported(self, mock_sdk):
         cam = make_camera_with_sdk(mock_sdk)

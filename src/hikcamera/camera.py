@@ -694,10 +694,15 @@ class HikCamera:
         以确保对非 GigE 相机安全。
         """
         if packet_size is not None:
+            # Validate caller-supplied value / 校验调用方提供的值
+            if not isinstance(packet_size, int) or packet_size <= 0:
+                raise ValueError(
+                    f"packet_size must be a positive integer, got {packet_size!r}"
+                )
             # Manual override / 手动指定
             try:
                 self.set_packet_size(packet_size)
-            except (ParameterError, ParameterNotSupportedError):
+            except ParameterError:
                 logger.debug(
                     "Could not set GevSCPSPacketSize=%d (may not be a GigE camera)",
                     packet_size,
@@ -709,7 +714,7 @@ class HikCamera:
                 if optimal > 0:
                     self.set_packet_size(optimal)
                     logger.debug("GigE packet size set to optimal value %d", optimal)
-            except (ParameterError, ParameterNotSupportedError, HikCameraError):
+            except (ParameterError, HikCameraError):
                 logger.debug("Could not auto-configure GigE packet size (may not be a GigE camera)")
 
     def get_optimal_packet_size(self) -> int:
@@ -742,7 +747,12 @@ class HikCamera:
             当 SDK 调用失败时（如非 GigE 相机）抛出。
         """
         self._assert_open()
-        ret = self._sdk.MV_CC_GetOptimalPacketSize(self._handle)
+        func = getattr(self._sdk, "MV_CC_GetOptimalPacketSize", None)
+        if func is None:
+            raise HikCameraError(
+                "MV_CC_GetOptimalPacketSize is not available in this SDK version"
+            )
+        ret = func(self._handle)
         if ret <= 0:
             raise HikCameraError(
                 f"MV_CC_GetOptimalPacketSize failed (returned {ret}); "
@@ -1548,10 +1558,29 @@ class HikCamera:
         """Validate *value* with ``isinstance`` and dispatch the SDK call.
 
         通过 ``isinstance`` 校验 *value* 并分派 SDK 调用。
+
+        Dispatch is based on *expected_type* (from the schema), **not** the
+        runtime type of *value*.  This prevents ``bool`` (a subclass of
+        ``int``) from accidentally routing to the bool setter for an ``int``
+        schema entry, and prevents ``StrEnum``/``IntEnum`` subclass values
+        from being routed to the wrong setter for plain ``str``/``int``
+        schema entries.
+        分派基于 *expected_type*（来自模式），而非 *value* 的运行时类型。这样
+        可以避免 ``bool``（``int`` 的子类）意外地为 ``int`` 模式条目路由到
+        布尔 setter，同时也防止 ``StrEnum``/``IntEnum`` 子类值为纯
+        ``str``/``int`` 模式条目路由到错误的 setter。
         """
+        # Reject bool for int/float schemas (bool is a subclass of int).
+        # 对 int/float 模式拒绝 bool 值（bool 是 int 的子类）。
+        if expected_type in (int, float) and isinstance(value, bool):
+            raise ParameterValueError(
+                f"Parameter {name!r} expects {expected_type.__name__}, "
+                f"got bool: {value!r}"
+            )
+
         # Allow int → float promotion (int is naturally promotable to float).
         # 允许 int → float 自动提升（int 可自然提升为 float）。
-        if expected_type is float and isinstance(value, int) and not isinstance(value, bool):
+        if expected_type is float and isinstance(value, int):
             value = float(value)
 
         if not isinstance(value, expected_type):
@@ -1560,23 +1589,23 @@ class HikCamera:
                 f"got {type(value).__name__}: {value!r}"
             )
 
-        # Dispatch to the appropriate SDK call based on the actual value type.
-        # 根据值的实际类型分派到对应的 SDK 调用。
-        if isinstance(value, bool):
+        # Dispatch based on *expected_type* (schema), not the runtime type.
+        # 基于 *expected_type*（模式）分派，而非运行时类型。
+        if expected_type is bool:
             self.set_bool_parameter(name, value)
-        elif isinstance(value, StrEnum):
-            self.set_enum_parameter_by_string(name, str(value))
-        elif isinstance(value, IntEnum):
-            self.set_enum_parameter(name, int(value))
-        elif isinstance(value, int):
+        elif expected_type is int:
             self.set_int_parameter(name, value)
-        elif isinstance(value, float):
+        elif expected_type is float:
             self.set_float_parameter(name, value)
-        elif isinstance(value, str):
+        elif expected_type is str:
             self.set_string_parameter(name, value)
+        elif issubclass(expected_type, StrEnum):
+            self.set_enum_parameter_by_string(name, str(value))
+        elif issubclass(expected_type, IntEnum):
+            self.set_enum_parameter(name, int(value))
         else:  # pragma: no cover – defensive
             raise ParameterValueError(
-                f"Unsupported type {type(value).__name__} for parameter {name!r}"
+                f"Unsupported schema type {expected_type.__name__} for parameter {name!r}"
             )
 
     def get_parameter(self, name: str, default: Any = None) -> Any:
