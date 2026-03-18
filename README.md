@@ -161,13 +161,13 @@ with HikCamera.from_ip("192.168.1.100") as cam:
 ### Parameter access with error handling
 
 ```python
-from hikcamera import HikCamera, ParameterNotSupportedError, ParameterReadOnlyError
+from hikcamera import HikCamera, ParameterNotSupportedError, ParameterReadOnlyError, GainAuto
 
 with HikCamera.from_device_info(cameras[0]) as cam:
     cam.open()
 
     # Safe: silently ignores parameters not present on this model
-    cam.set_parameter("GainAuto", "Off")
+    cam.set_parameter("GainAuto", GainAuto.OFF)
 
     # Or handle explicitly
     try:
@@ -244,7 +244,7 @@ typed getter/setter methods.
 
 | Method | Description |
 |---|---|
-| `set_parameter(name, value)` | Auto-dispatch with schema validation; validates type & enum values for known parameters; silently skips unsupported parameters |
+| `set_parameter(name, value)` | Auto-dispatch with `isinstance` validation; enum params require typed enum values (e.g. `GainAuto.OFF`); silently skips unsupported parameters |
 | `get_parameter(name, default=None)` | Auto-tries int → float → string; returns *default* if unsupported |
 | `get_int_parameter(name)` / `set_int_parameter(name, value)` | Integer parameter access |
 | `get_float_parameter(name)` / `set_float_parameter(name, value)` | Float parameter access |
@@ -334,7 +334,7 @@ These nodes are executed via `execute_command()`:
 ### Example: reading & writing parameters
 
 ```python
-from hikcamera import HikCamera, AccessMode
+from hikcamera import HikCamera, AccessMode, GainAuto
 
 with HikCamera.from_ip("192.168.1.100") as cam:
     cam.open(AccessMode.EXCLUSIVE)
@@ -347,7 +347,7 @@ with HikCamera.from_ip("192.168.1.100") as cam:
     cam.set_parameter("ExposureTime", 5000.0)
     cam.set_parameter("Gain", 2.5)
     cam.set_parameter("AcquisitionFrameRateEnable", True)
-    cam.set_parameter("GainAuto", "Off")          # enum by string
+    cam.set_parameter("GainAuto", GainAuto.OFF)    # typed enum
 
     # Typed access (gives full error info)
     exposure = cam.get_float_parameter("ExposureTime")

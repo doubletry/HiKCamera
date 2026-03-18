@@ -11,7 +11,7 @@ callers type-safe, readable access to the underlying integer constants.
 
 from __future__ import annotations
 
-from enum import IntEnum, IntFlag
+from enum import IntEnum, IntFlag, StrEnum
 
 # ---------------------------------------------------------------------------
 # SDK error codes (subset) / SDK 错误码（部分）
@@ -253,3 +253,137 @@ class OutputFormat(IntEnum):
     RGBA8 = 5
     """RGBA 32-bit  →  shape (H, W, 4),  dtype uint8
     RGBA 32 位  →  shape (H, W, 4),  dtype uint8"""
+
+
+# ---------------------------------------------------------------------------
+# GenICam parameter value enumerations / GenICam 参数值枚举
+# ---------------------------------------------------------------------------
+# Each enum class corresponds to a GenICam node that accepts a fixed set of
+# symbolic values.  Using typed enums instead of raw strings gives callers
+# compile-time safety and IDE auto-completion.
+# 每个枚举类对应一个接受固定符号值集合的 GenICam 节点。使用类型化枚举代替原始
+# 字符串可为调用者提供编译期安全性和 IDE 自动补全。
+
+class ExposureAuto(StrEnum):
+    """
+    Auto-exposure mode.  自动曝光模式。
+    """
+    OFF = "Off"
+    ONCE = "Once"
+    CONTINUOUS = "Continuous"
+
+
+class GainAuto(StrEnum):
+    """
+    Auto-gain mode.  自动增益模式。
+    """
+    OFF = "Off"
+    ONCE = "Once"
+    CONTINUOUS = "Continuous"
+
+
+class GammaSelector(StrEnum):
+    """
+    Gamma curve selector.  Gamma 曲线选择。
+    """
+    USER = "User"
+    SRGB = "sRGB"
+
+
+class AcquisitionMode(StrEnum):
+    """
+    Image acquisition mode.  图像采集模式。
+    """
+    SINGLE_FRAME = "SingleFrame"
+    MULTI_FRAME = "MultiFrame"
+    CONTINUOUS = "Continuous"
+
+
+class TriggerMode(StrEnum):
+    """
+    Trigger mode (on/off).  触发模式（开/关）。
+    """
+    ON = "On"
+    OFF = "Off"
+
+
+class TriggerSource(StrEnum):
+    """
+    Trigger signal source.  触发信号源。
+    """
+    SOFTWARE = "Software"
+    LINE0 = "Line0"
+    LINE1 = "Line1"
+    LINE2 = "Line2"
+    LINE3 = "Line3"
+    COUNTER0 = "Counter0"
+    FREQUENCY_CONVERTER = "FrequencyConverter"
+
+
+class TriggerActivation(StrEnum):
+    """
+    Trigger edge / level activation.  触发沿/电平激活方式。
+    """
+    RISING_EDGE = "RisingEdge"
+    FALLING_EDGE = "FallingEdge"
+    ANY_EDGE = "AnyEdge"
+    LEVEL_HIGH = "LevelHigh"
+    LEVEL_LOW = "LevelLow"
+
+
+class TriggerSelector(StrEnum):
+    """
+    Trigger selector.  触发选择器。
+    """
+    FRAME_START = "FrameStart"
+    FRAME_BURST_START = "FrameBurstStart"
+    ACQUISITION_START = "AcquisitionStart"
+
+
+class LineSelector(StrEnum):
+    """
+    I/O line selector.  I/O 线路选择。
+    """
+    LINE0 = "Line0"
+    LINE1 = "Line1"
+    LINE2 = "Line2"
+    LINE3 = "Line3"
+
+
+class LineMode(StrEnum):
+    """
+    I/O line direction / mode.  I/O 线路方向/模式。
+    """
+    INPUT = "Input"
+    OUTPUT = "Output"
+    STROBE = "Strobe"
+
+
+class BalanceWhiteAuto(StrEnum):
+    """
+    Auto white-balance mode.  自动白平衡模式。
+    """
+    OFF = "Off"
+    ONCE = "Once"
+    CONTINUOUS = "Continuous"
+
+
+class UserSetSelector(StrEnum):
+    """
+    User parameter set selector.  用户参数集选择器。
+    """
+    DEFAULT = "Default"
+    USER_SET_1 = "UserSet1"
+    USER_SET_2 = "UserSet2"
+    USER_SET_3 = "UserSet3"
+
+
+class UserSetDefault(StrEnum):
+    """
+    Default user parameter set loaded at boot.
+    开机时加载的默认用户参数集。
+    """
+    DEFAULT = "Default"
+    USER_SET_1 = "UserSet1"
+    USER_SET_2 = "UserSet2"
+    USER_SET_3 = "UserSet3"

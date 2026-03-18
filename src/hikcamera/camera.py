@@ -47,11 +47,32 @@ import struct
 import threading
 from collections.abc import Callable
 from ctypes import POINTER, c_ubyte, c_uint, c_void_p
+from enum import IntEnum, StrEnum
 from typing import Any
 
 import numpy as np
 
-from .enums import AccessMode, MvErrorCode, OutputFormat, StreamingMode, TransportLayer
+from .enums import (
+    AccessMode,
+    AcquisitionMode,
+    BalanceWhiteAuto,
+    ExposureAuto,
+    GainAuto,
+    GammaSelector,
+    LineMode,
+    LineSelector,
+    MvErrorCode,
+    OutputFormat,
+    PixelFormat,
+    StreamingMode,
+    TransportLayer,
+    TriggerActivation,
+    TriggerMode,
+    TriggerSelector,
+    TriggerSource,
+    UserSetDefault,
+    UserSetSelector,
+)
 from .exceptions import (
     CameraAlreadyOpenError,
     CameraConnectionError,
@@ -105,73 +126,68 @@ _DEFAULT_FRAME_BUFFER_SIZE: int = 10 * 1024 * 1024
 
 # GenICam parameter schema used by :py:meth:`set_parameter` for automatic
 # type dispatch and value validation.  Each entry maps a GenICam node name to
-# its expected type (``"int"``, ``"float"``, ``"bool"``, ``"enum"``,
-# ``"string"``) and, for enum parameters, the set of allowed symbolic string
-# values.  Parameters not listed here are dispatched purely by Python type as
-# before.  For enum nodes not listed here, call ``set_enum_parameter_by_string``
-# directly.
+# its expected Python type.  For enum parameters the value is the concrete
+# ``StrEnum`` or ``IntEnum`` subclass; ``isinstance(value, expected_type)`` is
+# used for validation.  Parameters not listed here fall back to Python-type
+# dispatch.
 # GenICam 参数模式，供 :py:meth:`set_parameter` 用于自动类型分派与值校验。
-# 每个条目将 GenICam 节点名称映射到其期望类型（``"int"``、``"float"``、
-# ``"bool"``、``"enum"``、``"string"``），枚举参数还包含允许的符号字符串值集合。
-# 此处未列出的参数仍按 Python 类型分派。对于此处未列出的枚举节点，请直接调用
-# ``set_enum_parameter_by_string``。
-_PARAMETER_SCHEMA: dict[str, dict[str, Any]] = {
+# 每个条目将 GenICam 节点名称映射到其期望的 Python 类型。枚举参数的值为具体
+# 的 ``StrEnum`` 或 ``IntEnum`` 子类；使用 ``isinstance(value, expected_type)``
+# 进行校验。此处未列出的参数按 Python 类型回退分派。
+_PARAMETER_SCHEMA: dict[str, type] = {
     # Image format / 图像格式
-    "Width": {"type": "int"},
-    "Height": {"type": "int"},
-    "OffsetX": {"type": "int"},
-    "OffsetY": {"type": "int"},
+    "Width": int,
+    "Height": int,
+    "OffsetX": int,
+    "OffsetY": int,
 
     # Exposure & gain / 曝光与增益
-    "ExposureTime": {"type": "float"},
-    "ExposureAuto": {"type": "enum", "values": {"Off", "Once", "Continuous"}},
-    "Gain": {"type": "float"},
-    "GainAuto": {"type": "enum", "values": {"Off", "Once", "Continuous"}},
-    "Gamma": {"type": "float"},
-    "GammaEnable": {"type": "bool"},
-    "GammaSelector": {"type": "enum", "values": {"User", "sRGB"}},
+    "ExposureTime": float,
+    "ExposureAuto": ExposureAuto,
+    "Gain": float,
+    "GainAuto": GainAuto,
+    "Gamma": float,
+    "GammaEnable": bool,
+    "GammaSelector": GammaSelector,
 
     # Frame rate / 帧率
-    "AcquisitionFrameRate": {"type": "float"},
-    "AcquisitionFrameRateEnable": {"type": "bool"},
+    "AcquisitionFrameRate": float,
+    "AcquisitionFrameRateEnable": bool,
 
     # Acquisition / 采集
-    "AcquisitionMode": {"type": "enum", "values": {"SingleFrame", "MultiFrame", "Continuous"}},
+    "AcquisitionMode": AcquisitionMode,
 
     # Trigger / 触发
-    "TriggerMode": {"type": "enum", "values": {"On", "Off"}},
-    "TriggerSource": {"type": "enum", "values": {"Software", "Line0", "Line1", "Line2", "Line3", "Counter0", "FrequencyConverter"}},
-    "TriggerActivation": {"type": "enum", "values": {"RisingEdge", "FallingEdge", "AnyEdge", "LevelHigh", "LevelLow"}},
-    "TriggerSelector": {"type": "enum", "values": {"FrameStart", "FrameBurstStart", "AcquisitionStart"}},
+    "TriggerMode": TriggerMode,
+    "TriggerSource": TriggerSource,
+    "TriggerActivation": TriggerActivation,
+    "TriggerSelector": TriggerSelector,
 
     # I/O / 输入输出
-    "LineSelector": {"type": "enum", "values": {"Line0", "Line1", "Line2", "Line3"}},
-    "LineMode": {"type": "enum", "values": {"Input", "Output", "Strobe"}},
+    "LineSelector": LineSelector,
+    "LineMode": LineMode,
 
     # White balance / 白平衡
-    "BalanceWhiteAuto": {"type": "enum", "values": {"Off", "Once", "Continuous"}},
+    "BalanceWhiteAuto": BalanceWhiteAuto,
 
     # User set / 用户集
-    "UserSetSelector": {"type": "enum", "values": {"Default", "UserSet1", "UserSet2", "UserSet3"}},
-    "UserSetDefault": {"type": "enum", "values": {"Default", "UserSet1", "UserSet2", "UserSet3"}},
+    "UserSetSelector": UserSetSelector,
+    "UserSetDefault": UserSetDefault,
 
     # Device info (string) / 设备信息（字符串）
-    "DeviceUserID": {"type": "string"},
+    "DeviceUserID": str,
 
     # GigE network / GigE 网络
-    "GevSCPSPacketSize": {"type": "int"},
+    "GevSCPSPacketSize": int,
 
-    # Pixel format – too many possible values to enumerate exhaustively; treated
-    # as generic enum without value restriction.  The SDK itself will reject
-    # unsupported pixel formats.
-    # 像素格式 —— 可选值过多，不做详尽枚举；作为通用枚举处理，由 SDK 拒绝不支持的格式。
-    "PixelFormat": {"type": "enum"},
+    # Pixel format / 像素格式
+    "PixelFormat": PixelFormat,
 
     # Binning / 合并
-    "BinningHorizontal": {"type": "int"},
-    "BinningVertical": {"type": "int"},
-    "DecimationHorizontal": {"type": "int"},
-    "DecimationVertical": {"type": "int"},
+    "BinningHorizontal": int,
+    "BinningVertical": int,
+    "DecimationHorizontal": int,
+    "DecimationVertical": int,
 }
 
 # ---------------------------------------------------------------------------
@@ -1467,15 +1483,20 @@ class HikCamera:
         自动类型分派并校验设置相机参数。
 
         If *name* appears in :data:`_PARAMETER_SCHEMA`, the value is validated
-        against the declared type and (for enum parameters) allowed values
-        **before** any SDK call is made.  For parameters not in the schema,
-        dispatch falls back to Python type: bool → integer → float → string.
+        via ``isinstance(value, expected_type)`` **before** any SDK call is
+        made.  For enum parameters the expected type is the corresponding
+        ``StrEnum`` / ``IntEnum`` subclass (e.g. :py:class:`GainAuto`), so
+        only values of that exact enum type are accepted.  For parameters not
+        in the schema, dispatch falls back to Python type:
+        bool → integer → float → string.
         Silently absorbs :py:exc:`ParameterNotSupportedError` when the
         parameter is absent on this camera model (logs a debug message).
 
-        如果 *name* 存在于 :data:`_PARAMETER_SCHEMA`，则在调用 SDK 之前，先按
-        声明的类型及（对于枚举参数的）允许值进行校验。不在模式中的参数按
-        Python 类型回退分派：bool → 整型 → 浮点 → 字符串。
+        如果 *name* 存在于 :data:`_PARAMETER_SCHEMA`，则在调用 SDK 之前，先通过
+        ``isinstance(value, expected_type)`` 进行校验。枚举参数的期望类型为对应
+        的 ``StrEnum`` / ``IntEnum`` 子类（如 :py:class:`GainAuto`），因此只接受
+        该枚举类型的值。不在模式中的参数按 Python 类型回退分派：
+        bool → 整型 → 浮点 → 字符串。
         当参数在此相机型号上不存在时，静默吸收
         :py:exc:`ParameterNotSupportedError`（输出调试日志）。
 
@@ -1484,27 +1505,29 @@ class HikCamera:
         name:
             GenICam node name. / GenICam 节点名称。
         value:
-            New value.  The method will pick the most appropriate SDK call
-            based on the schema or (for unknown parameters) the Python type.
-            新值。方法将根据参数模式或（对于未知参数）Python 类型选择最合适的
-            SDK 调用。
+            New value.  For schema-registered parameters, the value must be an
+            instance of the declared type (e.g. ``GainAuto.OFF`` for
+            ``"GainAuto"``).  For unknown parameters the method dispatches by
+            Python type.
+            新值。对于已注册模式的参数，值必须是声明类型的实例（如 ``"GainAuto"``
+            需传入 ``GainAuto.OFF``）。对于未知参数，按 Python 类型分派。
 
         Raises / 异常
         -------------
         ParameterValueError
-            When the value does not match the expected type or allowed values
-            for a known parameter.
-            当值与已知参数的期望类型或允许值不匹配时抛出。
+            When the value does not match the expected type for a known
+            parameter.
+            当值与已知参数的期望类型不匹配时抛出。
         ParameterReadOnlyError
             When the parameter is read-only. / 当参数为只读时抛出。
         ParameterError
             When the underlying SDK call fails for an unrelated reason.
             当底层 SDK 调用因其他原因失败时抛出。
         """
-        schema = _PARAMETER_SCHEMA.get(name)
+        expected_type = _PARAMETER_SCHEMA.get(name)
         try:
-            if schema is not None:
-                self._set_parameter_by_schema(name, value, schema)
+            if expected_type is not None:
+                self._set_parameter_by_schema(name, value, expected_type)
             elif isinstance(value, bool):
                 self.set_bool_parameter(name, value)
             elif isinstance(value, int):
@@ -1520,61 +1543,41 @@ class HikCamera:
         self,
         name: str,
         value: int | float | bool | str,
-        schema: dict[str, Any],
+        expected_type: type,
     ) -> None:
-        """Dispatch *value* according to the declared *schema* for *name*.
+        """Validate *value* with ``isinstance`` and dispatch the SDK call.
 
-        按参数 *name* 的声明模式 *schema* 分派 *value*。
+        通过 ``isinstance`` 校验 *value* 并分派 SDK 调用。
         """
-        ptype = schema["type"]
+        # Allow int → float promotion (int is naturally promotable to float).
+        # 允许 int → float 自动提升（int 可自然提升为 float）。
+        if expected_type is float and isinstance(value, int) and not isinstance(value, bool):
+            value = float(value)
 
-        if ptype == "bool":
-            if not isinstance(value, (bool, int)):
-                raise ParameterValueError(
-                    f"Parameter {name!r} expects a bool, got {type(value).__name__}"
-                )
-            self.set_bool_parameter(name, bool(value))
+        if not isinstance(value, expected_type):
+            raise ParameterValueError(
+                f"Parameter {name!r} expects {expected_type.__name__}, "
+                f"got {type(value).__name__}: {value!r}"
+            )
 
-        elif ptype == "int":
-            if not isinstance(value, int) or isinstance(value, bool):
-                raise ParameterValueError(
-                    f"Parameter {name!r} expects an int, got {type(value).__name__}"
-                )
+        # Dispatch to the appropriate SDK call based on the actual value type.
+        # 根据值的实际类型分派到对应的 SDK 调用。
+        if isinstance(value, bool):
+            self.set_bool_parameter(name, value)
+        elif isinstance(value, StrEnum):
+            self.set_enum_parameter_by_string(name, str(value))
+        elif isinstance(value, IntEnum):
+            self.set_enum_parameter(name, int(value))
+        elif isinstance(value, int):
             self.set_int_parameter(name, value)
-
-        elif ptype == "float":
-            if not isinstance(value, (int, float)) or isinstance(value, bool):
-                raise ParameterValueError(
-                    f"Parameter {name!r} expects a float, got {type(value).__name__}"
-                )
-            self.set_float_parameter(name, float(value))
-
-        elif ptype == "enum":
-            allowed: set[str] | None = schema.get("values")
-            if isinstance(value, str):
-                if allowed is not None and value not in allowed:
-                    raise ParameterValueError(
-                        f"Parameter {name!r} does not accept {value!r}; "
-                        f"allowed values: {sorted(allowed)}"
-                    )
-                self.set_enum_parameter_by_string(name, value)
-            elif isinstance(value, int) and not isinstance(value, bool):
-                self.set_enum_parameter(name, value)
-            else:
-                raise ParameterValueError(
-                    f"Parameter {name!r} expects a str or int (enum), "
-                    f"got {type(value).__name__}"
-                )
-
-        elif ptype == "string":
-            if not isinstance(value, str):
-                raise ParameterValueError(
-                    f"Parameter {name!r} expects a str, got {type(value).__name__}"
-                )
+        elif isinstance(value, float):
+            self.set_float_parameter(name, value)
+        elif isinstance(value, str):
             self.set_string_parameter(name, value)
-
         else:  # pragma: no cover – defensive
-            raise ParameterValueError(f"Unknown schema type {ptype!r} for {name!r}")
+            raise ParameterValueError(
+                f"Unsupported type {type(value).__name__} for parameter {name!r}"
+            )
 
     def get_parameter(self, name: str, default: Any = None) -> Any:
         """

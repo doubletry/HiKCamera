@@ -161,13 +161,13 @@ with HikCamera.from_ip("192.168.1.100") as cam:
 ### 带错误处理的参数访问
 
 ```python
-from hikcamera import HikCamera, ParameterNotSupportedError, ParameterReadOnlyError
+from hikcamera import HikCamera, ParameterNotSupportedError, ParameterReadOnlyError, GainAuto
 
 with HikCamera.from_device_info(cameras[0]) as cam:
     cam.open()
 
     # 安全方式：自动忽略当前型号不支持的参数
-    cam.set_parameter("GainAuto", "Off")
+    cam.set_parameter("GainAuto", GainAuto.OFF)
 
     # 或显式处理
     try:
@@ -242,7 +242,7 @@ with HikCamera.from_ip("192.168.1.100") as cam:
 
 | 方法 | 说明 |
 |---|---|
-| `set_parameter(name, value)` | 带模式校验的自动分派；对已知参数校验类型和枚举值；自动跳过不支持的参数 |
+| `set_parameter(name, value)` | 通过 `isinstance` 校验的自动分派；枚举参数需传入对应枚举值（如 `GainAuto.OFF`）；自动跳过不支持的参数 |
 | `get_parameter(name, default=None)` | 按 int → float → string 顺序尝试；不支持时返回 *default* |
 | `get_int_parameter(name)` / `set_int_parameter(name, value)` | 整型参数访问 |
 | `get_float_parameter(name)` / `set_float_parameter(name, value)` | 浮点型参数访问 |
@@ -332,7 +332,7 @@ with HikCamera.from_ip("192.168.1.100") as cam:
 ### 示例：读写参数
 
 ```python
-from hikcamera import HikCamera, AccessMode
+from hikcamera import HikCamera, AccessMode, GainAuto
 
 with HikCamera.from_ip("192.168.1.100") as cam:
     cam.open(AccessMode.EXCLUSIVE)
@@ -345,7 +345,7 @@ with HikCamera.from_ip("192.168.1.100") as cam:
     cam.set_parameter("ExposureTime", 5000.0)
     cam.set_parameter("Gain", 2.5)
     cam.set_parameter("AcquisitionFrameRateEnable", True)
-    cam.set_parameter("GainAuto", "Off")          # 按字符串设置枚举
+    cam.set_parameter("GainAuto", GainAuto.OFF)    # 类型化枚举
 
     # 带类型的访问方式（可获取完整错误信息）
     exposure = cam.get_float_parameter("ExposureTime")
