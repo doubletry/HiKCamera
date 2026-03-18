@@ -201,6 +201,126 @@ with HikCamera.from_ip("192.168.1.100") as cam:
     cam.load_user_set("UserSet1")
 ```
 
+## Adjustable Parameters
+
+The camera exposes **GenICam** standard parameters via the MVS SDK.  The table
+below lists the commonly used parameters that `get_camera_info()` collects
+automatically, but you can access **any** GenICam node by name through the
+typed getter/setter methods.
+
+> **Note:** Not every camera model supports every parameter.  Unsupported
+> parameters raise `ParameterNotSupportedError` (or are silently skipped by
+> `set_parameter()` / `get_parameter()`).
+
+### Parameter access methods
+
+| Method | Description |
+|---|---|
+| `set_parameter(name, value)` | Auto-dispatch by Python type (bool → int → float → str); silently skips unsupported parameters |
+| `get_parameter(name, default=None)` | Auto-tries int → float → string; returns *default* if unsupported |
+| `get_int_parameter(name)` / `set_int_parameter(name, value)` | Integer parameter access |
+| `get_float_parameter(name)` / `set_float_parameter(name, value)` | Float parameter access |
+| `get_bool_parameter(name)` / `set_bool_parameter(name, value)` | Boolean parameter access |
+| `get_enum_parameter(name)` / `set_enum_parameter(name, value)` | Enum parameter access (integer value) |
+| `set_enum_parameter_by_string(name, string_value)` | Enum parameter set by symbolic name (e.g. `"Off"`, `"Continuous"`) |
+| `get_string_parameter(name)` / `set_string_parameter(name, value)` | String parameter access |
+| `execute_command(name)` | Execute a command node (e.g. `"TriggerSoftware"`) |
+| `get_camera_info()` | Retrieve all common parameters listed below in a single call |
+
+### Common parameters
+
+#### Image format / 图像格式
+
+| Parameter | Type | R/W | Description |
+|---|---|---|---|
+| `Width` | int | R/W ¹ | Image width in pixels |
+| `Height` | int | R/W ¹ | Image height in pixels |
+| `OffsetX` | int | R/W | Horizontal offset (ROI origin) |
+| `OffsetY` | int | R/W | Vertical offset (ROI origin) |
+| `PixelFormat` | enum | R/W | Pixel format (see `PixelFormat` enum) |
+| `WidthMax` | int | R | Maximum allowed width |
+| `HeightMax` | int | R | Maximum allowed height |
+| `PayloadSize` | int | R | Image payload size in bytes |
+
+> ¹ May become read-only while grabbing, depending on camera model.
+
+#### Exposure & gain / 曝光与增益
+
+| Parameter | Type | R/W | Description |
+|---|---|---|---|
+| `ExposureTime` | float | R/W | Exposure time in µs |
+| `ExposureAuto` | enum | R/W | Auto-exposure mode (`Off` / `Once` / `Continuous`) |
+| `Gain` | float | R/W | Gain value in dB |
+| `GainAuto` | enum | R/W | Auto-gain mode (`Off` / `Once` / `Continuous`) |
+| `Gamma` | float | R/W | Gamma correction value |
+| `GammaEnable` | bool | R/W | Enable / disable gamma correction |
+
+#### Frame rate / 帧率
+
+| Parameter | Type | R/W | Description |
+|---|---|---|---|
+| `AcquisitionFrameRate` | float | R/W | Target acquisition frame rate (fps) |
+| `AcquisitionFrameRateEnable` | bool | R/W | Enable / disable frame rate limiting |
+| `ResultingFrameRate` | float | R | Actual resulting frame rate (fps) |
+
+#### Trigger / 触发
+
+| Parameter | Type | R/W | Description |
+|---|---|---|---|
+| `TriggerMode` | enum | R/W | Trigger mode (`On` / `Off`) |
+| `TriggerSource` | enum | R/W | Trigger source (e.g. `Software`, `Line0`) |
+
+#### White balance / 白平衡
+
+| Parameter | Type | R/W | Description |
+|---|---|---|---|
+| `BalanceWhiteAuto` | enum | R/W | Auto white-balance mode (`Off` / `Once` / `Continuous`) |
+
+#### Device info (read-only) / 设备信息（只读）
+
+| Parameter | Type | R/W | Description |
+|---|---|---|---|
+| `DeviceModelName` | string | R | Camera model name |
+| `DeviceSerialNumber` | string | R | Serial number |
+| `DeviceFirmwareVersion` | string | R | Firmware version |
+| `DeviceUserID` | string | R/W | User-defined camera identifier |
+
+#### Common commands / 常用命令
+
+These nodes are executed via `execute_command()`:
+
+| Command | Description |
+|---|---|
+| `TriggerSoftware` | Fire a software trigger |
+| `UserSetSave` | Save current parameters to the selected user set |
+| `UserSetLoad` | Load parameters from the selected user set |
+
+### Example: reading & writing parameters
+
+```python
+from hikcamera import HikCamera, AccessMode
+
+with HikCamera.from_ip("192.168.1.100") as cam:
+    cam.open(AccessMode.EXCLUSIVE)
+
+    # Read all common parameters at once
+    info = cam.get_camera_info()
+    print(info)
+
+    # High-level convenience (auto type dispatch)
+    cam.set_parameter("ExposureTime", 5000.0)
+    cam.set_parameter("Gain", 2.5)
+    cam.set_parameter("GainAuto", "Off")          # enum by string
+    cam.set_parameter("AcquisitionFrameRateEnable", True)
+
+    # Typed access (gives full error info)
+    exposure = cam.get_float_parameter("ExposureTime")
+    width = cam.get_int_parameter("Width")
+
+    # Execute a command
+    cam.execute_command("TriggerSoftware")
+```
+
 ## Demos
 
 ```bash

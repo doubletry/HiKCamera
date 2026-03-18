@@ -201,6 +201,124 @@ with HikCamera.from_ip("192.168.1.100") as cam:
     cam.load_user_set("UserSet1")
 ```
 
+## 可调参数
+
+相机通过 MVS SDK 暴露 **GenICam** 标准参数。下表列出了 `get_camera_info()` 自动
+收集的常用参数，但您可以通过带类型的 getter/setter 方法按名称访问**任何** GenICam
+节点。
+
+> **注意：** 并非每个型号的相机都支持所有参数。不支持的参数会抛出
+> `ParameterNotSupportedError`（或被 `set_parameter()` / `get_parameter()` 静默跳过）。
+
+### 参数访问方法
+
+| 方法 | 说明 |
+|---|---|
+| `set_parameter(name, value)` | 按 Python 类型自动分派（bool → int → float → str）；自动跳过不支持的参数 |
+| `get_parameter(name, default=None)` | 按 int → float → string 顺序尝试；不支持时返回 *default* |
+| `get_int_parameter(name)` / `set_int_parameter(name, value)` | 整型参数访问 |
+| `get_float_parameter(name)` / `set_float_parameter(name, value)` | 浮点型参数访问 |
+| `get_bool_parameter(name)` / `set_bool_parameter(name, value)` | 布尔型参数访问 |
+| `get_enum_parameter(name)` / `set_enum_parameter(name, value)` | 枚举型参数访问（整数值） |
+| `set_enum_parameter_by_string(name, string_value)` | 按符号名称设置枚举参数（如 `"Off"`、`"Continuous"`） |
+| `get_string_parameter(name)` / `set_string_parameter(name, value)` | 字符串型参数访问 |
+| `execute_command(name)` | 执行命令节点（如 `"TriggerSoftware"`） |
+| `get_camera_info()` | 一次调用获取下表中所有常用参数 |
+
+### 常用参数
+
+#### 图像格式
+
+| 参数名 | 类型 | 读写 | 说明 |
+|---|---|---|---|
+| `Width` | int | R/W ¹ | 图像宽度（像素） |
+| `Height` | int | R/W ¹ | 图像高度（像素） |
+| `OffsetX` | int | R/W | 水平偏移（ROI 起点） |
+| `OffsetY` | int | R/W | 垂直偏移（ROI 起点） |
+| `PixelFormat` | enum | R/W | 像素格式（参见 `PixelFormat` 枚举） |
+| `WidthMax` | int | R | 最大允许宽度 |
+| `HeightMax` | int | R | 最大允许高度 |
+| `PayloadSize` | int | R | 图像数据负载大小（字节） |
+
+> ¹ 取帧期间可能变为只读，取决于相机型号。
+
+#### 曝光与增益
+
+| 参数名 | 类型 | 读写 | 说明 |
+|---|---|---|---|
+| `ExposureTime` | float | R/W | 曝光时间（µs） |
+| `ExposureAuto` | enum | R/W | 自动曝光模式（`Off` / `Once` / `Continuous`） |
+| `Gain` | float | R/W | 增益值（dB） |
+| `GainAuto` | enum | R/W | 自动增益模式（`Off` / `Once` / `Continuous`） |
+| `Gamma` | float | R/W | Gamma 校正值 |
+| `GammaEnable` | bool | R/W | 启用 / 禁用 Gamma 校正 |
+
+#### 帧率
+
+| 参数名 | 类型 | 读写 | 说明 |
+|---|---|---|---|
+| `AcquisitionFrameRate` | float | R/W | 目标采集帧率（fps） |
+| `AcquisitionFrameRateEnable` | bool | R/W | 启用 / 禁用帧率限制 |
+| `ResultingFrameRate` | float | R | 实际帧率（fps） |
+
+#### 触发
+
+| 参数名 | 类型 | 读写 | 说明 |
+|---|---|---|---|
+| `TriggerMode` | enum | R/W | 触发模式（`On` / `Off`） |
+| `TriggerSource` | enum | R/W | 触发源（如 `Software`、`Line0`） |
+
+#### 白平衡
+
+| 参数名 | 类型 | 读写 | 说明 |
+|---|---|---|---|
+| `BalanceWhiteAuto` | enum | R/W | 自动白平衡模式（`Off` / `Once` / `Continuous`） |
+
+#### 设备信息（只读）
+
+| 参数名 | 类型 | 读写 | 说明 |
+|---|---|---|---|
+| `DeviceModelName` | string | R | 相机型号名称 |
+| `DeviceSerialNumber` | string | R | 序列号 |
+| `DeviceFirmwareVersion` | string | R | 固件版本 |
+| `DeviceUserID` | string | R/W | 用户自定义相机标识 |
+
+#### 常用命令
+
+以下节点通过 `execute_command()` 执行：
+
+| 命令 | 说明 |
+|---|---|
+| `TriggerSoftware` | 发送软触发 |
+| `UserSetSave` | 将当前参数保存到选定的用户集 |
+| `UserSetLoad` | 从选定的用户集加载参数 |
+
+### 示例：读写参数
+
+```python
+from hikcamera import HikCamera, AccessMode
+
+with HikCamera.from_ip("192.168.1.100") as cam:
+    cam.open(AccessMode.EXCLUSIVE)
+
+    # 一次读取所有常用参数
+    info = cam.get_camera_info()
+    print(info)
+
+    # 高层便捷方法（自动类型分派）
+    cam.set_parameter("ExposureTime", 5000.0)
+    cam.set_parameter("Gain", 2.5)
+    cam.set_parameter("GainAuto", "Off")          # 按字符串设置枚举
+    cam.set_parameter("AcquisitionFrameRateEnable", True)
+
+    # 带类型的访问方式（可获取完整错误信息）
+    exposure = cam.get_float_parameter("ExposureTime")
+    width = cam.get_int_parameter("Width")
+
+    # 执行命令
+    cam.execute_command("TriggerSoftware")
+```
+
 ## 示例程序
 
 ```bash
