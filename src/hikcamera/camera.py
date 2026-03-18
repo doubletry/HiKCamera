@@ -456,6 +456,7 @@ class HikCamera:
         access_mode: AccessMode = AccessMode.EXCLUSIVE,
         streaming_mode: StreamingMode = StreamingMode.UNICAST,
         multicast_ip: str | None = None,
+        packet_size: int | None = None,
     ) -> None:
         """
         Open the camera with the specified access mode.
@@ -474,6 +475,17 @@ class HikCamera:
             :py:attr:`~hikcamera.enums.StreamingMode.MULTICAST`).
             组播组 IP（当 ``streaming_mode`` 为
             :py:attr:`~hikcamera.enums.StreamingMode.MULTICAST` 时必填）。
+        packet_size:
+            GigE network packet size (``GevSCPSPacketSize``) in bytes.
+            GigE 网络包大小（``GevSCPSPacketSize``），单位为字节。
+
+            * ``None`` (default) – auto-detect optimal packet size via
+              ``MV_CC_GetOptimalPacketSize`` and apply it.
+              ``None``（默认）── 通过 ``MV_CC_GetOptimalPacketSize`` 自动检测
+              最优包大小并应用。
+            * Positive ``int`` – use the given value directly (e.g. 1500,
+              8164).  Only effective for GigE cameras.
+              正整数 ── 直接使用指定值（如 1500、8164）。仅对 GigE 相机有效。
 
         Raises / 异常
         -------------
@@ -507,6 +519,10 @@ class HikCamera:
             )
         self._is_open = True
         logger.info("Camera opened in %s mode", access_mode.name)
+
+        # Configure GigE packet size after opening
+        # 打开后配置 GigE 包大小
+        self._configure_packet_size(packet_size)
 
     def close(self) -> None:
         """
@@ -547,6 +563,125 @@ class HikCamera:
         if not self._is_open:
             return False
         return bool(self._sdk.MV_CC_IsDeviceConnected(self._handle))
+
+    # ------------------------------------------------------------------
+    # GigE packet size / GigE 包大小
+    # ------------------------------------------------------------------
+
+    def _configure_packet_size(self, packet_size: int | None) -> None:
+        """
+        Apply GigE packet size configuration after opening.
+        打开后应用 GigE 包大小配置。
+
+        Called automatically by :py:meth:`open`.  When *packet_size* is
+        ``None``, the SDK is asked for the optimal value.  A positive
+        integer is used as-is.  Errors are logged but never raised – this
+        keeps the method safe for non-GigE cameras.
+        由 :py:meth:`open` 自动调用。当 *packet_size* 为 ``None`` 时，
+        通过 SDK 查询最优值。正整数直接使用。错误仅记录日志不抛异常，
+        以确保对非 GigE 相机安全。
+        """
+        if packet_size is not None:
+            # Manual override / 手动指定
+            try:
+                self.set_packet_size(packet_size)
+            except (ParameterError, ParameterNotSupportedError):
+                logger.debug(
+                    "Could not set GevSCPSPacketSize=%d (may not be a GigE camera)",
+                    packet_size,
+                )
+        else:
+            # Auto-detect optimal / 自动检测最优值
+            try:
+                optimal = self.get_optimal_packet_size()
+                if optimal > 0:
+                    self.set_packet_size(optimal)
+                    logger.debug("GigE packet size set to optimal value %d", optimal)
+            except (ParameterError, ParameterNotSupportedError, HikCameraError):
+                logger.debug("Could not auto-configure GigE packet size (may not be a GigE camera)")
+
+    def get_optimal_packet_size(self) -> int:
+        """
+        Query the SDK for the optimal GigE packet size for this camera.
+        查询 SDK 以获取此相机的最优 GigE 包大小。
+
+        This calls ``MV_CC_GetOptimalPacketSize`` which probes the
+        network path and returns the largest packet size that can be
+        transmitted without fragmentation.
+        此方法调用 ``MV_CC_GetOptimalPacketSize``，它会探测网络路径并
+        返回不会导致分片的最大包大小。
+
+        Returns / 返回
+        --------------
+        int
+            Optimal packet size in bytes (e.g. 1500, 8164).
+            最优包大小（字节），如 1500、8164。
+
+        Raises / 异常
+        -------------
+        CameraNotOpenError
+            When the camera is not open. / 当相机未打开时抛出。
+        HikCameraError
+            When the SDK call fails (e.g. non-GigE camera).
+            当 SDK 调用失败时（如非 GigE 相机）抛出。
+        """
+        self._assert_open()
+        ret = self._sdk.MV_CC_GetOptimalPacketSize(self._handle)
+        if ret <= 0:
+            raise HikCameraError(
+                f"MV_CC_GetOptimalPacketSize failed (returned {ret}); "
+                "camera may not be GigE",
+            )
+        return int(ret)
+
+    def set_packet_size(self, size: int) -> None:
+        """
+        Set the GigE streaming packet size (``GevSCPSPacketSize``).
+        设置 GigE 流传输包大小（``GevSCPSPacketSize``）。
+
+        A larger packet size (e.g. 8164 for jumbo frames) improves
+        throughput but requires that every network device on the path
+        supports the MTU.  A safe default is 1500.
+        较大的包大小（如 8164 用于巨帧）可提高吞吐量，但要求路径上的
+        所有网络设备都支持该 MTU。安全默认值为 1500。
+
+        Parameters / 参数
+        -----------------
+        size:
+            Packet size in bytes. / 包大小（字节）。
+
+        Raises / 异常
+        -------------
+        CameraNotOpenError
+            When the camera is not open. / 当相机未打开时抛出。
+        ParameterNotSupportedError
+            When the camera does not support this parameter (non-GigE).
+            当相机不支持此参数时（非 GigE 相机）抛出。
+        ParameterError
+            When the SDK call fails. / 当 SDK 调用失败时抛出。
+        """
+        self.set_int_parameter("GevSCPSPacketSize", size)
+        logger.debug("GevSCPSPacketSize set to %d", size)
+
+    def get_packet_size(self) -> int:
+        """
+        Get the current GigE streaming packet size (``GevSCPSPacketSize``).
+        获取当前 GigE 流传输包大小（``GevSCPSPacketSize``）。
+
+        Returns / 返回
+        --------------
+        int
+            Current packet size in bytes. / 当前包大小（字节）。
+
+        Raises / 异常
+        -------------
+        CameraNotOpenError
+            When the camera is not open. / 当相机未打开时抛出。
+        ParameterNotSupportedError
+            When the camera does not support this parameter (non-GigE).
+            当相机不支持此参数时（非 GigE 相机）抛出。
+        """
+        return self.get_int_parameter("GevSCPSPacketSize")
 
     # ------------------------------------------------------------------
     # Grabbing / 取帧

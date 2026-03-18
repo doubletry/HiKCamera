@@ -13,6 +13,7 @@ A Python 3.12 library for Hikvision industrial cameras (MVS SDK).
 | **Camera enumeration** | Find all GigE / USB3 / CameraLink cameras on the host |
 | **Flexible connection** | Connect by IP address or serial number |
 | **Multiple access modes** | Exclusive, Control, Monitor, Exclusive-With-Switch, Multicast, Unicast |
+| **GigE packet size** | Auto-detect optimal packet size on open; manual override supported |
 | **Parameter access** | Get/set integer, float, bool, enum, string GenICam parameters with full exception handling (missing parameters are handled gracefully) |
 | **Camera information** | `get_camera_info()` retrieves common parameters (image size, frame rate, exposure, gain, pixel format, device model, etc.) in a single call |
 | **Configuration management** | Export/import camera configuration files; save/load device user sets |
@@ -130,6 +131,32 @@ with HikCamera.from_ip("192.168.1.100") as cam:
     ...
 ```
 
+### GigE packet size configuration
+
+By default, `open()` automatically detects and sets the optimal packet size
+for GigE cameras.  You can also specify a manual value:
+
+```python
+from hikcamera import HikCamera, AccessMode
+
+# Auto-detect optimal packet size (default)
+with HikCamera.from_ip("192.168.1.100") as cam:
+    cam.open(AccessMode.EXCLUSIVE)  # optimal packet size applied automatically
+    ...
+
+# Manual packet size (e.g. 1500 for standard MTU, 8164 for jumbo frames)
+with HikCamera.from_ip("192.168.1.100") as cam:
+    cam.open(AccessMode.EXCLUSIVE, packet_size=8164)
+    ...
+
+# Query or change packet size after opening
+with HikCamera.from_ip("192.168.1.100") as cam:
+    cam.open(AccessMode.EXCLUSIVE)
+    print(cam.get_packet_size())       # current packet size
+    print(cam.get_optimal_packet_size())  # SDK-recommended optimal size
+    cam.set_packet_size(1500)          # manual override
+```
+
 ### Parameter access with error handling
 
 ```python
@@ -226,6 +253,8 @@ typed getter/setter methods.
 | `get_string_parameter(name)` / `set_string_parameter(name, value)` | String parameter access |
 | `execute_command(name)` | Execute a command node (e.g. `"TriggerSoftware"`) |
 | `get_camera_info()` | Retrieve all common parameters listed below in a single call |
+| `get_optimal_packet_size()` | Query SDK for the optimal GigE packet size (GigE only) |
+| `get_packet_size()` / `set_packet_size(size)` | Get/set GigE streaming packet size (`GevSCPSPacketSize`) |
 
 ### Common parameters
 
@@ -284,6 +313,12 @@ typed getter/setter methods.
 | `DeviceSerialNumber` | string | R | Serial number |
 | `DeviceFirmwareVersion` | string | R | Firmware version |
 | `DeviceUserID` | string | R/W | User-defined camera identifier |
+
+#### GigE network (GigE cameras only) / GigE 网络（仅 GigE 相机）
+
+| Parameter | Type | R/W | Description |
+|---|---|---|---|
+| `GevSCPSPacketSize` | int | R/W | GigE streaming packet size in bytes (auto-configured on `open()`) |
 
 #### Common commands / 常用命令
 

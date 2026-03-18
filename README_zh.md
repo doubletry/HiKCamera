@@ -13,6 +13,7 @@
 | **相机枚举** | 查找主机上所有 GigE / USB3 / CameraLink 相机 |
 | **灵活连接** | 通过 IP 地址或序列号连接 |
 | **多种访问模式** | 独占、控制、监视、独占带切换、组播、单播 |
+| **GigE 包大小** | 打开时自动检测最优包大小；支持手动配置 |
 | **参数访问** | 获取/设置整型、浮点、布尔、枚举、字符串 GenICam 参数，完善的异常处理（不支持的参数会被优雅处理） |
 | **相机信息** | `get_camera_info()` 一次调用即可获取常用参数（图像尺寸、帧率、曝光、增益、像素格式、设备型号等） |
 | **配置管理** | 导出/导入相机配置文件；保存/加载设备用户集 |
@@ -130,6 +131,32 @@ with HikCamera.from_ip("192.168.1.100") as cam:
     ...
 ```
 
+### GigE 包大小配置
+
+默认情况下，`open()` 会自动检测并设置 GigE 相机的最优包大小。
+您也可以手动指定：
+
+```python
+from hikcamera import HikCamera, AccessMode
+
+# 自动检测最优包大小（默认行为）
+with HikCamera.from_ip("192.168.1.100") as cam:
+    cam.open(AccessMode.EXCLUSIVE)  # 自动应用最优包大小
+    ...
+
+# 手动指定包大小（如 1500 标准 MTU，8164 巨帧）
+with HikCamera.from_ip("192.168.1.100") as cam:
+    cam.open(AccessMode.EXCLUSIVE, packet_size=8164)
+    ...
+
+# 打开后查询或修改包大小
+with HikCamera.from_ip("192.168.1.100") as cam:
+    cam.open(AccessMode.EXCLUSIVE)
+    print(cam.get_packet_size())          # 当前包大小
+    print(cam.get_optimal_packet_size())  # SDK 推荐的最优值
+    cam.set_packet_size(1500)             # 手动覆盖
+```
+
 ### 带错误处理的参数访问
 
 ```python
@@ -224,6 +251,8 @@ with HikCamera.from_ip("192.168.1.100") as cam:
 | `get_string_parameter(name)` / `set_string_parameter(name, value)` | 字符串型参数访问 |
 | `execute_command(name)` | 执行命令节点（如 `"TriggerSoftware"`） |
 | `get_camera_info()` | 一次调用获取下表中所有常用参数 |
+| `get_optimal_packet_size()` | 查询 SDK 获取 GigE 最优包大小（仅 GigE 相机） |
+| `get_packet_size()` / `set_packet_size(size)` | 获取/设置 GigE 流传输包大小（`GevSCPSPacketSize`） |
 
 ### 常用参数
 
@@ -282,6 +311,12 @@ with HikCamera.from_ip("192.168.1.100") as cam:
 | `DeviceSerialNumber` | string | R | 序列号 |
 | `DeviceFirmwareVersion` | string | R | 固件版本 |
 | `DeviceUserID` | string | R/W | 用户自定义相机标识 |
+
+#### GigE 网络（仅 GigE 相机）
+
+| 参数名 | 类型 | 读写 | 说明 |
+|---|---|---|---|
+| `GevSCPSPacketSize` | int | R/W | GigE 流传输包大小（字节），`open()` 时自动配置 |
 
 #### 常用命令
 

@@ -519,6 +519,9 @@ def _configure_sdk_argtypes(lib: ctypes.CDLL) -> None:  # noqa: PLR0915
     # GigE multicast / GigE 组播
     _set("MV_GIGE_SetMulticastIP", [c_void_p, c_uint])
 
+    # GigE optimal packet size / GigE 最优包大小
+    _set("MV_CC_GetOptimalPacketSize", [c_void_p])
+
     # Feature save / load (camera configuration files)
     # 特征保存 / 加载（相机配置文件）
     _set("MV_CC_FeatureSave", [c_void_p, ctypes.c_char_p])
