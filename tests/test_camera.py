@@ -538,6 +538,16 @@ class TestParameters:
         cam.set_parameter("AcquisitionFrameRateEnable", True)
         mock_sdk.MV_CC_SetBoolValue.assert_called()
 
+    def test_set_parameter_auto_dispatch_enum_by_string(self, mock_sdk):
+        cam = make_camera_with_sdk(mock_sdk)
+        cam.set_parameter("GainAuto", "Off")
+        mock_sdk.MV_CC_SetEnumValueByString.assert_called()
+
+    def test_set_parameter_string_for_non_enum_goes_to_string_setter(self, mock_sdk):
+        cam = make_camera_with_sdk(mock_sdk)
+        cam.set_parameter("DeviceUserID", "MyCam")
+        mock_sdk.MV_CC_SetStringValue.assert_called()
+
     def test_set_parameter_silently_ignores_not_supported(self, mock_sdk):
         cam = make_camera_with_sdk(mock_sdk)
         mock_sdk.MV_CC_SetIntValueEx.return_value = MvErrorCode.MV_E_SUPPORT

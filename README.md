@@ -347,9 +347,7 @@ with HikCamera.from_ip("192.168.1.100") as cam:
     cam.set_parameter("ExposureTime", 5000.0)
     cam.set_parameter("Gain", 2.5)
     cam.set_parameter("AcquisitionFrameRateEnable", True)
-
-    # Enum parameters – use the dedicated enum setter
-    cam.set_enum_parameter_by_string("GainAuto", "Off")
+    cam.set_parameter("GainAuto", "Off")          # enum by string
 
     # Typed access (gives full error info)
     exposure = cam.get_float_parameter("ExposureTime")

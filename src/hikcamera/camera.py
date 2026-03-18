@@ -102,6 +102,30 @@ GIGE_PACKET_SIZE_JUMBO: int = 8164
 # 当 PayloadSize 不可用时的帧缓冲区回退大小（10 MiB）。
 _DEFAULT_FRAME_BUFFER_SIZE: int = 10 * 1024 * 1024
 
+# GenICam node names that are enum type.  Used by :py:meth:`set_parameter` to
+# dispatch string values through ``set_enum_parameter_by_string`` instead of
+# ``set_string_parameter``.  Extend this set if your camera exposes additional
+# enum nodes that you want to set via the convenience API.
+# GenICam 枚举类型节点名称。:py:meth:`set_parameter` 使用此集合将字符串值
+# 通过 ``set_enum_parameter_by_string`` 分派，而非 ``set_string_parameter``。
+# 如果您的相机提供了额外的枚举节点并希望通过便捷 API 设置，可扩展此集合。
+_KNOWN_ENUM_PARAMETERS: frozenset[str] = frozenset({
+    "AcquisitionMode",
+    "BalanceWhiteAuto",
+    "ExposureAuto",
+    "GainAuto",
+    "GammaSelector",
+    "LineMode",
+    "LineSelector",
+    "PixelFormat",
+    "TriggerActivation",
+    "TriggerMode",
+    "TriggerSelector",
+    "TriggerSource",
+    "UserSetDefault",
+    "UserSetSelector",
+})
+
 # ---------------------------------------------------------------------------
 # Helpers / 辅助函数
 # ---------------------------------------------------------------------------
@@ -1395,9 +1419,15 @@ class HikCamera:
         自动类型分派设置相机参数。
 
         Dispatches by Python type: bool → integer → float → string.
+        For string values, parameters listed in :data:`_KNOWN_ENUM_PARAMETERS`
+        are routed through :py:meth:`set_enum_parameter_by_string`; all others
+        go through :py:meth:`set_string_parameter`.
         Silently absorbs :py:exc:`ParameterNotSupportedError` when the
         parameter is absent on this camera model (logs a debug message).
         按 Python 类型分派：bool → 整型 → 浮点 → 字符串。
+        对于字符串值，:data:`_KNOWN_ENUM_PARAMETERS` 中列出的参数将通过
+        :py:meth:`set_enum_parameter_by_string` 设置；其余通过
+        :py:meth:`set_string_parameter` 设置。
         当参数在此相机型号上不存在时，静默吸收
         :py:exc:`ParameterNotSupportedError`（输出调试日志）。
 
@@ -1425,6 +1455,8 @@ class HikCamera:
                 self.set_int_parameter(name, value)
             elif isinstance(value, float):
                 self.set_float_parameter(name, value)
+            elif name in _KNOWN_ENUM_PARAMETERS:
+                self.set_enum_parameter_by_string(name, str(value))
             else:
                 self.set_string_parameter(name, str(value))
         except ParameterNotSupportedError:

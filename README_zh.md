@@ -345,9 +345,7 @@ with HikCamera.from_ip("192.168.1.100") as cam:
     cam.set_parameter("ExposureTime", 5000.0)
     cam.set_parameter("Gain", 2.5)
     cam.set_parameter("AcquisitionFrameRateEnable", True)
-
-    # 枚举参数 ── 使用专用的枚举 setter
-    cam.set_enum_parameter_by_string("GainAuto", "Off")
+    cam.set_parameter("GainAuto", "Off")          # 按字符串设置枚举
 
     # 带类型的访问方式（可获取完整错误信息）
     exposure = cam.get_float_parameter("ExposureTime")
