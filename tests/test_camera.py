@@ -31,6 +31,7 @@ from hikcamera.exceptions import (
     HikCameraError,
     ParameterNotSupportedError,
     ParameterReadOnlyError,
+    ParameterValueError,
 )
 from hikcamera.sdk_wrapper import (
     MV_CC_DEVICE_INFO,
@@ -553,6 +554,58 @@ class TestParameters:
         mock_sdk.MV_CC_SetIntValueEx.return_value = MvErrorCode.MV_E_SUPPORT
         # Should NOT raise
         cam.set_parameter("UnknownFeature", 42)
+
+    def test_set_parameter_enum_with_int_dispatches_to_enum_setter(self, mock_sdk):
+        cam = make_camera_with_sdk(mock_sdk)
+        cam.set_parameter("GainAuto", 0)  # int for enum
+        mock_sdk.MV_CC_SetEnumValue.assert_called()
+
+    def test_set_parameter_enum_invalid_value_raises(self, mock_sdk):
+        cam = make_camera_with_sdk(mock_sdk)
+        with pytest.raises(ParameterValueError, match="does not accept"):
+            cam.set_parameter("GainAuto", "InvalidValue")
+
+    def test_set_parameter_enum_invalid_type_raises(self, mock_sdk):
+        cam = make_camera_with_sdk(mock_sdk)
+        with pytest.raises(ParameterValueError, match="expects a str or int"):
+            cam.set_parameter("GainAuto", 3.14)
+
+    def test_set_parameter_schema_int_rejects_str(self, mock_sdk):
+        cam = make_camera_with_sdk(mock_sdk)
+        with pytest.raises(ParameterValueError, match="expects an int"):
+            cam.set_parameter("Width", "not_a_number")
+
+    def test_set_parameter_schema_float_rejects_str(self, mock_sdk):
+        cam = make_camera_with_sdk(mock_sdk)
+        with pytest.raises(ParameterValueError, match="expects a float"):
+            cam.set_parameter("ExposureTime", "fast")
+
+    def test_set_parameter_schema_float_accepts_int(self, mock_sdk):
+        cam = make_camera_with_sdk(mock_sdk)
+        cam.set_parameter("ExposureTime", 5000)
+        mock_sdk.MV_CC_SetFloatValue.assert_called()
+
+    def test_set_parameter_schema_bool_rejects_str(self, mock_sdk):
+        cam = make_camera_with_sdk(mock_sdk)
+        with pytest.raises(ParameterValueError, match="expects a bool"):
+            cam.set_parameter("GammaEnable", "true")
+
+    def test_set_parameter_schema_string_rejects_int(self, mock_sdk):
+        cam = make_camera_with_sdk(mock_sdk)
+        with pytest.raises(ParameterValueError, match="expects a str"):
+            cam.set_parameter("DeviceUserID", 42)
+
+    def test_set_parameter_enum_without_values_accepts_any_string(self, mock_sdk):
+        """PixelFormat has no restricted values in schema; any string should pass."""
+        cam = make_camera_with_sdk(mock_sdk)
+        cam.set_parameter("PixelFormat", "Mono8")
+        mock_sdk.MV_CC_SetEnumValueByString.assert_called()
+
+    def test_set_parameter_unknown_param_falls_back_to_python_type(self, mock_sdk):
+        """Params not in _PARAMETER_SCHEMA fall back to Python-type dispatch."""
+        cam = make_camera_with_sdk(mock_sdk)
+        cam.set_parameter("SomeVendorSpecificParam", "hello")
+        mock_sdk.MV_CC_SetStringValue.assert_called()
 
     def test_get_parameter_returns_default_on_not_supported(self, mock_sdk):
         cam = make_camera_with_sdk(mock_sdk)

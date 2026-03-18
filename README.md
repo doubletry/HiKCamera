@@ -244,7 +244,7 @@ typed getter/setter methods.
 
 | Method | Description |
 |---|---|
-| `set_parameter(name, value)` | Auto-dispatch by Python type (bool → int → float → str); silently skips unsupported parameters |
+| `set_parameter(name, value)` | Auto-dispatch with schema validation; validates type & enum values for known parameters; silently skips unsupported parameters |
 | `get_parameter(name, default=None)` | Auto-tries int → float → string; returns *default* if unsupported |
 | `get_int_parameter(name)` / `set_int_parameter(name, value)` | Integer parameter access |
 | `get_float_parameter(name)` / `set_float_parameter(name, value)` | Float parameter access |

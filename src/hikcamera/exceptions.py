@@ -105,6 +105,14 @@ class ParameterNotSupportedError(ParameterError):
     """
 
 
+class ParameterValueError(ParameterError):
+    """
+    Raised when a value does not match the expected type or allowed values
+    for a known parameter.
+    当值与已知参数的期望类型或允许值不匹配时抛出。
+    """
+
+
 class ParameterReadOnlyError(ParameterError):
     """
     Raised when trying to write a read-only parameter.

@@ -67,6 +67,7 @@ from .exceptions import (
     ParameterError,
     ParameterNotSupportedError,
     ParameterReadOnlyError,
+    ParameterValueError,
     PixelFormatError,
     SDKNotFoundError,
 )
@@ -99,6 +100,7 @@ __all__ = [
     "ParameterError",
     "ParameterNotSupportedError",
     "ParameterReadOnlyError",
+    "ParameterValueError",
     "PixelFormatError",
     "ImageConversionError",
 ]

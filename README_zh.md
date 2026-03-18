@@ -242,7 +242,7 @@ with HikCamera.from_ip("192.168.1.100") as cam:
 
 | 方法 | 说明 |
 |---|---|
-| `set_parameter(name, value)` | 按 Python 类型自动分派（bool → int → float → str）；自动跳过不支持的参数 |
+| `set_parameter(name, value)` | 带模式校验的自动分派；对已知参数校验类型和枚举值；自动跳过不支持的参数 |
 | `get_parameter(name, default=None)` | 按 int → float → string 顺序尝试；不支持时返回 *default* |
 | `get_int_parameter(name)` / `set_int_parameter(name, value)` | 整型参数访问 |
 | `get_float_parameter(name)` / `set_float_parameter(name, value)` | 浮点型参数访问 |
