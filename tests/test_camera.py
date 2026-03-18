@@ -601,6 +601,12 @@ class TestParameters:
         cam.set_parameter("PixelFormat", "Mono8")
         mock_sdk.MV_CC_SetEnumValueByString.assert_called()
 
+    def test_set_parameter_enum_without_values_accepts_int(self, mock_sdk):
+        """PixelFormat has no restricted values in schema; int should pass too."""
+        cam = make_camera_with_sdk(mock_sdk)
+        cam.set_parameter("PixelFormat", 0x01080001)
+        mock_sdk.MV_CC_SetEnumValue.assert_called()
+
     def test_set_parameter_unknown_param_falls_back_to_python_type(self, mock_sdk):
         """Params not in _PARAMETER_SCHEMA fall back to Python-type dispatch."""
         cam = make_camera_with_sdk(mock_sdk)
