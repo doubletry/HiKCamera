@@ -259,7 +259,7 @@ typed getter/setter methods.
 
 ### Common parameters
 
-#### Image format / 图像格式
+#### Image format
 
 | Parameter | Type | R/W | Description |
 |---|---|---|---|
@@ -267,14 +267,14 @@ typed getter/setter methods.
 | `Height` | int | R/W ¹ | Image height in pixels |
 | `OffsetX` | int | R/W | Horizontal offset (ROI origin) |
 | `OffsetY` | int | R/W | Vertical offset (ROI origin) |
-| `PixelFormat` | enum | R/W | Pixel format (see `PixelFormat` enum) |
+| `PixelFormat` | enum | R/W | Pixel format (raw `int`; wrap with `PixelFormat(val)` to get the enum) |
 | `WidthMax` | int | R | Maximum allowed width |
 | `HeightMax` | int | R | Maximum allowed height |
 | `PayloadSize` | int | R | Image payload size in bytes |
 
 > ¹ May become read-only while grabbing, depending on camera model.
 
-#### Exposure & gain / 曝光与增益
+#### Exposure & gain
 
 | Parameter | Type | R/W | Description |
 |---|---|---|---|
@@ -285,7 +285,7 @@ typed getter/setter methods.
 | `Gamma` | float | R/W | Gamma correction value |
 | `GammaEnable` | bool | R/W | Enable / disable gamma correction |
 
-#### Frame rate / 帧率
+#### Frame rate
 
 | Parameter | Type | R/W | Description |
 |---|---|---|---|
@@ -293,20 +293,20 @@ typed getter/setter methods.
 | `AcquisitionFrameRateEnable` | bool | R/W | Enable / disable frame rate limiting |
 | `ResultingFrameRate` | float | R | Actual resulting frame rate (fps) |
 
-#### Trigger / 触发
+#### Trigger
 
 | Parameter | Type | R/W | Description |
 |---|---|---|---|
 | `TriggerMode` | enum | R/W | Trigger mode (`On` / `Off`) |
 | `TriggerSource` | enum | R/W | Trigger source (e.g. `Software`, `Line0`) |
 
-#### White balance / 白平衡
+#### White balance
 
 | Parameter | Type | R/W | Description |
 |---|---|---|---|
 | `BalanceWhiteAuto` | enum | R/W | Auto white-balance mode (`Off` / `Once` / `Continuous`) |
 
-#### Device info (read-only) / 设备信息（只读）
+#### Device info (read-only)
 
 | Parameter | Type | R/W | Description |
 |---|---|---|---|
@@ -315,13 +315,13 @@ typed getter/setter methods.
 | `DeviceFirmwareVersion` | string | R | Firmware version |
 | `DeviceUserID` | string | R/W | User-defined camera identifier |
 
-#### GigE network (GigE cameras only) / GigE 网络（仅 GigE 相机）
+#### GigE network (GigE cameras only)
 
 | Parameter | Type | R/W | Description |
 |---|---|---|---|
 | `GevSCPSPacketSize` | int | R/W | GigE streaming packet size in bytes (auto-configured on `open()`) |
 
-#### Common commands / 常用命令
+#### Common commands
 
 These nodes are executed via `execute_command()`:
 
@@ -346,8 +346,10 @@ with HikCamera.from_ip("192.168.1.100") as cam:
     # High-level convenience (auto type dispatch)
     cam.set_parameter("ExposureTime", 5000.0)
     cam.set_parameter("Gain", 2.5)
-    cam.set_parameter("GainAuto", "Off")          # enum by string
     cam.set_parameter("AcquisitionFrameRateEnable", True)
+
+    # Enum parameters – use the dedicated enum setter
+    cam.set_enum_parameter_by_string("GainAuto", "Off")
 
     # Typed access (gives full error info)
     exposure = cam.get_float_parameter("ExposureTime")

@@ -265,7 +265,7 @@ with HikCamera.from_ip("192.168.1.100") as cam:
 | `Height` | int | R/W ¹ | 图像高度（像素） |
 | `OffsetX` | int | R/W | 水平偏移（ROI 起点） |
 | `OffsetY` | int | R/W | 垂直偏移（ROI 起点） |
-| `PixelFormat` | enum | R/W | 像素格式（参见 `PixelFormat` 枚举） |
+| `PixelFormat` | enum | R/W | 像素格式（返回原始 `int`；可通过 `PixelFormat(val)` 转换为枚举） |
 | `WidthMax` | int | R | 最大允许宽度 |
 | `HeightMax` | int | R | 最大允许高度 |
 | `PayloadSize` | int | R | 图像数据负载大小（字节） |
@@ -344,8 +344,10 @@ with HikCamera.from_ip("192.168.1.100") as cam:
     # 高层便捷方法（自动类型分派）
     cam.set_parameter("ExposureTime", 5000.0)
     cam.set_parameter("Gain", 2.5)
-    cam.set_parameter("GainAuto", "Off")          # 按字符串设置枚举
     cam.set_parameter("AcquisitionFrameRateEnable", True)
+
+    # 枚举参数 ── 使用专用的枚举 setter
+    cam.set_enum_parameter_by_string("GainAuto", "Off")
 
     # 带类型的访问方式（可获取完整错误信息）
     exposure = cam.get_float_parameter("ExposureTime")
