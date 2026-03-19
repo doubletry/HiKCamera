@@ -87,6 +87,7 @@ class MockSDK:
         self.MV_CC_StartGrabbing = MagicMock(return_value=MvErrorCode.MV_OK)
         self.MV_CC_StopGrabbing = MagicMock(return_value=MvErrorCode.MV_OK)
         self.MV_CC_RegisterImageCallBackEx = MagicMock(return_value=MvErrorCode.MV_OK)
+        self.MV_CC_RegisterExceptionCallBack = MagicMock(return_value=MvErrorCode.MV_OK)
         self.MV_CC_GetOneFrameTimeout = MagicMock(return_value=MvErrorCode.MV_OK)
         self.MV_CC_GetImageBuffer = MagicMock(return_value=MvErrorCode.MV_OK)
         self.MV_CC_FreeImageBuffer = MagicMock(return_value=MvErrorCode.MV_OK)
@@ -182,6 +183,9 @@ def camera_with_mock_sdk(mock_sdk):
     cam._user_callback = None
     from hikcamera.enums import OutputFormat
     cam._output_format_for_callback = OutputFormat.BGR8
+    cam._exception_callback_ref = None
+    cam._device_exception = None
+    cam._on_device_exception = None
     cam._lock = threading.Lock()
 
     # Simulate CreateHandle setting a non-null handle

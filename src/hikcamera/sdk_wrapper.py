@@ -335,6 +335,12 @@ IMAGE_CALLBACK = ctypes.CFUNCTYPE(
     c_void_p,               # pUser
 )
 
+EXCEPTION_CALLBACK = ctypes.CFUNCTYPE(
+    None,
+    c_uint,                 # nMsgType  (e.g. MV_EXCEPTION_DEV_DISCONNECT)
+    c_void_p,               # pUser
+)
+
 # ---------------------------------------------------------------------------
 # SDK library loading / SDK 库加载
 # ---------------------------------------------------------------------------
@@ -544,6 +550,10 @@ def _configure_sdk_argtypes(lib: ctypes.CDLL) -> None:  # noqa: PLR0915
     _set(
         "MV_CC_RegisterImageCallBackEx",
         [c_void_p, IMAGE_CALLBACK, c_void_p],
+    )
+    _set(
+        "MV_CC_RegisterExceptionCallBack",
+        [c_void_p, EXCEPTION_CALLBACK, c_void_p],
     )
 
     # Integer parameters / 整型参数
