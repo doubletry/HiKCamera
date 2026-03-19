@@ -47,11 +47,32 @@ import struct
 import threading
 from collections.abc import Callable
 from ctypes import POINTER, c_ubyte, c_uint, c_void_p
+from enum import IntEnum, StrEnum
 from typing import Any
 
 import numpy as np
 
-from .enums import AccessMode, MvErrorCode, OutputFormat, StreamingMode, TransportLayer
+from .enums import (
+    AccessMode,
+    AcquisitionMode,
+    BalanceWhiteAuto,
+    ExposureAuto,
+    GainAuto,
+    GammaSelector,
+    LineMode,
+    LineSelector,
+    MvErrorCode,
+    OutputFormat,
+    PixelFormat,
+    StreamingMode,
+    TransportLayer,
+    TriggerActivation,
+    TriggerMode,
+    TriggerSelector,
+    TriggerSource,
+    UserSetDefault,
+    UserSetSelector,
+)
 from .exceptions import (
     CameraAlreadyOpenError,
     CameraConnectionError,
@@ -65,6 +86,7 @@ from .exceptions import (
     ParameterError,
     ParameterNotSupportedError,
     ParameterReadOnlyError,
+    ParameterValueError,
 )
 from .sdk_wrapper import (
     IMAGE_CALLBACK,
@@ -81,6 +103,92 @@ from .sdk_wrapper import (
 from .utils import raw_to_numpy
 
 logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Constants / 常量
+# ---------------------------------------------------------------------------
+
+#: Standard Ethernet MTU packet size (bytes).  Works on any network without
+#: jumbo-frame support.
+#: 标准以太网 MTU 包大小（字节），适用于任何不支持巨帧的网络。
+GIGE_PACKET_SIZE_DEFAULT: int = 1500
+
+#: Jumbo-frame packet size (bytes) commonly used for high-throughput GigE
+#: Vision cameras.  Requires all switches/NICs on the path to support ≥ 9 KB
+#: MTU.
+#: 巨帧包大小（字节），常用于高吞吐量 GigE Vision 相机。
+#: 要求路径上所有交换机/网卡支持 ≥ 9 KB MTU。
+GIGE_PACKET_SIZE_JUMBO: int = 8164
+
+# Fallback frame-buffer size when PayloadSize is unavailable (10 MiB).
+# 当 PayloadSize 不可用时的帧缓冲区回退大小（10 MiB）。
+_DEFAULT_FRAME_BUFFER_SIZE: int = 10 * 1024 * 1024
+
+# GenICam parameter schema used by :py:meth:`set_parameter` for automatic
+# type dispatch and value validation.  Each entry maps a GenICam node name to
+# its expected Python type.  For enum parameters the value is the concrete
+# ``StrEnum`` or ``IntEnum`` subclass; ``isinstance(value, expected_type)`` is
+# used for validation.  Parameters not listed here fall back to Python-type
+# dispatch.
+# GenICam 参数模式，供 :py:meth:`set_parameter` 用于自动类型分派与值校验。
+# 每个条目将 GenICam 节点名称映射到其期望的 Python 类型。枚举参数的值为具体
+# 的 ``StrEnum`` 或 ``IntEnum`` 子类；使用 ``isinstance(value, expected_type)``
+# 进行校验。此处未列出的参数按 Python 类型回退分派。
+_PARAMETER_SCHEMA: dict[str, type] = {
+    # Image format / 图像格式
+    "Width": int,
+    "Height": int,
+    "OffsetX": int,
+    "OffsetY": int,
+
+    # Exposure & gain / 曝光与增益
+    "ExposureTime": float,
+    "ExposureAuto": ExposureAuto,
+    "Gain": float,
+    "GainAuto": GainAuto,
+    "Gamma": float,
+    "GammaEnable": bool,
+    "GammaSelector": GammaSelector,
+
+    # Frame rate / 帧率
+    "AcquisitionFrameRate": float,
+    "AcquisitionFrameRateEnable": bool,
+
+    # Acquisition / 采集
+    "AcquisitionMode": AcquisitionMode,
+
+    # Trigger / 触发
+    "TriggerMode": TriggerMode,
+    "TriggerSource": TriggerSource,
+    "TriggerActivation": TriggerActivation,
+    "TriggerSelector": TriggerSelector,
+
+    # I/O / 输入输出
+    "LineSelector": LineSelector,
+    "LineMode": LineMode,
+
+    # White balance / 白平衡
+    "BalanceWhiteAuto": BalanceWhiteAuto,
+
+    # User set / 用户集
+    "UserSetSelector": UserSetSelector,
+    "UserSetDefault": UserSetDefault,
+
+    # Device info (string) / 设备信息（字符串）
+    "DeviceUserID": str,
+
+    # GigE network / GigE 网络
+    "GevSCPSPacketSize": int,
+
+    # Pixel format / 像素格式
+    "PixelFormat": PixelFormat,
+
+    # Binning / 合并
+    "BinningHorizontal": int,
+    "BinningVertical": int,
+    "DecimationHorizontal": int,
+    "DecimationVertical": int,
+}
 
 # ---------------------------------------------------------------------------
 # Helpers / 辅助函数
@@ -456,6 +564,7 @@ class HikCamera:
         access_mode: AccessMode = AccessMode.EXCLUSIVE,
         streaming_mode: StreamingMode = StreamingMode.UNICAST,
         multicast_ip: str | None = None,
+        packet_size: int | None = None,
     ) -> None:
         """
         Open the camera with the specified access mode.
@@ -474,6 +583,21 @@ class HikCamera:
             :py:attr:`~hikcamera.enums.StreamingMode.MULTICAST`).
             组播组 IP（当 ``streaming_mode`` 为
             :py:attr:`~hikcamera.enums.StreamingMode.MULTICAST` 时必填）。
+        packet_size:
+            GigE network packet size (``GevSCPSPacketSize``) in bytes.
+            GigE 网络包大小（``GevSCPSPacketSize``），单位为字节。
+
+            * ``None`` (default) – auto-detect optimal packet size via
+              ``MV_CC_GetOptimalPacketSize`` and apply it.
+              ``None``（默认）── 通过 ``MV_CC_GetOptimalPacketSize`` 自动检测
+              最优包大小并应用。
+            * Positive ``int`` – use the given value directly (e.g.
+              :py:data:`GIGE_PACKET_SIZE_DEFAULT`,
+              :py:data:`GIGE_PACKET_SIZE_JUMBO`).  Only effective for GigE
+              cameras.
+              正整数 ── 直接使用指定值（如
+              :py:data:`GIGE_PACKET_SIZE_DEFAULT`、
+              :py:data:`GIGE_PACKET_SIZE_JUMBO`）。仅对 GigE 相机有效。
 
         Raises / 异常
         -------------
@@ -507,6 +631,10 @@ class HikCamera:
             )
         self._is_open = True
         logger.info("Camera opened in %s mode", access_mode.name)
+
+        # Configure GigE packet size after opening
+        # 打开后配置 GigE 包大小
+        self._configure_packet_size(packet_size)
 
     def close(self) -> None:
         """
@@ -547,6 +675,141 @@ class HikCamera:
         if not self._is_open:
             return False
         return bool(self._sdk.MV_CC_IsDeviceConnected(self._handle))
+
+    # ------------------------------------------------------------------
+    # GigE packet size / GigE 包大小
+    # ------------------------------------------------------------------
+
+    def _configure_packet_size(self, packet_size: int | None) -> None:
+        """
+        Apply GigE packet size configuration after opening.
+        打开后应用 GigE 包大小配置。
+
+        Called automatically by :py:meth:`open`.  When *packet_size* is
+        ``None``, the SDK is asked for the optimal value.  A positive
+        integer is used as-is.  Errors are logged but never raised – this
+        keeps the method safe for non-GigE cameras.
+        由 :py:meth:`open` 自动调用。当 *packet_size* 为 ``None`` 时，
+        通过 SDK 查询最优值。正整数直接使用。错误仅记录日志不抛异常，
+        以确保对非 GigE 相机安全。
+        """
+        if packet_size is not None:
+            # Validate caller-supplied value / 校验调用方提供的值
+            if not isinstance(packet_size, int) or packet_size <= 0:
+                raise ValueError(
+                    f"packet_size must be a positive integer, got {packet_size!r}"
+                )
+            # Manual override / 手动指定
+            try:
+                self.set_packet_size(packet_size)
+            except ParameterError:
+                logger.debug(
+                    "Could not set GevSCPSPacketSize=%d (may not be a GigE camera)",
+                    packet_size,
+                )
+        else:
+            # Auto-detect optimal / 自动检测最优值
+            try:
+                optimal = self.get_optimal_packet_size()
+                if optimal > 0:
+                    self.set_packet_size(optimal)
+                    logger.debug("GigE packet size set to optimal value %d", optimal)
+            except (ParameterError, HikCameraError):
+                logger.debug("Could not auto-configure GigE packet size (may not be a GigE camera)")
+
+    def get_optimal_packet_size(self) -> int:
+        """
+        Query the SDK for the optimal GigE packet size for this camera.
+        查询 SDK 以获取此相机的最优 GigE 包大小。
+
+        This calls ``MV_CC_GetOptimalPacketSize`` which probes the
+        network path and returns the largest packet size that can be
+        transmitted without fragmentation.
+        此方法调用 ``MV_CC_GetOptimalPacketSize``，它会探测网络路径并
+        返回不会导致分片的最大包大小。
+
+        Returns / 返回
+        --------------
+        int
+            Optimal packet size in bytes (typically
+            :py:data:`GIGE_PACKET_SIZE_DEFAULT` or
+            :py:data:`GIGE_PACKET_SIZE_JUMBO`).
+            最优包大小（字节），通常为
+            :py:data:`GIGE_PACKET_SIZE_DEFAULT` 或
+            :py:data:`GIGE_PACKET_SIZE_JUMBO`。
+
+        Raises / 异常
+        -------------
+        CameraNotOpenError
+            When the camera is not open. / 当相机未打开时抛出。
+        HikCameraError
+            When the SDK call fails (e.g. non-GigE camera).
+            当 SDK 调用失败时（如非 GigE 相机）抛出。
+        """
+        self._assert_open()
+        func = getattr(self._sdk, "MV_CC_GetOptimalPacketSize", None)
+        if func is None:
+            raise HikCameraError(
+                "MV_CC_GetOptimalPacketSize is not available in this SDK version"
+            )
+        ret = func(self._handle)
+        if ret <= 0:
+            raise HikCameraError(
+                f"MV_CC_GetOptimalPacketSize failed (returned {ret}); "
+                "camera may not be GigE",
+            )
+        return int(ret)
+
+    def set_packet_size(self, size: int) -> None:
+        """
+        Set the GigE streaming packet size (``GevSCPSPacketSize``).
+        设置 GigE 流传输包大小（``GevSCPSPacketSize``）。
+
+        A larger packet size (e.g. :py:data:`GIGE_PACKET_SIZE_JUMBO` for
+        jumbo frames) improves throughput but requires that every network
+        device on the path supports the MTU.  A safe default is
+        :py:data:`GIGE_PACKET_SIZE_DEFAULT`.
+        较大的包大小（如 :py:data:`GIGE_PACKET_SIZE_JUMBO` 用于巨帧）可提高
+        吞吐量，但要求路径上的所有网络设备都支持该 MTU。安全默认值为
+        :py:data:`GIGE_PACKET_SIZE_DEFAULT`。
+
+        Parameters / 参数
+        -----------------
+        size:
+            Packet size in bytes. / 包大小（字节）。
+
+        Raises / 异常
+        -------------
+        CameraNotOpenError
+            When the camera is not open. / 当相机未打开时抛出。
+        ParameterNotSupportedError
+            When the camera does not support this parameter (non-GigE).
+            当相机不支持此参数时（非 GigE 相机）抛出。
+        ParameterError
+            When the SDK call fails. / 当 SDK 调用失败时抛出。
+        """
+        self.set_int_parameter("GevSCPSPacketSize", size)
+        logger.debug("GevSCPSPacketSize set to %d", size)
+
+    def get_packet_size(self) -> int:
+        """
+        Get the current GigE streaming packet size (``GevSCPSPacketSize``).
+        获取当前 GigE 流传输包大小（``GevSCPSPacketSize``）。
+
+        Returns / 返回
+        --------------
+        int
+            Current packet size in bytes. / 当前包大小（字节）。
+
+        Raises / 异常
+        -------------
+        CameraNotOpenError
+            When the camera is not open. / 当相机未打开时抛出。
+        ParameterNotSupportedError
+            When the camera does not support this parameter (non-GigE).
+            当相机不支持此参数时（非 GigE 相机）抛出。
+        """
+        return self.get_int_parameter("GevSCPSPacketSize")
 
     # ------------------------------------------------------------------
     # Grabbing / 取帧
@@ -1226,13 +1489,24 @@ class HikCamera:
 
     def set_parameter(self, name: str, value: int | float | bool | str) -> None:
         """
-        Set a camera parameter with automatic type dispatch.
-        自动类型分派设置相机参数。
+        Set a camera parameter with automatic type dispatch and validation.
+        自动类型分派并校验设置相机参数。
 
-        Dispatches by Python type: bool → integer → float → string.
+        If *name* appears in :data:`_PARAMETER_SCHEMA`, the value is validated
+        via ``isinstance(value, expected_type)`` **before** any SDK call is
+        made.  For enum parameters the expected type is the corresponding
+        ``StrEnum`` / ``IntEnum`` subclass (e.g. :py:class:`GainAuto`), so
+        only values of that exact enum type are accepted.  For parameters not
+        in the schema, dispatch falls back to Python type:
+        bool → integer → float → string.
         Silently absorbs :py:exc:`ParameterNotSupportedError` when the
         parameter is absent on this camera model (logs a debug message).
-        按 Python 类型分派：bool → 整型 → 浮点 → 字符串。
+
+        如果 *name* 存在于 :data:`_PARAMETER_SCHEMA`，则在调用 SDK 之前，先通过
+        ``isinstance(value, expected_type)`` 进行校验。枚举参数的期望类型为对应
+        的 ``StrEnum`` / ``IntEnum`` 子类（如 :py:class:`GainAuto`），因此只接受
+        该枚举类型的值。不在模式中的参数按 Python 类型回退分派：
+        bool → 整型 → 浮点 → 字符串。
         当参数在此相机型号上不存在时，静默吸收
         :py:exc:`ParameterNotSupportedError`（输出调试日志）。
 
@@ -1241,20 +1515,30 @@ class HikCamera:
         name:
             GenICam node name. / GenICam 节点名称。
         value:
-            New value.  The method will pick the most appropriate SDK call
-            based on the Python type.
-            新值。方法将根据 Python 类型选择最合适的 SDK 调用。
+            New value.  For schema-registered parameters, the value must be an
+            instance of the declared type (e.g. ``GainAuto.OFF`` for
+            ``"GainAuto"``).  For unknown parameters the method dispatches by
+            Python type.
+            新值。对于已注册模式的参数，值必须是声明类型的实例（如 ``"GainAuto"``
+            需传入 ``GainAuto.OFF``）。对于未知参数，按 Python 类型分派。
 
         Raises / 异常
         -------------
+        ParameterValueError
+            When the value does not match the expected type for a known
+            parameter.
+            当值与已知参数的期望类型不匹配时抛出。
         ParameterReadOnlyError
             When the parameter is read-only. / 当参数为只读时抛出。
         ParameterError
             When the underlying SDK call fails for an unrelated reason.
             当底层 SDK 调用因其他原因失败时抛出。
         """
+        expected_type = _PARAMETER_SCHEMA.get(name)
         try:
-            if isinstance(value, bool):
+            if expected_type is not None:
+                self._set_parameter_by_schema(name, value, expected_type)
+            elif isinstance(value, bool):
                 self.set_bool_parameter(name, value)
             elif isinstance(value, int):
                 self.set_int_parameter(name, value)
@@ -1264,6 +1548,65 @@ class HikCamera:
                 self.set_string_parameter(name, str(value))
         except ParameterNotSupportedError:
             logger.debug("Parameter %r not supported on this camera; skipping", name)
+
+    def _set_parameter_by_schema(
+        self,
+        name: str,
+        value: int | float | bool | str,
+        expected_type: type,
+    ) -> None:
+        """Validate *value* with ``isinstance`` and dispatch the SDK call.
+
+        通过 ``isinstance`` 校验 *value* 并分派 SDK 调用。
+
+        Dispatch is based on *expected_type* (from the schema), **not** the
+        runtime type of *value*.  This prevents ``bool`` (a subclass of
+        ``int``) from accidentally routing to the bool setter for an ``int``
+        schema entry, and prevents ``StrEnum``/``IntEnum`` subclass values
+        from being routed to the wrong setter for plain ``str``/``int``
+        schema entries.
+        分派基于 *expected_type*（来自模式），而非 *value* 的运行时类型。这样
+        可以避免 ``bool``（``int`` 的子类）意外地为 ``int`` 模式条目路由到
+        布尔 setter，同时也防止 ``StrEnum``/``IntEnum`` 子类值为纯
+        ``str``/``int`` 模式条目路由到错误的 setter。
+        """
+        # Reject bool for int/float schemas (bool is a subclass of int).
+        # 对 int/float 模式拒绝 bool 值（bool 是 int 的子类）。
+        if expected_type in (int, float) and isinstance(value, bool):
+            raise ParameterValueError(
+                f"Parameter {name!r} expects {expected_type.__name__}, "
+                f"got bool: {value!r}"
+            )
+
+        # Allow int → float promotion (int is naturally promotable to float).
+        # 允许 int → float 自动提升（int 可自然提升为 float）。
+        if expected_type is float and isinstance(value, int):
+            value = float(value)
+
+        if not isinstance(value, expected_type):
+            raise ParameterValueError(
+                f"Parameter {name!r} expects {expected_type.__name__}, "
+                f"got {type(value).__name__}: {value!r}"
+            )
+
+        # Dispatch based on *expected_type* (schema), not the runtime type.
+        # 基于 *expected_type*（模式）分派，而非运行时类型。
+        if expected_type is bool:
+            self.set_bool_parameter(name, value)
+        elif expected_type is int:
+            self.set_int_parameter(name, value)
+        elif expected_type is float:
+            self.set_float_parameter(name, value)
+        elif expected_type is str:
+            self.set_string_parameter(name, value)
+        elif issubclass(expected_type, StrEnum):
+            self.set_enum_parameter_by_string(name, str(value))
+        elif issubclass(expected_type, IntEnum):
+            self.set_enum_parameter(name, int(value))
+        else:  # pragma: no cover – defensive
+            raise ParameterValueError(
+                f"Unsupported schema type {expected_type.__name__} for parameter {name!r}"
+            )
 
     def get_parameter(self, name: str, default: Any = None) -> Any:
         """
@@ -1396,7 +1739,7 @@ class HikCamera:
         # Use a reasonable fallback if PayloadSize is unavailable
         # 如果 PayloadSize 不可用，使用合理的回退值
         if payload_size <= 0:
-            payload_size = 10 * 1024 * 1024  # 10 MiB
+            payload_size = _DEFAULT_FRAME_BUFFER_SIZE
 
         if self._frame_buffer is None or self._frame_buffer_size < payload_size:
             self._frame_buffer = (c_ubyte * payload_size)()

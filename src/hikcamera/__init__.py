@@ -46,8 +46,34 @@ The following names are exported at the package level for convenience:
 
 from __future__ import annotations
 
-from .camera import DeviceInfo, HikCamera, enumerate_cameras
-from .enums import AccessMode, MvErrorCode, OutputFormat, PixelFormat, StreamingMode, TransportLayer
+from .camera import (
+    GIGE_PACKET_SIZE_DEFAULT,
+    GIGE_PACKET_SIZE_JUMBO,
+    DeviceInfo,
+    HikCamera,
+    enumerate_cameras,
+)
+from .enums import (
+    AccessMode,
+    AcquisitionMode,
+    BalanceWhiteAuto,
+    ExposureAuto,
+    GainAuto,
+    GammaSelector,
+    LineMode,
+    LineSelector,
+    MvErrorCode,
+    OutputFormat,
+    PixelFormat,
+    StreamingMode,
+    TransportLayer,
+    TriggerActivation,
+    TriggerMode,
+    TriggerSelector,
+    TriggerSource,
+    UserSetDefault,
+    UserSetSelector,
+)
 from .exceptions import (
     CameraAlreadyOpenError,
     CameraConnectionError,
@@ -61,6 +87,7 @@ from .exceptions import (
     ParameterError,
     ParameterNotSupportedError,
     ParameterReadOnlyError,
+    ParameterValueError,
     PixelFormatError,
     SDKNotFoundError,
 )
@@ -70,6 +97,9 @@ __all__ = [
     "HikCamera",
     "DeviceInfo",
     "enumerate_cameras",
+    # Constants / 常量
+    "GIGE_PACKET_SIZE_DEFAULT",
+    "GIGE_PACKET_SIZE_JUMBO",
     # Enumerations / 枚举类型
     "AccessMode",
     "TransportLayer",
@@ -77,6 +107,20 @@ __all__ = [
     "PixelFormat",
     "OutputFormat",
     "MvErrorCode",
+    # Parameter value enumerations / 参数值枚举
+    "ExposureAuto",
+    "GainAuto",
+    "GammaSelector",
+    "AcquisitionMode",
+    "TriggerMode",
+    "TriggerSource",
+    "TriggerActivation",
+    "TriggerSelector",
+    "LineSelector",
+    "LineMode",
+    "BalanceWhiteAuto",
+    "UserSetSelector",
+    "UserSetDefault",
     # Exceptions / 异常
     "HikCameraError",
     "SDKNotFoundError",
@@ -90,6 +134,7 @@ __all__ = [
     "ParameterError",
     "ParameterNotSupportedError",
     "ParameterReadOnlyError",
+    "ParameterValueError",
     "PixelFormatError",
     "ImageConversionError",
 ]

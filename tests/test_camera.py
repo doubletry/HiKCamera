@@ -11,8 +11,24 @@ from unittest.mock import patch
 import numpy as np
 import pytest
 
-from hikcamera.camera import DeviceInfo, HikCamera, _frame_info_to_dict, _int_to_ip, _ip_to_int
-from hikcamera.enums import AccessMode, MvErrorCode, OutputFormat, PixelFormat, StreamingMode
+from hikcamera.camera import (
+    GIGE_PACKET_SIZE_DEFAULT,
+    GIGE_PACKET_SIZE_JUMBO,
+    DeviceInfo,
+    HikCamera,
+    _frame_info_to_dict,
+    _int_to_ip,
+    _ip_to_int,
+)
+from hikcamera.enums import (
+    AccessMode,
+    GainAuto,
+    MvErrorCode,
+    OutputFormat,
+    PixelFormat,
+    StreamingMode,
+    TriggerMode,
+)
 from hikcamera.exceptions import (
     CameraAlreadyOpenError,
     CameraConnectionError,
@@ -20,8 +36,10 @@ from hikcamera.exceptions import (
     CameraNotOpenError,
     FrameTimeoutError,
     GrabbingNotStartedError,
+    HikCameraError,
     ParameterNotSupportedError,
     ParameterReadOnlyError,
+    ParameterValueError,
 )
 from hikcamera.sdk_wrapper import (
     MV_CC_DEVICE_INFO,
@@ -222,6 +240,109 @@ class TestOpenClose:
         with cam:
             cam._is_open = True
         assert not cam.is_open
+
+    def test_open_auto_packet_size(self, mock_sdk):
+        """open() with default packet_size=None auto-configures optimal size."""
+        cam = make_camera_with_sdk(mock_sdk, open_it=False)
+        mock_sdk.MV_CC_GetOptimalPacketSize.return_value = GIGE_PACKET_SIZE_JUMBO
+        cam.open(AccessMode.EXCLUSIVE)
+        assert cam.is_open
+        mock_sdk.MV_CC_GetOptimalPacketSize.assert_called_once()
+        # Check that SetIntValueEx was called with GevSCPSPacketSize
+        calls = mock_sdk.MV_CC_SetIntValueEx.call_args_list
+        gev_calls = [c for c in calls if c[0][1] == b"GevSCPSPacketSize"]
+        assert len(gev_calls) == 1
+        assert gev_calls[0][0][2] == GIGE_PACKET_SIZE_JUMBO
+
+    def test_open_manual_packet_size(self, mock_sdk):
+        """open() with explicit packet_size applies the given value."""
+        cam = make_camera_with_sdk(mock_sdk, open_it=False)
+        cam.open(AccessMode.EXCLUSIVE, packet_size=GIGE_PACKET_SIZE_DEFAULT)
+        assert cam.is_open
+        calls = mock_sdk.MV_CC_SetIntValueEx.call_args_list
+        gev_calls = [c for c in calls if c[0][1] == b"GevSCPSPacketSize"]
+        assert len(gev_calls) == 1
+        assert gev_calls[0][0][2] == GIGE_PACKET_SIZE_DEFAULT
+        # GetOptimalPacketSize should NOT be called for manual override
+        mock_sdk.MV_CC_GetOptimalPacketSize.assert_not_called()
+
+    def test_open_packet_size_non_gige_silent(self, mock_sdk):
+        """open() silently ignores packet size errors for non-GigE cameras."""
+        cam = make_camera_with_sdk(mock_sdk, open_it=False)
+        mock_sdk.MV_CC_GetOptimalPacketSize.return_value = -1
+        cam.open(AccessMode.EXCLUSIVE)  # should not raise
+        assert cam.is_open
+
+
+# ---------------------------------------------------------------------------
+# GigE Packet Size / GigE 包大小
+# ---------------------------------------------------------------------------
+
+class TestPacketSize:
+    def test_get_optimal_packet_size(self, mock_sdk):
+        cam = make_camera_with_sdk(mock_sdk)
+        mock_sdk.MV_CC_GetOptimalPacketSize.return_value = GIGE_PACKET_SIZE_JUMBO
+        assert cam.get_optimal_packet_size() == GIGE_PACKET_SIZE_JUMBO
+
+    def test_get_optimal_packet_size_failure(self, mock_sdk):
+        cam = make_camera_with_sdk(mock_sdk)
+        mock_sdk.MV_CC_GetOptimalPacketSize.return_value = -1
+        with pytest.raises(HikCameraError, match="MV_CC_GetOptimalPacketSize"):
+            cam.get_optimal_packet_size()
+
+    def test_get_optimal_packet_size_not_open(self, mock_sdk):
+        cam = make_camera_with_sdk(mock_sdk, open_it=False)
+        with pytest.raises(CameraNotOpenError):
+            cam.get_optimal_packet_size()
+
+    def test_set_packet_size(self, mock_sdk):
+        cam = make_camera_with_sdk(mock_sdk)
+        cam.set_packet_size(GIGE_PACKET_SIZE_JUMBO)
+        calls = mock_sdk.MV_CC_SetIntValueEx.call_args_list
+        gev_calls = [c for c in calls if c[0][1] == b"GevSCPSPacketSize"]
+        assert len(gev_calls) == 1
+        assert gev_calls[0][0][2] == GIGE_PACKET_SIZE_JUMBO
+
+    def test_get_packet_size(self, mock_sdk):
+        cam = make_camera_with_sdk(mock_sdk)
+
+        def side_effect(handle, name, p_val):
+            if name == b"GevSCPSPacketSize":
+                p_val._obj.nCurValue = GIGE_PACKET_SIZE_DEFAULT
+                return MvErrorCode.MV_OK
+            return MvErrorCode.MV_E_SUPPORT
+
+        mock_sdk.MV_CC_GetIntValueEx.side_effect = side_effect
+        assert cam.get_packet_size() == GIGE_PACKET_SIZE_DEFAULT
+
+    def test_set_packet_size_not_open(self, mock_sdk):
+        cam = make_camera_with_sdk(mock_sdk, open_it=False)
+        with pytest.raises(CameraNotOpenError):
+            cam.set_packet_size(GIGE_PACKET_SIZE_JUMBO)
+
+    def test_get_packet_size_not_open(self, mock_sdk):
+        cam = make_camera_with_sdk(mock_sdk, open_it=False)
+        with pytest.raises(CameraNotOpenError):
+            cam.get_packet_size()
+
+    def test_get_optimal_packet_size_missing_symbol(self, mock_sdk):
+        """SDK without MV_CC_GetOptimalPacketSize raises HikCameraError."""
+        cam = make_camera_with_sdk(mock_sdk)
+        del mock_sdk.MV_CC_GetOptimalPacketSize
+        with pytest.raises(HikCameraError, match="not available"):
+            cam.get_optimal_packet_size()
+
+    def test_open_packet_size_zero_raises(self, mock_sdk):
+        """open(packet_size=0) raises ValueError."""
+        cam = make_camera_with_sdk(mock_sdk, open_it=False)
+        with pytest.raises(ValueError, match="positive integer"):
+            cam.open(packet_size=0)
+
+    def test_open_packet_size_negative_raises(self, mock_sdk):
+        """open(packet_size=-1) raises ValueError."""
+        cam = make_camera_with_sdk(mock_sdk, open_it=False)
+        with pytest.raises(ValueError, match="positive integer"):
+            cam.open(packet_size=-1)
 
 
 # ---------------------------------------------------------------------------
@@ -445,11 +566,93 @@ class TestParameters:
         cam.set_parameter("AcquisitionFrameRateEnable", True)
         mock_sdk.MV_CC_SetBoolValue.assert_called()
 
+    def test_set_parameter_auto_dispatch_enum(self, mock_sdk):
+        cam = make_camera_with_sdk(mock_sdk)
+        cam.set_parameter("GainAuto", GainAuto.OFF)
+        mock_sdk.MV_CC_SetEnumValueByString.assert_called()
+
+    def test_set_parameter_string_for_non_enum_goes_to_string_setter(self, mock_sdk):
+        cam = make_camera_with_sdk(mock_sdk)
+        cam.set_parameter("DeviceUserID", "MyCam")
+        mock_sdk.MV_CC_SetStringValue.assert_called()
+
     def test_set_parameter_silently_ignores_not_supported(self, mock_sdk):
         cam = make_camera_with_sdk(mock_sdk)
         mock_sdk.MV_CC_SetIntValueEx.return_value = MvErrorCode.MV_E_SUPPORT
         # Should NOT raise
         cam.set_parameter("UnknownFeature", 42)
+
+    def test_set_parameter_enum_rejects_raw_string(self, mock_sdk):
+        """Raw string 'Off' is not GainAuto enum; should be rejected."""
+        cam = make_camera_with_sdk(mock_sdk)
+        with pytest.raises(ParameterValueError, match="expects GainAuto"):
+            cam.set_parameter("GainAuto", "Off")
+
+    def test_set_parameter_enum_rejects_wrong_enum_type(self, mock_sdk):
+        """TriggerMode.OFF passed to GainAuto should be rejected."""
+        cam = make_camera_with_sdk(mock_sdk)
+        with pytest.raises(ParameterValueError, match="expects GainAuto"):
+            cam.set_parameter("GainAuto", TriggerMode.OFF)
+
+    def test_set_parameter_enum_rejects_float(self, mock_sdk):
+        cam = make_camera_with_sdk(mock_sdk)
+        with pytest.raises(ParameterValueError, match="expects GainAuto"):
+            cam.set_parameter("GainAuto", 3.14)
+
+    def test_set_parameter_schema_int_rejects_str(self, mock_sdk):
+        cam = make_camera_with_sdk(mock_sdk)
+        with pytest.raises(ParameterValueError, match="expects int"):
+            cam.set_parameter("Width", "not_a_number")
+
+    def test_set_parameter_schema_float_rejects_str(self, mock_sdk):
+        cam = make_camera_with_sdk(mock_sdk)
+        with pytest.raises(ParameterValueError, match="expects float"):
+            cam.set_parameter("ExposureTime", "fast")
+
+    def test_set_parameter_schema_float_accepts_int(self, mock_sdk):
+        cam = make_camera_with_sdk(mock_sdk)
+        cam.set_parameter("ExposureTime", 5000)
+        mock_sdk.MV_CC_SetFloatValue.assert_called()
+
+    def test_set_parameter_schema_bool_rejects_str(self, mock_sdk):
+        cam = make_camera_with_sdk(mock_sdk)
+        with pytest.raises(ParameterValueError, match="expects bool"):
+            cam.set_parameter("GammaEnable", "true")
+
+    def test_set_parameter_schema_string_rejects_int(self, mock_sdk):
+        cam = make_camera_with_sdk(mock_sdk)
+        with pytest.raises(ParameterValueError, match="expects str"):
+            cam.set_parameter("DeviceUserID", 42)
+
+    def test_set_parameter_pixel_format_accepts_enum_member(self, mock_sdk):
+        """PixelFormat is IntEnum; a member should dispatch to set_enum_parameter."""
+        cam = make_camera_with_sdk(mock_sdk)
+        cam.set_parameter("PixelFormat", PixelFormat.MONO8)
+        mock_sdk.MV_CC_SetEnumValue.assert_called()
+
+    def test_set_parameter_pixel_format_rejects_raw_int(self, mock_sdk):
+        """A plain int is not a PixelFormat member; should be rejected."""
+        cam = make_camera_with_sdk(mock_sdk)
+        with pytest.raises(ParameterValueError, match="expects PixelFormat"):
+            cam.set_parameter("PixelFormat", 0x01080001)
+
+    def test_set_parameter_unknown_param_falls_back_to_python_type(self, mock_sdk):
+        """Params not in _PARAMETER_SCHEMA fall back to Python-type dispatch."""
+        cam = make_camera_with_sdk(mock_sdk)
+        cam.set_parameter("SomeVendorSpecificParam", "hello")
+        mock_sdk.MV_CC_SetStringValue.assert_called()
+
+    def test_set_parameter_int_rejects_bool(self, mock_sdk):
+        """bool is subclass of int, but schema int should reject bool."""
+        cam = make_camera_with_sdk(mock_sdk)
+        with pytest.raises(ParameterValueError, match="expects int"):
+            cam.set_parameter("Width", True)
+
+    def test_set_parameter_float_rejects_bool(self, mock_sdk):
+        """bool is subclass of int, but schema float should reject bool."""
+        cam = make_camera_with_sdk(mock_sdk)
+        with pytest.raises(ParameterValueError, match="expects float"):
+            cam.set_parameter("ExposureTime", False)
 
     def test_get_parameter_returns_default_on_not_supported(self, mock_sdk):
         cam = make_camera_with_sdk(mock_sdk)
