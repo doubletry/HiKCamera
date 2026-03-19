@@ -1123,8 +1123,12 @@ class HikCamera:
                 msg_type,
             )
         else:
+            # The SDK currently only documents MV_EXCEPTION_DEV_DISCONNECT;
+            # treat any other message type as an unexpected device exception.
+            # SDK 目前仅记录了 MV_EXCEPTION_DEV_DISCONNECT；
+            # 将其他消息类型视为意外的设备异常。
             exc = DeviceDisconnectedError(
-                f"Device exception 0x{msg_type:08X}",
+                f"Unexpected device exception 0x{msg_type:08X}",
                 msg_type,
             )
         logger.error("Device exception received: %s", exc)

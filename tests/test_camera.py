@@ -797,6 +797,8 @@ class TestDeviceExceptionCallback:
         cam = make_camera_with_sdk(mock_sdk)
         cam.start_grabbing()  # should not raise
         assert cam._exception_callback_ref is None
+        assert cam.is_grabbing
+        assert cam.device_exception is None
         cam.stop_grabbing()
 
 
