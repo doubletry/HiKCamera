@@ -17,10 +17,14 @@ import pytest
 from hikcamera.exceptions import SDKNotFoundError
 from hikcamera.sdk_wrapper import (
     MV_CC_DEVICE_INFO,
+    MV_CC_PIXEL_CONVERT_PARAM_EX,
     MV_FRAME_OUT_INFO_EX,
     MV_GIGE_DEVICE_INFO,
+    MV_PIXEL_CONVERT_PARAM,
     MV_USB3_DEVICE_INFO,
+    MVCC_ENUMVALUE,
     _find_library,
+    finalize_sdk,
     load_sdk,
 )
 
@@ -188,3 +192,58 @@ class TestStructDefinitions:
     def test_frame_out_info_ex_size(self):
         """Struct should be large enough for the SDK to write to safely."""
         assert ctypes.sizeof(MV_FRAME_OUT_INFO_EX) >= 200
+
+    def test_device_info_has_dev_type_info(self):
+        """MV_CC_DEVICE_INFO must include nDevTypeInfo field (SDK v4.7.0)."""
+        dev = MV_CC_DEVICE_INFO()
+        assert hasattr(dev, "nDevTypeInfo")
+        dev.nDevTypeInfo = 42
+        assert dev.nDevTypeInfo == 42
+
+    def test_device_info_dev_type_info_offset(self):
+        """nDevTypeInfo should be at offset 16 (after nMajorVer(2) + nMinorVer(2)
+        + nMacAddrHigh(4) + nMacAddrLow(4) + nTLayerType(4) = 16)."""
+        offset = MV_CC_DEVICE_INFO.nDevTypeInfo.offset
+        assert offset == 16, f"nDevTypeInfo at offset {offset}, expected 16"
+
+    def test_device_info_reserved_after_dev_type(self):
+        """nReserved should be at offset 20 (after nDevTypeInfo) and have
+        3 elements per SDK v4.7.0."""
+        offset = MV_CC_DEVICE_INFO.nReserved.offset
+        assert offset == 20, f"nReserved at offset {offset}, expected 20"
+        dev = MV_CC_DEVICE_INFO()
+        assert ctypes.sizeof(dev.nReserved) == 3 * 4
+
+    def test_device_info_special_info_offset(self):
+        """SpecialInfo union offset should be 32 (unchanged total layout
+        size before union: 2+2+4+4+4+4+12 = 32)."""
+        offset = MV_CC_DEVICE_INFO.SpecialInfo.offset
+        assert offset == 32, f"SpecialInfo at offset {offset}, expected 32"
+
+    def test_enum_value_reserved_size(self):
+        """MVCC_ENUMVALUE.nReserved should have 4 elements per SDK v4.7.0."""
+        ev = MVCC_ENUMVALUE()
+        assert hasattr(ev, "nReserved")
+        assert ctypes.sizeof(ev.nReserved) == 4 * 4
+
+    def test_pixel_convert_param_ex_width_is_uint(self):
+        """MV_CC_PIXEL_CONVERT_PARAM_EX.nWidth should be unsigned int (4 bytes),
+        not unsigned short (2 bytes), matching the EX struct in SDK v4.7.0."""
+        assert MV_CC_PIXEL_CONVERT_PARAM_EX.nWidth.size == 4, (
+            f"nWidth size is {MV_CC_PIXEL_CONVERT_PARAM_EX.nWidth.size}, expected 4"
+        )
+        assert MV_CC_PIXEL_CONVERT_PARAM_EX.nHeight.size == 4, (
+            f"nHeight size is {MV_CC_PIXEL_CONVERT_PARAM_EX.nHeight.size}, expected 4"
+        )
+
+    def test_pixel_convert_param_backward_compat_alias(self):
+        """MV_PIXEL_CONVERT_PARAM should be an alias for
+        MV_CC_PIXEL_CONVERT_PARAM_EX for backward compatibility."""
+        assert MV_PIXEL_CONVERT_PARAM is MV_CC_PIXEL_CONVERT_PARAM_EX
+
+
+class TestFinalizeSdk:
+    def test_finalize_sdk_no_op_when_not_loaded(self):
+        """finalize_sdk should not raise when SDK was never loaded."""
+        with patch("hikcamera.sdk_wrapper._sdk_lib", None):
+            finalize_sdk()  # should be a no-op

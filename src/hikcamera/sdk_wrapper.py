@@ -150,7 +150,8 @@ class MV_CC_DEVICE_INFO(Structure):  # noqa: N801
         ("nMacAddrHigh", c_uint),
         ("nMacAddrLow", c_uint),
         ("nTLayerType", c_uint),
-        ("nReserved", c_uint * 4),
+        ("nDevTypeInfo", c_uint),
+        ("nReserved", c_uint * 3),
         ("SpecialInfo", _MV_DEVICE_INFO_UNION),
     ]
 
@@ -276,7 +277,7 @@ class MVCC_ENUMVALUE(Structure):  # noqa: N801
         ("nCurValue", c_uint),
         ("nSupportedNum", c_uint),
         ("nSupportValue", c_uint * 64),
-        ("nReserved", c_uint * 5),
+        ("nReserved", c_uint * 4),
     ]
 
 
@@ -293,20 +294,20 @@ class MVCC_STRINGVALUE(Structure):  # noqa: N801
     ]
 
 
-class MV_PIXEL_CONVERT_PARAM(Structure):  # noqa: N801
+class MV_CC_PIXEL_CONVERT_PARAM_EX(Structure):  # noqa: N801
     """
-    Parameter block for MV_CC_ConvertPixelType.
-    MV_CC_ConvertPixelType 的参数块。
+    Parameter block for MV_CC_ConvertPixelTypeEx.
+    MV_CC_ConvertPixelTypeEx 的参数块。
 
-    Matches the ``MV_CC_PIXEL_CONVERT_PARAM`` struct in the SDK.
-    对应 SDK 中的 ``MV_CC_PIXEL_CONVERT_PARAM`` 结构体。
+    Matches the ``MV_CC_PIXEL_CONVERT_PARAM_EX`` struct in the SDK.
+    对应 SDK 中的 ``MV_CC_PIXEL_CONVERT_PARAM_EX`` 结构体。
     Note: the SDK field order is ``nDstLen`` *before* ``nDstBufferSize``.
     注意：SDK 中 ``nDstLen`` 在 ``nDstBufferSize`` *之前*。
     """
 
     _fields_ = [
-        ("nWidth", c_uint16),
-        ("nHeight", c_uint16),
+        ("nWidth", c_uint),
+        ("nHeight", c_uint),
         ("enSrcPixelType", c_uint),
         ("pSrcData", POINTER(c_ubyte)),
         ("nSrcDataLen", c_uint),
@@ -316,6 +317,11 @@ class MV_PIXEL_CONVERT_PARAM(Structure):  # noqa: N801
         ("nDstBufferSize", c_uint),
         ("nReserved", c_uint * 4),
     ]
+
+
+# Backward-compatible alias for the old struct name
+# 旧结构体名称的向后兼容别名
+MV_PIXEL_CONVERT_PARAM = MV_CC_PIXEL_CONVERT_PARAM_EX
 
 
 # ---------------------------------------------------------------------------
@@ -415,7 +421,9 @@ def load_sdk() -> ctypes.CDLL:
     加载并返回海康威视 MVS SDK 共享库。
 
     The library is loaded once and cached for subsequent calls.
+    On first load, ``MV_CC_Initialize`` is called automatically.
     库仅加载一次，后续调用使用缓存。
+    首次加载时，会自动调用 ``MV_CC_Initialize``。
 
     Returns / 返回
     --------------
@@ -440,7 +448,34 @@ def load_sdk() -> ctypes.CDLL:
         raise SDKNotFoundError(f"Failed to load SDK library from {path!r}: {exc}") from exc
 
     _configure_sdk_argtypes(_sdk_lib)
+
+    # Initialize the SDK (required since SDK v4.x)
+    # 初始化 SDK（SDK v4.x 起必须调用）
+    init_fn = getattr(_sdk_lib, "MV_CC_Initialize", None)
+    if init_fn is not None:
+        init_fn()
+
     return _sdk_lib
+
+
+def finalize_sdk() -> None:
+    """
+    Finalize the Hikvision MVS SDK and release global resources.
+    终止海康威视 MVS SDK 并释放全局资源。
+
+    Should be called before program exit when the SDK is no longer needed.
+    It is safe to call this function even if :py:func:`load_sdk` was never
+    called or the library is not available.
+    当不再需要 SDK 时，应在程序退出前调用。
+    即使从未调用过 :py:func:`load_sdk` 或库不可用，调用本函数也是安全的。
+    """
+    global _sdk_lib  # noqa: PLW0603
+    if _sdk_lib is None:
+        return
+    finalize_fn = getattr(_sdk_lib, "MV_CC_Finalize", None)
+    if finalize_fn is not None:
+        finalize_fn()
+    _sdk_lib = None
 
 
 _sdk_lib: ctypes.CDLL | None = None
@@ -461,6 +496,10 @@ def _configure_sdk_argtypes(lib: ctypes.CDLL) -> None:  # noqa: PLR0915
         if func is not None:
             func.argtypes = argtypes
             func.restype = restype
+
+    # SDK initialization / SDK 初始化
+    _set("MV_CC_Initialize", [])
+    _set("MV_CC_Finalize", [])
 
     # Enumeration / 设备枚举
     _set("MV_CC_EnumDevices", [c_uint, POINTER(MV_CC_DEVICE_INFO_LIST)])
@@ -514,7 +553,7 @@ def _configure_sdk_argtypes(lib: ctypes.CDLL) -> None:  # noqa: PLR0915
     _set("MV_CC_SetCommandValue", [c_void_p, ctypes.c_char_p])
 
     # Pixel conversion / 像素转换
-    _set("MV_CC_ConvertPixelType", [c_void_p, POINTER(MV_PIXEL_CONVERT_PARAM)])
+    _set("MV_CC_ConvertPixelTypeEx", [c_void_p, POINTER(MV_CC_PIXEL_CONVERT_PARAM_EX)])
 
     # GigE multicast / GigE 组播
     _set("MV_GIGE_SetMulticastIP", [c_void_p, c_uint])

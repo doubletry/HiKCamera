@@ -23,10 +23,10 @@ Pixel unpacking steps / 像素解包步骤
 Note / 注意
 -----------
 For best performance on high-throughput applications prefer using the
-SDK's built-in ``MV_CC_ConvertPixelType`` (exposed via
+SDK's built-in ``MV_CC_ConvertPixelTypeEx`` (exposed via
 :py:meth:`~hikcamera.camera.HikCamera._sdk_convert`) which offloads
 conversion to the native library.
-在高吞吐量场景下建议使用 SDK 内置的 ``MV_CC_ConvertPixelType``
+在高吞吐量场景下建议使用 SDK 内置的 ``MV_CC_ConvertPixelTypeEx``
 （通过 :py:meth:`~hikcamera.camera.HikCamera._sdk_convert` 调用），
 可将转换工作交由原生库完成，获得更佳性能。
 """
@@ -224,7 +224,7 @@ def _decode(buf: np.ndarray, width: int, height: int, pixel_format: int) -> np.n
     if info is None:
         raise PixelFormatError(
             f"Unsupported pixel format: 0x{pixel_format:08X}. "
-            "Use the SDK's MV_CC_ConvertPixelType to convert to a supported format."
+            "Use the SDK's MV_CC_ConvertPixelTypeEx to convert to a supported format."
         )
 
     cv2_code, bpp, n_ch = info
