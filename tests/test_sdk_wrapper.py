@@ -68,11 +68,13 @@ class TestLoadSDK:
         fake_lib.write_bytes(b"\x7fELF")
 
         mock_lib = MagicMock()
+        mock_lib.MV_CC_Initialize = MagicMock(return_value=0)
 
         with (
             patch.dict(os.environ, {"HIKCAMERA_SDK_PATH": str(fake_lib)}),
             patch("ctypes.CDLL", return_value=mock_lib),
             patch("hikcamera.sdk_wrapper._sdk_lib", None),
+            patch("hikcamera.sdk_wrapper._sdk_finalized", False),
             patch("hikcamera.sdk_wrapper._configure_sdk_argtypes"),
         ):
             lib1 = load_sdk()
@@ -245,5 +247,20 @@ class TestStructDefinitions:
 class TestFinalizeSdk:
     def test_finalize_sdk_no_op_when_not_loaded(self):
         """finalize_sdk should not raise when SDK was never loaded."""
-        with patch("hikcamera.sdk_wrapper._sdk_lib", None):
+        with (
+            patch("hikcamera.sdk_wrapper._sdk_lib", None),
+            patch("hikcamera.sdk_wrapper._sdk_finalized", False),
+        ):
             finalize_sdk()  # should be a no-op
+
+    def test_finalize_sdk_calls_mv_cc_finalize(self):
+        """finalize_sdk should call MV_CC_Finalize on the loaded SDK."""
+        mock_lib = MagicMock()
+        mock_lib.MV_CC_Finalize = MagicMock()
+
+        with (
+            patch("hikcamera.sdk_wrapper._sdk_lib", mock_lib),
+            patch("hikcamera.sdk_wrapper._sdk_finalized", False),
+        ):
+            finalize_sdk()
+            mock_lib.MV_CC_Finalize.assert_called_once()
