@@ -89,14 +89,18 @@ from .exceptions import (
     ParameterReadOnlyError,
     ParameterValueError,
     PixelFormatError,
+    SDKInitializationError,
     SDKNotFoundError,
 )
+from .sdk_wrapper import finalize_sdk
 
 __all__ = [
     # Camera classes / 相机类
     "HikCamera",
     "DeviceInfo",
     "enumerate_cameras",
+    # SDK lifecycle / SDK 生命周期
+    "finalize_sdk",
     # Constants / 常量
     "GIGE_PACKET_SIZE_DEFAULT",
     "GIGE_PACKET_SIZE_JUMBO",
@@ -124,6 +128,7 @@ __all__ = [
     # Exceptions / 异常
     "HikCameraError",
     "SDKNotFoundError",
+    "SDKInitializationError",
     "CameraNotFoundError",
     "CameraConnectionError",
     "CameraAlreadyOpenError",

@@ -56,6 +56,7 @@ class TestPublicAPI:
         exception_names = [
             "HikCameraError",
             "SDKNotFoundError",
+            "SDKInitializationError",
             "CameraNotFoundError",
             "CameraConnectionError",
             "CameraAlreadyOpenError",

@@ -92,8 +92,8 @@ from .sdk_wrapper import (
     IMAGE_CALLBACK,
     MV_CC_DEVICE_INFO,
     MV_CC_DEVICE_INFO_LIST,
+    MV_CC_PIXEL_CONVERT_PARAM_EX,
     MV_FRAME_OUT_INFO_EX,
-    MV_PIXEL_CONVERT_PARAM,
     MVCC_ENUMVALUE,
     MVCC_FLOATVALUE,
     MVCC_INTVALUE_EX,
@@ -1652,8 +1652,8 @@ class HikCamera:
         dst_format: int,
     ) -> np.ndarray:
         """
-        Convert a raw frame buffer using the SDK's ``MV_CC_ConvertPixelType``.
-        使用 SDK 的 ``MV_CC_ConvertPixelType`` 转换原始帧缓冲区。
+        Convert a raw frame buffer using the SDK's ``MV_CC_ConvertPixelTypeEx``.
+        使用 SDK 的 ``MV_CC_ConvertPixelTypeEx`` 转换原始帧缓冲区。
 
         This is faster than the pure-Python conversion in
         :py:mod:`hikcamera.utils` for large, high-bit-depth images.
@@ -1699,7 +1699,7 @@ class HikCamera:
 
         src_buf = (c_ubyte * len(src_bytes)).from_buffer_copy(src_bytes)
 
-        params = MV_PIXEL_CONVERT_PARAM()
+        params = MV_CC_PIXEL_CONVERT_PARAM_EX()
         params.nWidth = width
         params.nHeight = height
         params.enSrcPixelType = src_format
@@ -1709,11 +1709,11 @@ class HikCamera:
         params.pDstBuffer = dst_buf
         params.nDstBufferSize = dst_size
 
-        ret = self._sdk.MV_CC_ConvertPixelType(self._handle, ctypes.byref(params))
+        ret = self._sdk.MV_CC_ConvertPixelTypeEx(self._handle, ctypes.byref(params))
         if ret != MvErrorCode.MV_OK:
             code = ret & 0xFFFFFFFF
             raise ImageConversionError(
-                f"MV_CC_ConvertPixelType failed: 0x{code:08X}", code
+                f"MV_CC_ConvertPixelTypeEx failed: 0x{code:08X}", code
             )
 
         return np.ctypeslib.as_array(dst_buf, shape=(params.nDstLen,)).copy()

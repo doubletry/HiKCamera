@@ -102,7 +102,7 @@ class MockSDK:
         self.MV_CC_GetStringValue = MagicMock(return_value=MvErrorCode.MV_OK)
         self.MV_CC_SetStringValue = MagicMock(return_value=MvErrorCode.MV_OK)
         self.MV_CC_SetCommandValue = MagicMock(return_value=MvErrorCode.MV_OK)
-        self.MV_CC_ConvertPixelType = MagicMock(return_value=MvErrorCode.MV_OK)
+        self.MV_CC_ConvertPixelTypeEx = MagicMock(return_value=MvErrorCode.MV_OK)
         self.MV_GIGE_SetMulticastIP = MagicMock(return_value=MvErrorCode.MV_OK)
         self.MV_CC_GetOptimalPacketSize = MagicMock(return_value=GIGE_PACKET_SIZE_JUMBO)
         self.MV_CC_GetSDKVersion = MagicMock(return_value=0x03000000)
