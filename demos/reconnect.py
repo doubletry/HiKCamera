@@ -193,6 +193,7 @@ def main() -> None:
                     f"Attempting to reconnect (interval={args.retry_interval}s, "
                     f"attempt={retries if args.max_retries > 0 else 'unlimited'}) …"
                 )
+                reconnected = False
                 while True:
                     time.sleep(args.retry_interval)
                     try:
@@ -202,6 +203,7 @@ def main() -> None:
                         # 成功！重置状态。
                         disconnect_event.clear()
                         print(f"✓  Camera {identifier} reconnected.  Resuming capture …\n")
+                        reconnected = True
                         break
                     except (CameraNotFoundError, CameraConnectionError) as exc:
                         print(f"  Reconnect failed: {exc}")
@@ -223,13 +225,9 @@ def main() -> None:
                                 )
                                 break
                         continue
-                else:
-                    # Inner while-loop completed normally (reconnected)
-                    # 内层 while 循环正常退出（已重连）
-                    continue
-                # Inner while-loop was broken (max retries exceeded)
-                # 内层 while 循环被 break（超过最大重试次数）
-                break
+
+                if not reconnected:
+                    break
 
     except KeyboardInterrupt:
         print("\n\nCtrl+C received.  Shutting down …")
