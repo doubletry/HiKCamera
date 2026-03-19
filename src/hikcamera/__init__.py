@@ -89,6 +89,7 @@ from .exceptions import (
     ParameterReadOnlyError,
     ParameterValueError,
     PixelFormatError,
+    SDKInitializationError,
     SDKNotFoundError,
 )
 from .sdk_wrapper import finalize_sdk
@@ -127,6 +128,7 @@ __all__ = [
     # Exceptions / 异常
     "HikCameraError",
     "SDKNotFoundError",
+    "SDKInitializationError",
     "CameraNotFoundError",
     "CameraConnectionError",
     "CameraAlreadyOpenError",

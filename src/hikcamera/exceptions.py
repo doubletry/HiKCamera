@@ -35,6 +35,13 @@ class SDKNotFoundError(HikCameraError):
     """
 
 
+class SDKInitializationError(HikCameraError):
+    """
+    Raised when the SDK fails to initialize or has already been finalized.
+    当 SDK 初始化失败或已经被终止时抛出。
+    """
+
+
 class CameraNotFoundError(HikCameraError):
     """
     Raised when no camera matches the given IP or serial number.

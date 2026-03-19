@@ -24,10 +24,10 @@ Note / 注意
 -----------
 For best performance on high-throughput applications prefer using the
 SDK's built-in ``MV_CC_ConvertPixelTypeEx`` (exposed via
-:py:meth:`~hikcamera.camera.HikCamera._sdk_convert`) which offloads
+:py:meth:`~hikcamera.camera.HikCamera.sdk_convert_pixel`) which offloads
 conversion to the native library.
 在高吞吐量场景下建议使用 SDK 内置的 ``MV_CC_ConvertPixelTypeEx``
-（通过 :py:meth:`~hikcamera.camera.HikCamera._sdk_convert` 调用），
+（通过 :py:meth:`~hikcamera.camera.HikCamera.sdk_convert_pixel` 调用），
 可将转换工作交由原生库完成，获得更佳性能。
 """
 

@@ -46,7 +46,7 @@ from ctypes import (
 )
 from typing import TYPE_CHECKING
 
-from .exceptions import SDKNotFoundError
+from .exceptions import SDKInitializationError, SDKNotFoundError
 
 if TYPE_CHECKING:
     pass  # pragma: no cover
@@ -436,12 +436,15 @@ def load_sdk() -> ctypes.CDLL:
     SDKNotFoundError
         When the library cannot be found or loaded.
         当无法找到或加载库时抛出。
+    SDKInitializationError
+        When ``MV_CC_Initialize`` fails or the SDK has been finalized.
+        当 ``MV_CC_Initialize`` 失败或 SDK 已被终止时抛出。
     """
     global _sdk_lib, _sdk_finalized  # noqa: PLW0603
     if _sdk_lib is not None:
         return _sdk_lib
     if _sdk_finalized:
-        raise SDKNotFoundError(
+        raise SDKInitializationError(
             "SDK has been finalized and cannot be reinitialized. "
             "Do not call load_sdk() after finalize_sdk()."
         )
@@ -461,7 +464,7 @@ def load_sdk() -> ctypes.CDLL:
         ret = init_fn()
         if ret != 0:
             _sdk_lib = None
-            raise SDKNotFoundError(
+            raise SDKInitializationError(
                 f"MV_CC_Initialize failed with error code 0x{ret & 0xFFFFFFFF:08X}"
             )
 
@@ -476,10 +479,10 @@ def finalize_sdk() -> None:
     Should be called before program exit when the SDK is no longer needed.
     It is safe to call this function even if :py:func:`load_sdk` was never
     called or the library is not available.  After calling this function,
-    :py:func:`load_sdk` will raise :py:exc:`SDKNotFoundError`.
+    :py:func:`load_sdk` will raise :py:exc:`SDKInitializationError`.
     当不再需要 SDK 时，应在程序退出前调用。
     即使从未调用过 :py:func:`load_sdk` 或库不可用，调用本函数也是安全的。
-    调用后再调用 :py:func:`load_sdk` 将抛出 :py:exc:`SDKNotFoundError`。
+    调用后再调用 :py:func:`load_sdk` 将抛出 :py:exc:`SDKInitializationError`。
     """
     global _sdk_lib, _sdk_finalized  # noqa: PLW0603
     if _sdk_lib is None:

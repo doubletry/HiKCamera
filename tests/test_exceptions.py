@@ -18,6 +18,7 @@ from hikcamera.exceptions import (
     ParameterNotSupportedError,
     ParameterReadOnlyError,
     PixelFormatError,
+    SDKInitializationError,
     SDKNotFoundError,
 )
 
@@ -45,6 +46,7 @@ class TestExceptionHierarchy:
         "exc_class",
         [
             SDKNotFoundError,
+            SDKInitializationError,
             CameraNotFoundError,
             CameraConnectionError,
             CameraAlreadyOpenError,
