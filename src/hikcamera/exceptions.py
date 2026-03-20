@@ -127,6 +127,16 @@ class ParameterReadOnlyError(ParameterError):
     """
 
 
+class DeviceDisconnectedError(CameraConnectionError):
+    """
+    Raised when the camera is unexpectedly disconnected during operation.
+    当相机在操作过程中意外断开连接时抛出。
+
+    The SDK reports this via an exception callback (``MV_EXCEPTION_DEV_DISCONNECT``).
+    SDK 通过异常回调（``MV_EXCEPTION_DEV_DISCONNECT``）报告此事件。
+    """
+
+
 class PixelFormatError(HikCameraError):
     """
     Raised when an unsupported or mismatched pixel format is encountered.

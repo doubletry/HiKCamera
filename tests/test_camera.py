@@ -34,6 +34,7 @@ from hikcamera.exceptions import (
     CameraConnectionError,
     CameraNotFoundError,
     CameraNotOpenError,
+    DeviceDisconnectedError,
     FrameTimeoutError,
     GrabbingNotStartedError,
     HikCameraError,
@@ -65,6 +66,9 @@ def make_camera_with_sdk(mock_sdk, open_it: bool = True) -> HikCamera:
     cam._callback_ref = None
     cam._user_callback = None
     cam._output_format_for_callback = OutputFormat.BGR8
+    cam._exception_callback_ref = None
+    cam._device_exception = None
+    cam._on_device_exception = None
     cam._lock = threading.Lock()
     if open_it:
         cam._is_open = True
@@ -706,6 +710,96 @@ class TestCallback:
         assert img.shape == (h, w)
         assert meta["width"] == w
         assert meta["height"] == h
+
+
+# ---------------------------------------------------------------------------
+# Device exception callback
+# ---------------------------------------------------------------------------
+
+class TestDeviceExceptionCallback:
+    def test_start_grabbing_registers_exception_callback(self, mock_sdk):
+        cam = make_camera_with_sdk(mock_sdk)
+        cam.start_grabbing()
+        mock_sdk.MV_CC_RegisterExceptionCallBack.assert_called_once()
+        cam.stop_grabbing()
+
+    def test_start_grabbing_with_callback_registers_exception_callback(self, mock_sdk):
+        cam = make_camera_with_sdk(mock_sdk)
+        cam.start_grabbing(callback=lambda img, info: None)
+        mock_sdk.MV_CC_RegisterExceptionCallBack.assert_called_once()
+        cam.stop_grabbing()
+
+    def test_device_exception_property_initially_none(self, mock_sdk):
+        cam = make_camera_with_sdk(mock_sdk)
+        assert cam.device_exception is None
+
+    def test_internal_exception_callback_sets_device_exception(self, mock_sdk):
+        cam = make_camera_with_sdk(mock_sdk)
+        cam._internal_exception_callback(0x00008001, None)
+        assert cam.device_exception is not None
+        assert isinstance(cam.device_exception, DeviceDisconnectedError)
+        assert cam.device_exception.error_code == 0x00008001
+
+    def test_internal_exception_callback_unknown_msg_type(self, mock_sdk):
+        cam = make_camera_with_sdk(mock_sdk)
+        cam._internal_exception_callback(0x00009999, None)
+        assert cam.device_exception is not None
+        assert cam.device_exception.error_code == 0x00009999
+
+    def test_stop_grabbing_raises_device_disconnected(self, mock_sdk):
+        cam = make_camera_with_sdk(mock_sdk)
+        cam.start_grabbing()
+        cam._internal_exception_callback(0x00008001, None)
+        with pytest.raises(DeviceDisconnectedError):
+            cam.stop_grabbing()
+
+    def test_stop_grabbing_clears_device_exception(self, mock_sdk):
+        cam = make_camera_with_sdk(mock_sdk)
+        cam.start_grabbing()
+        cam._internal_exception_callback(0x00008001, None)
+        with pytest.raises(DeviceDisconnectedError):
+            cam.stop_grabbing()
+        assert cam._device_exception is None
+
+    def test_get_frame_raises_device_disconnected(self, mock_sdk):
+        cam = make_camera_with_sdk(mock_sdk)
+        cam.start_grabbing()
+        cam._internal_exception_callback(0x00008001, None)
+        with pytest.raises(DeviceDisconnectedError):
+            cam.get_frame()
+
+    def test_on_exception_callback_invoked(self, mock_sdk):
+        cam = make_camera_with_sdk(mock_sdk)
+        received = []
+        cam.start_grabbing(on_exception=lambda exc: received.append(exc))
+        cam._internal_exception_callback(0x00008001, None)
+        assert len(received) == 1
+        assert isinstance(received[0], DeviceDisconnectedError)
+        with pytest.raises(DeviceDisconnectedError):
+            cam.stop_grabbing()
+
+    def test_on_exception_callback_error_does_not_propagate(self, mock_sdk):
+        cam = make_camera_with_sdk(mock_sdk)
+
+        def bad_handler(exc):
+            raise RuntimeError("handler bug")
+
+        cam.start_grabbing(on_exception=bad_handler)
+        # Should not raise despite handler bug
+        cam._internal_exception_callback(0x00008001, None)
+        assert cam.device_exception is not None
+        with pytest.raises(DeviceDisconnectedError):
+            cam.stop_grabbing()
+
+    def test_exception_callback_missing_sdk_function(self, mock_sdk):
+        """Gracefully skip when SDK lacks MV_CC_RegisterExceptionCallBack."""
+        del mock_sdk.MV_CC_RegisterExceptionCallBack
+        cam = make_camera_with_sdk(mock_sdk)
+        cam.start_grabbing()  # should not raise
+        assert cam._exception_callback_ref is None
+        assert cam.is_grabbing
+        assert cam.device_exception is None
+        cam.stop_grabbing()
 
 
 # ---------------------------------------------------------------------------

@@ -22,7 +22,8 @@
 | **像素格式** | Mono8/10/12/16, Bayer GR/RG/GB/BG 8/10/12（紧凑和平面格式）, RGB/BGR 8, RGBA/BGRA 8, YUV422（UYVY 和 YUYV） |
 | **输出格式** | `MONO8`、`MONO16`、`BGR8`、`RGB8`、`BGRA8`、`RGBA8`（均为 numpy 数组） |
 | **SDK 像素转换** | `sdk_convert_pixel()` 将转换任务交由原生库完成 |
-| **示例程序** | 保存单张图像、录制视频 |
+| **设备断开检测** | `on_exception` 回调 + `device_exception` 属性实时检测断开连接；自动重连模式 |
+| **示例程序** | 保存单张图像、录制视频、异常处理、自动重连 |
 
 ## 前置要求
 
@@ -115,6 +116,87 @@ with HikCamera.from_device_info(HikCamera.enumerate()[0]) as cam:
 
     cam.stop_grabbing()
 ```
+
+### 设备断开连接处理
+
+使用回调模式取帧时，相机可能意外断开连接（如网线被拔出）。库会自动注册 SDK 异常
+回调，并提供两种方式检测断开连接：
+
+1. **`on_exception` 回调** ── 从 SDK 线程立即调用。
+2. **`device_exception` 属性** ── 可从任意线程轮询。
+
+`stop_grabbing()`、`get_frame()` 和 `get_frame_ex()` 也会重新抛出已存储的异常。
+
+```python
+import threading
+from hikcamera import (
+    HikCamera, AccessMode, OutputFormat,
+    DeviceDisconnectedError, HikCameraError,
+)
+
+disconnect_event = threading.Event()
+
+def on_frame(image, info):
+    print(f"帧 {info['frame_num']}")
+
+def on_exception(exc: DeviceDisconnectedError):
+    print(f"相机断开连接: {exc}")
+    disconnect_event.set()
+
+with HikCamera.from_ip("192.168.1.100") as cam:
+    cam.open(AccessMode.EXCLUSIVE)
+    cam.start_grabbing(
+        callback=on_frame,
+        output_format=OutputFormat.BGR8,
+        on_exception=on_exception,       # ← 即时通知
+    )
+
+    # 等待断开连接或超时
+    disconnect_event.wait(timeout=30)
+
+    try:
+        cam.stop_grabbing()
+    except DeviceDisconnectedError:
+        print("确认：相机已断开连接")
+```
+
+也可以在取帧期间轮询 `cam.device_exception`：
+
+```python
+# 在轮询循环中
+if cam.device_exception is not None:
+    print("相机断开连接！")
+```
+
+### 断开连接后重连
+
+断开连接后，需要释放旧的相机资源并创建新的句柄。对每个相机实例使用上下文管理器
+（`with`），确保 SDK 句柄始终被销毁——即使发生错误：
+
+```python
+import time
+from hikcamera import (
+    HikCamera, AccessMode, OutputFormat,
+    CameraNotFoundError, CameraConnectionError, HikCameraError,
+)
+
+# 检测到断开连接后，通过上下文管理器退出释放资源，
+# 然后在新的上下文中重试：
+while True:
+    time.sleep(3)
+    try:
+        cam = HikCamera.from_ip("192.168.1.100")
+        with cam:
+            cam.open(AccessMode.EXCLUSIVE)
+            cam.start_grabbing(callback=on_frame, on_exception=on_exception)
+            print("重连成功！")
+            ...  # 运行直到下次断开连接
+    except (CameraNotFoundError, CameraConnectionError) as exc:
+        print(f"重连失败: {exc}")
+        # cam 的上下文管理器确保异常时清理句柄
+```
+
+完整的生产级示例请参见 `demos/reconnect.py`。
 
 ### 组播流传输
 
@@ -363,6 +445,12 @@ python demos/save_image.py --ip 192.168.1.100 --output image.png --format BGR8
 
 # 录制 10 秒视频
 python demos/save_video.py --ip 192.168.1.100 --output video.mp4 --fps 25 --duration 10
+
+# 异常处理（断开连接检测）
+python demos/exception_handling.py --ip 192.168.1.100 --duration 30
+
+# 断开连接后自动重连
+python demos/reconnect.py --ip 192.168.1.100 --retry-interval 3
 ```
 
 ## 项目结构
@@ -379,6 +467,8 @@ src/
 demos/
   save_image.py        # 示例：捕获并保存单帧
   save_video.py        # 示例：捕获帧并保存为视频
+  exception_handling.py  # 示例：取帧期间检测相机断开连接
+  reconnect.py         # 示例：断开连接后自动重连
 tests/
   conftest.py          # 测试夹具和模拟 SDK 辅助工具
   test_camera.py       # HikCamera 测试

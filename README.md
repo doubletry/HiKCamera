@@ -22,7 +22,8 @@ A Python 3.12 library for Hikvision industrial cameras (MVS SDK).
 | **Pixel formats** | Mono8/10/12/16, Bayer GR/RG/GB/BG 8/10/12 (packed & planar), RGB/BGR 8, RGBA/BGRA 8, YUV422 (UYVY & YUYV) |
 | **Output formats** | `MONO8`, `MONO16`, `BGR8`, `RGB8`, `BGRA8`, `RGBA8` (all as numpy arrays) |
 | **SDK pixel conversion** | `sdk_convert_pixel()` offloads conversion to the native library |
-| **Demos** | Save single image, record video |
+| **Device disconnect detection** | `on_exception` callback + `device_exception` property for real-time disconnect detection; automatic reconnection pattern |
+| **Demos** | Save single image, record video, exception handling, auto-reconnect |
 
 ## Prerequisites
 
@@ -115,6 +116,89 @@ with HikCamera.from_device_info(HikCamera.enumerate()[0]) as cam:
 
     cam.stop_grabbing()
 ```
+
+### Device disconnection handling
+
+When using callback-based grabbing, the camera might disconnect unexpectedly
+(e.g. network cable unplugged).  The library registers an SDK exception
+callback automatically and provides two ways to detect disconnection:
+
+1. **`on_exception` callback** – invoked immediately from the SDK thread.
+2. **`device_exception` property** – can be polled from any thread.
+
+`stop_grabbing()`, `get_frame()`, and `get_frame_ex()` also re-raise the stored exception.
+
+```python
+import threading
+from hikcamera import (
+    HikCamera, AccessMode, OutputFormat,
+    DeviceDisconnectedError, HikCameraError,
+)
+
+disconnect_event = threading.Event()
+
+def on_frame(image, info):
+    print(f"Frame {info['frame_num']}")
+
+def on_exception(exc: DeviceDisconnectedError):
+    print(f"Camera disconnected: {exc}")
+    disconnect_event.set()
+
+with HikCamera.from_ip("192.168.1.100") as cam:
+    cam.open(AccessMode.EXCLUSIVE)
+    cam.start_grabbing(
+        callback=on_frame,
+        output_format=OutputFormat.BGR8,
+        on_exception=on_exception,       # ← immediate notification
+    )
+
+    # Wait for disconnect or timeout
+    disconnect_event.wait(timeout=30)
+
+    try:
+        cam.stop_grabbing()
+    except DeviceDisconnectedError:
+        print("Confirmed: camera was disconnected")
+```
+
+You can also poll `cam.device_exception` during grabbing:
+
+```python
+# Inside a polling loop
+if cam.device_exception is not None:
+    print("Camera disconnected!")
+```
+
+### Reconnection after disconnection
+
+After a disconnection, the old camera resources must be released and a new
+handle created.  Use a context manager (`with`) per camera instance so the
+SDK handle is always destroyed — even on errors:
+
+```python
+import time
+from hikcamera import (
+    HikCamera, AccessMode, OutputFormat,
+    CameraNotFoundError, CameraConnectionError, HikCameraError,
+)
+
+# After disconnect detected, release resources via context manager exit,
+# then retry in a new context:
+while True:
+    time.sleep(3)
+    try:
+        cam = HikCamera.from_ip("192.168.1.100")
+        with cam:
+            cam.open(AccessMode.EXCLUSIVE)
+            cam.start_grabbing(callback=on_frame, on_exception=on_exception)
+            print("Reconnected!")
+            ...  # run until next disconnect
+    except (CameraNotFoundError, CameraConnectionError) as exc:
+        print(f"Reconnect failed: {exc}")
+        # cam's context manager ensures handle cleanup on exception
+```
+
+See `demos/reconnect.py` for a complete, production-ready example.
 
 ### Multicast streaming
 
@@ -365,6 +449,12 @@ python demos/save_image.py --ip 192.168.1.100 --output image.png --format BGR8
 
 # Record a 10-second video
 python demos/save_video.py --ip 192.168.1.100 --output video.mp4 --fps 25 --duration 10
+
+# Exception handling (disconnect detection)
+python demos/exception_handling.py --ip 192.168.1.100 --duration 30
+
+# Automatic reconnection after disconnect
+python demos/reconnect.py --ip 192.168.1.100 --retry-interval 3
 ```
 
 ## Project Layout
@@ -381,6 +471,8 @@ src/
 demos/
   save_image.py        # Demo: capture and save a single frame
   save_video.py        # Demo: capture frames and save as video
+  exception_handling.py  # Demo: detect camera disconnection during grabbing
+  reconnect.py         # Demo: automatic reconnection after disconnect
 tests/
   conftest.py          # Fixtures and mock SDK helpers
   test_camera.py       # HikCamera tests

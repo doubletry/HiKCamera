@@ -78,6 +78,7 @@ from .exceptions import (
     CameraConnectionError,
     CameraNotFoundError,
     CameraNotOpenError,
+    DeviceDisconnectedError,
     FrameTimeoutError,
     GrabbingError,
     GrabbingNotStartedError,
@@ -89,6 +90,7 @@ from .exceptions import (
     ParameterValueError,
 )
 from .sdk_wrapper import (
+    EXCEPTION_CALLBACK,
     IMAGE_CALLBACK,
     MV_CC_DEVICE_INFO,
     MV_CC_DEVICE_INFO_LIST,
@@ -123,6 +125,10 @@ GIGE_PACKET_SIZE_JUMBO: int = 8164
 # Fallback frame-buffer size when PayloadSize is unavailable (10 MiB).
 # 当 PayloadSize 不可用时的帧缓冲区回退大小（10 MiB）。
 _DEFAULT_FRAME_BUFFER_SIZE: int = 10 * 1024 * 1024
+
+# SDK exception message type for device disconnection.
+# SDK 设备断开连接异常消息类型。
+_MV_EXCEPTION_DEV_DISCONNECT: int = 0x00008001
 
 # GenICam parameter schema used by :py:meth:`set_parameter` for automatic
 # type dispatch and value validation.  Each entry maps a GenICam node name to
@@ -377,6 +383,9 @@ class HikCamera:
         self._callback_ref: IMAGE_CALLBACK | None = None  # keep reference alive
         self._user_callback: Callable[[np.ndarray, dict[str, Any]], None] | None = None
         self._output_format_for_callback: OutputFormat = OutputFormat.BGR8
+        self._exception_callback_ref: EXCEPTION_CALLBACK | None = None
+        self._device_exception: DeviceDisconnectedError | None = None
+        self._on_device_exception: Callable[[DeviceDisconnectedError], None] | None = None
         self._lock: threading.Lock = threading.Lock()
 
     @classmethod
@@ -652,6 +661,10 @@ class HikCamera:
         ret = self._sdk.MV_CC_CloseDevice(self._handle)
         _check(ret, "MV_CC_CloseDevice")
         self._is_open = False
+        # Safe to release the exception callback reference now that the
+        # device is closed – the SDK will no longer invoke it.
+        # 设备关闭后可以安全释放异常回调引用——SDK 不会再调用它。
+        self._exception_callback_ref = None
         logger.info("Camera closed")
 
     @property
@@ -819,6 +832,7 @@ class HikCamera:
         self,
         callback: Callable[[np.ndarray, dict[str, Any]], None] | None = None,
         output_format: OutputFormat = OutputFormat.BGR8,
+        on_exception: Callable[[DeviceDisconnectedError], None] | None = None,
     ) -> None:
         """
         Start image acquisition.
@@ -846,6 +860,18 @@ class HikCamera:
             Pixel format of the numpy array delivered to *callback* or
             returned by :py:meth:`get_frame`.
             传递给 *callback* 或由 :py:meth:`get_frame` 返回的 numpy 数组的像素格式。
+        on_exception:
+            Optional callback invoked from the SDK thread when the camera
+            reports a device exception (e.g. disconnection).  Receives a
+            :py:class:`~hikcamera.exceptions.DeviceDisconnectedError` instance.
+            可选的回调，当相机报告设备异常（如断开连接）时从 SDK 线程调用。
+            接收一个 :py:class:`~hikcamera.exceptions.DeviceDisconnectedError` 实例。
+
+            Even without this callback the exception is stored internally and
+            re-raised by :py:meth:`stop_grabbing`, :py:meth:`get_frame`, and
+            :py:meth:`get_frame_ex`.
+            即使未提供此回调，异常也会在内部存储，并在
+            :py:meth:`stop_grabbing`、:py:meth:`get_frame` 和 :py:meth:`get_frame_ex` 中重新抛出。
 
         Raises / 异常
         -------------
@@ -863,6 +889,12 @@ class HikCamera:
             return
 
         self._output_format_for_callback = output_format
+        self._device_exception = None
+        self._on_device_exception = on_exception
+
+        # Register the device-exception callback so disconnections are detected
+        # 注册设备异常回调以检测断开连接
+        self._register_exception_callback()
 
         if callback is not None:
             self._user_callback = callback
@@ -875,6 +907,15 @@ class HikCamera:
         if ret != MvErrorCode.MV_OK:
             self._callback_ref = None
             self._user_callback = None
+            self._on_device_exception = None
+            # Note: _exception_callback_ref is intentionally kept alive here.
+            # The SDK may still invoke the registered callback after
+            # StartGrabbing fails; dropping the reference could cause a
+            # use-after-free crash.  It will be cleared when the handle is
+            # closed/destroyed.
+            # 注意：此处故意保留 _exception_callback_ref。StartGrabbing 失败后
+            # SDK 仍可能调用已注册的回调；释放引用可能导致野指针崩溃。
+            # 该引用将在句柄关闭/销毁时清理。
             code = ret & 0xFFFFFFFF
             raise GrabbingError(f"MV_CC_StartGrabbing failed: 0x{code:08X}", code)
 
@@ -891,13 +932,26 @@ class HikCamera:
         GrabbingNotStartedError
             When grabbing has not been started.
             当未开始取帧时抛出。
+        DeviceDisconnectedError
+            When a device disconnection was detected during grabbing.
+            当取帧期间检测到设备断开连接时抛出。
         """
         if not self._is_grabbing:
             raise GrabbingNotStartedError("Grabbing has not been started")
         ret = self._sdk.MV_CC_StopGrabbing(self._handle)
         self._is_grabbing = False
+        # Clear frame grabbing callbacks; keep exception callback alive
+        # until the handle is closed to avoid native calls into GC'ed Python
+        # 清除帧采集回调；保留异常回调直到句柄关闭，以避免原生代码调用被 GC 的 Python 对象
         self._callback_ref = None
         self._user_callback = None
+        self._on_device_exception = None
+        pending = self._device_exception
+        self._device_exception = None
+        # Re-raise a stored device exception instead of the stop-grabbing error
+        # 优先重新抛出存储的设备异常，而非停止取帧错误
+        if pending is not None:
+            raise pending
         _check(ret, "MV_CC_StopGrabbing")
         logger.info("Grabbing stopped")
 
@@ -908,6 +962,18 @@ class HikCamera:
         当前是否正在进行图像采集。
         """
         return self._is_grabbing
+
+    @property
+    def device_exception(self) -> DeviceDisconnectedError | None:
+        """
+        Pending device exception detected during grabbing, or ``None``.
+        取帧期间检测到的待处理设备异常，或 ``None``。
+
+        This is set asynchronously by the SDK exception callback thread
+        when the camera reports a device-level error (e.g. disconnection).
+        当相机报告设备级错误（如断开连接）时，由 SDK 异常回调线程异步设置。
+        """
+        return self._device_exception
 
     # ------------------------------------------------------------------
     # Frame retrieval (polling mode) / 帧获取（轮询模式）
@@ -958,6 +1024,8 @@ class HikCamera:
             raise CameraNotOpenError("Camera is not open")
         if not self._is_grabbing:
             raise GrabbingNotStartedError("Call start_grabbing() before get_frame()")
+        if self._device_exception is not None:
+            raise self._device_exception
 
         self._ensure_frame_buffer()
 
@@ -998,6 +1066,8 @@ class HikCamera:
             raise CameraNotOpenError("Camera is not open")
         if not self._is_grabbing:
             raise GrabbingNotStartedError("Call start_grabbing() before get_frame_ex()")
+        if self._device_exception is not None:
+            raise self._device_exception
 
         self._ensure_frame_buffer()
 
@@ -1020,6 +1090,68 @@ class HikCamera:
     # ------------------------------------------------------------------
     # Internal callback / 内部回调
     # ------------------------------------------------------------------
+
+    def _register_exception_callback(self) -> None:
+        """
+        Register the SDK-level device exception callback.
+        注册 SDK 级别的设备异常回调。
+
+        The callback is invoked from an SDK-internal thread when a device
+        exception (e.g. disconnection) occurs.  It stores the exception in
+        ``_device_exception`` and optionally notifies the user via
+        ``_on_device_exception``.
+        当设备异常（如断开连接）发生时，从 SDK 内部线程调用此回调。
+        异常被存储到 ``_device_exception`` 中，并可选地通过
+        ``_on_device_exception`` 通知用户。
+        """
+        register_fn = getattr(self._sdk, "MV_CC_RegisterExceptionCallBack", None)
+        if register_fn is None:
+            logger.debug("MV_CC_RegisterExceptionCallBack not available in SDK")
+            return
+        sdk_cb = EXCEPTION_CALLBACK(self._internal_exception_callback)
+        self._exception_callback_ref = sdk_cb  # prevent garbage collection
+        ret = register_fn(self._handle, sdk_cb, None)
+        if ret != MvErrorCode.MV_OK:
+            logger.warning(
+                "MV_CC_RegisterExceptionCallBack returned 0x%08X",
+                ret & 0xFFFFFFFF,
+            )
+            self._exception_callback_ref = None
+
+    def _internal_exception_callback(
+        self,
+        msg_type: int,
+        p_user: c_void_p,
+    ) -> None:
+        """
+        SDK-level exception callback trampoline.
+        SDK 级别的异常回调中转函数。
+
+        Called from an internal SDK thread when the camera reports a device
+        exception such as disconnection.
+        当相机报告设备异常（如断开连接）时从 SDK 内部线程调用。
+        """
+        if msg_type == _MV_EXCEPTION_DEV_DISCONNECT:
+            exc = DeviceDisconnectedError(
+                "Camera disconnected during operation",
+                msg_type,
+            )
+        else:
+            # The SDK currently only documents MV_EXCEPTION_DEV_DISCONNECT;
+            # treat any other message type as an unexpected device exception.
+            # SDK 目前仅记录了 MV_EXCEPTION_DEV_DISCONNECT；
+            # 将其他消息类型视为意外的设备异常。
+            exc = DeviceDisconnectedError(
+                f"Unexpected device exception 0x{msg_type:08X}",
+                msg_type,
+            )
+        logger.error("Device exception received: %s", exc)
+        self._device_exception = exc
+        if self._on_device_exception is not None:
+            try:
+                self._on_device_exception(exc)
+            except Exception:  # noqa: BLE001
+                logger.exception("Exception in on_device_exception callback")
 
     def _internal_callback(
         self,
