@@ -661,6 +661,10 @@ class HikCamera:
         ret = self._sdk.MV_CC_CloseDevice(self._handle)
         _check(ret, "MV_CC_CloseDevice")
         self._is_open = False
+        # Safe to release the exception callback reference now that the
+        # device is closed – the SDK will no longer invoke it.
+        # 设备关闭后可以安全释放异常回调引用——SDK 不会再调用它。
+        self._exception_callback_ref = None
         logger.info("Camera closed")
 
     @property
@@ -864,9 +868,10 @@ class HikCamera:
             接收一个 :py:class:`~hikcamera.exceptions.DeviceDisconnectedError` 实例。
 
             Even without this callback the exception is stored internally and
-            re-raised by :py:meth:`stop_grabbing` and :py:meth:`get_frame`.
+            re-raised by :py:meth:`stop_grabbing`, :py:meth:`get_frame`, and
+            :py:meth:`get_frame_ex`.
             即使未提供此回调，异常也会在内部存储，并在
-            :py:meth:`stop_grabbing` 和 :py:meth:`get_frame` 中重新抛出。
+            :py:meth:`stop_grabbing`、:py:meth:`get_frame` 和 :py:meth:`get_frame_ex` 中重新抛出。
 
         Raises / 异常
         -------------
@@ -902,8 +907,15 @@ class HikCamera:
         if ret != MvErrorCode.MV_OK:
             self._callback_ref = None
             self._user_callback = None
-            self._exception_callback_ref = None
             self._on_device_exception = None
+            # Note: _exception_callback_ref is intentionally kept alive here.
+            # The SDK may still invoke the registered callback after
+            # StartGrabbing fails; dropping the reference could cause a
+            # use-after-free crash.  It will be cleared when the handle is
+            # closed/destroyed.
+            # 注意：此处故意保留 _exception_callback_ref。StartGrabbing 失败后
+            # SDK 仍可能调用已注册的回调；释放引用可能导致野指针崩溃。
+            # 该引用将在句柄关闭/销毁时清理。
             code = ret & 0xFFFFFFFF
             raise GrabbingError(f"MV_CC_StartGrabbing failed: 0x{code:08X}", code)
 
@@ -928,9 +940,11 @@ class HikCamera:
             raise GrabbingNotStartedError("Grabbing has not been started")
         ret = self._sdk.MV_CC_StopGrabbing(self._handle)
         self._is_grabbing = False
+        # Clear frame grabbing callbacks; keep exception callback alive
+        # until the handle is closed to avoid native calls into GC'ed Python
+        # 清除帧采集回调；保留异常回调直到句柄关闭，以避免原生代码调用被 GC 的 Python 对象
         self._callback_ref = None
         self._user_callback = None
-        self._exception_callback_ref = None
         self._on_device_exception = None
         pending = self._device_exception
         self._device_exception = None

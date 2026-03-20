@@ -126,7 +126,7 @@ callback automatically and provides two ways to detect disconnection:
 1. **`on_exception` callback** – invoked immediately from the SDK thread.
 2. **`device_exception` property** – can be polled from any thread.
 
-`stop_grabbing()` and `get_frame()` also re-raise the stored exception.
+`stop_grabbing()`, `get_frame()`, and `get_frame_ex()` also re-raise the stored exception.
 
 ```python
 import threading
@@ -172,7 +172,8 @@ if cam.device_exception is not None:
 ### Reconnection after disconnection
 
 After a disconnection, the old camera resources must be released and a new
-handle created.  A typical pattern:
+handle created.  Use a context manager (`with`) per camera instance so the
+SDK handle is always destroyed — even on errors:
 
 ```python
 import time
@@ -181,33 +182,20 @@ from hikcamera import (
     CameraNotFoundError, CameraConnectionError, HikCameraError,
 )
 
-def connect(ip: str) -> HikCamera:
-    cam = HikCamera.from_ip(ip)
-    cam.open(AccessMode.EXCLUSIVE)
-    cam.start_grabbing(callback=on_frame, on_exception=on_exception)
-    return cam
-
-# After disconnect detected, clean up the old camera:
-try:
-    if cam.is_grabbing:
-        cam.stop_grabbing()
-except HikCameraError:
-    pass
-try:
-    if cam.is_open:
-        cam.close()
-except HikCameraError:
-    pass
-
-# Retry loop
+# After disconnect detected, release resources via context manager exit,
+# then retry in a new context:
 while True:
     time.sleep(3)
     try:
-        cam = connect("192.168.1.100")
-        print("Reconnected!")
-        break
+        cam = HikCamera.from_ip("192.168.1.100")
+        with cam:
+            cam.open(AccessMode.EXCLUSIVE)
+            cam.start_grabbing(callback=on_frame, on_exception=on_exception)
+            print("Reconnected!")
+            ...  # run until next disconnect
     except (CameraNotFoundError, CameraConnectionError) as exc:
         print(f"Reconnect failed: {exc}")
+        # cam's context manager ensures handle cleanup on exception
 ```
 
 See `demos/reconnect.py` for a complete, production-ready example.

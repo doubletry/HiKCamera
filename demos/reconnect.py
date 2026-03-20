@@ -42,7 +42,6 @@ import numpy as np
 
 from hikcamera import (
     AccessMode,
-    CameraConnectionError,
     CameraNotFoundError,
     DeviceDisconnectedError,
     HikCamera,
@@ -110,23 +109,6 @@ def open_and_start(
     )
 
 
-def cleanup_camera(cam: HikCamera) -> None:
-    """
-    Safely stop grabbing and close the camera, ignoring errors.
-    安全地停止取帧并关闭相机，忽略错误。
-    """
-    try:
-        if cam.is_grabbing:
-            cam.stop_grabbing()
-    except HikCameraError:
-        pass
-    try:
-        if cam.is_open:
-            cam.close()
-    except HikCameraError:
-        pass
-
-
 # ---------------------------------------------------------------------------
 # Main reconnection loop / 主重连循环
 # ---------------------------------------------------------------------------
@@ -148,94 +130,86 @@ def main() -> None:
         print(f"\n⚠  Device exception: {exc}")
         disconnect_event.set()
 
-    # ---------------------------------------------------------------
-    # Initial connection / 首次连接
-    # ---------------------------------------------------------------
-    try:
-        cam = connect_camera(args.ip, args.sn)
-    except (SDKNotFoundError, CameraNotFoundError) as exc:
-        print(f"Cannot connect: {exc}")
-        sys.exit(1)
-
-    try:
-        open_and_start(cam, on_frame, on_exception)
-    except HikCameraError as exc:
-        print(f"Failed to open/start camera: {exc}")
-        sys.exit(1)
-
     identifier = args.ip or args.sn
-    print(f"Camera {identifier} connected.  Capturing frames …")
-    print("Press Ctrl+C to exit.  Unplug the cable to test reconnection.\n")
-
     retries = 0
 
     try:
         while True:
-            # Normal operation: wait for disconnect or Ctrl+C
-            # 正常运行：等待断开连接或 Ctrl+C
-            if disconnect_event.wait(timeout=1.0):
-                # -------------------------------------------------------
-                # Disconnection detected → clean up and reconnect
-                # 检测到断开连接 → 清理并重连
-                # -------------------------------------------------------
-                print(f"\nCamera {identifier} lost.  Cleaning up …")
-                cleanup_camera(cam)
-
-                # Check retry limit / 检查重试次数限制
+            # -----------------------------------------------------------
+            # Connect, open, and grab inside a context manager so the
+            # SDK handle is always destroyed on exit (no resource leak).
+            # 在上下文管理器中连接、打开和取帧，确保 SDK 句柄在退出时
+            # 始终被销毁（无资源泄漏）。
+            # -----------------------------------------------------------
+            try:
+                cam = connect_camera(args.ip, args.sn)
+            except (SDKNotFoundError, CameraNotFoundError) as exc:
+                if retries == 0:
+                    print(f"Cannot connect: {exc}")
+                    sys.exit(1)
+                print(f"  Reconnect failed: {exc}")
                 if args.max_retries > 0:
                     retries += 1
                     if retries > args.max_retries:
                         print(f"Max retries ({args.max_retries}) exceeded.  Exiting.")
                         break
+                time.sleep(args.retry_interval)
+                continue
 
-                # Reconnection loop / 重连循环
-                print(
-                    f"Attempting to reconnect (interval={args.retry_interval}s, "
-                    f"attempt={retries if args.max_retries > 0 else 'unlimited'}) …"
-                )
-                reconnected = False
-                while True:
+            with cam:
+                try:
+                    open_and_start(cam, on_frame, on_exception)
+                except HikCameraError as exc:
+                    if retries == 0:
+                        print(f"Failed to open/start camera: {exc}")
+                        sys.exit(1)
+                    print(f"  Reconnect failed: {exc}")
+                    if args.max_retries > 0:
+                        retries += 1
+                        if retries > args.max_retries:
+                            print(f"Max retries ({args.max_retries}) exceeded.  Exiting.")
+                            break
                     time.sleep(args.retry_interval)
-                    try:
-                        cam = connect_camera(args.ip, args.sn)
-                        open_and_start(cam, on_frame, on_exception)
-                        # Success! Reset state.
-                        # 成功！重置状态。
-                        disconnect_event.clear()
-                        print(f"✓  Camera {identifier} reconnected.  Resuming capture …\n")
-                        reconnected = True
-                        break
-                    except (CameraNotFoundError, CameraConnectionError) as exc:
-                        print(f"  Reconnect failed: {exc}")
-                        if args.max_retries > 0:
-                            retries += 1
-                            if retries > args.max_retries:
-                                print(
-                                    f"Max retries ({args.max_retries}) exceeded.  Exiting."
-                                )
-                                break
-                        continue
-                    except HikCameraError as exc:
-                        print(f"  Unexpected error during reconnect: {exc}")
-                        if args.max_retries > 0:
-                            retries += 1
-                            if retries > args.max_retries:
-                                print(
-                                    f"Max retries ({args.max_retries}) exceeded.  Exiting."
-                                )
-                                break
-                        continue
+                    continue
+                    # cam.__exit__ destroys the handle automatically
+                    # cam.__exit__ 会自动销毁句柄
 
-                if not reconnected:
+                if retries == 0:
+                    print(f"Camera {identifier} connected.  Capturing frames …")
+                    print("Press Ctrl+C to exit.  Unplug the cable to test reconnection.\n")
+                else:
+                    print(f"✓  Camera {identifier} reconnected.  Resuming capture …\n")
+
+                # Wait for disconnect or Ctrl+C
+                # 等待断开连接或 Ctrl+C
+                disconnect_event.wait()
+
+                print(f"\nCamera {identifier} lost.  Cleaning up …")
+                # The context manager (__exit__) will stop grabbing, close the
+                # device, and destroy the handle when this block exits.
+                # 当此代码块退出时，上下文管理器（__exit__）会停止取帧、
+                # 关闭设备并销毁句柄。
+
+            # Outside the context manager: handle is fully released.
+            # 上下文管理器外部：句柄已完全释放。
+            disconnect_event.clear()
+
+            # Check retry limit / 检查重试次数限制
+            if args.max_retries > 0:
+                retries += 1
+                if retries > args.max_retries:
+                    print(f"Max retries ({args.max_retries}) exceeded.  Exiting.")
                     break
+
+            print(
+                f"Attempting to reconnect (interval={args.retry_interval}s, "
+                f"attempt={retries if args.max_retries > 0 else 'unlimited'}) …"
+            )
+            time.sleep(args.retry_interval)
 
     except KeyboardInterrupt:
         print("\n\nCtrl+C received.  Shutting down …")
 
-    # ---------------------------------------------------------------
-    # Final cleanup / 最终清理
-    # ---------------------------------------------------------------
-    cleanup_camera(cam)
     print(f"Total frames received: {frame_count}")
 
 

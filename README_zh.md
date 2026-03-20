@@ -125,7 +125,7 @@ with HikCamera.from_device_info(HikCamera.enumerate()[0]) as cam:
 1. **`on_exception` 回调** ── 从 SDK 线程立即调用。
 2. **`device_exception` 属性** ── 可从任意线程轮询。
 
-`stop_grabbing()` 和 `get_frame()` 也会重新抛出已存储的异常。
+`stop_grabbing()`、`get_frame()` 和 `get_frame_ex()` 也会重新抛出已存储的异常。
 
 ```python
 import threading
@@ -170,7 +170,8 @@ if cam.device_exception is not None:
 
 ### 断开连接后重连
 
-断开连接后，需要释放旧的相机资源并创建新的句柄。典型模式：
+断开连接后，需要释放旧的相机资源并创建新的句柄。对每个相机实例使用上下文管理器
+（`with`），确保 SDK 句柄始终被销毁——即使发生错误：
 
 ```python
 import time
@@ -179,33 +180,20 @@ from hikcamera import (
     CameraNotFoundError, CameraConnectionError, HikCameraError,
 )
 
-def connect(ip: str) -> HikCamera:
-    cam = HikCamera.from_ip(ip)
-    cam.open(AccessMode.EXCLUSIVE)
-    cam.start_grabbing(callback=on_frame, on_exception=on_exception)
-    return cam
-
-# 检测到断开连接后，清理旧相机：
-try:
-    if cam.is_grabbing:
-        cam.stop_grabbing()
-except HikCameraError:
-    pass
-try:
-    if cam.is_open:
-        cam.close()
-except HikCameraError:
-    pass
-
-# 重试循环
+# 检测到断开连接后，通过上下文管理器退出释放资源，
+# 然后在新的上下文中重试：
 while True:
     time.sleep(3)
     try:
-        cam = connect("192.168.1.100")
-        print("重连成功！")
-        break
+        cam = HikCamera.from_ip("192.168.1.100")
+        with cam:
+            cam.open(AccessMode.EXCLUSIVE)
+            cam.start_grabbing(callback=on_frame, on_exception=on_exception)
+            print("重连成功！")
+            ...  # 运行直到下次断开连接
     except (CameraNotFoundError, CameraConnectionError) as exc:
         print(f"重连失败: {exc}")
+        # cam 的上下文管理器确保异常时清理句柄
 ```
 
 完整的生产级示例请参见 `demos/reconnect.py`。
