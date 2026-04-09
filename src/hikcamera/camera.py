@@ -45,6 +45,7 @@ import os
 import socket
 import struct
 import threading
+from collections import OrderedDict
 from collections.abc import Callable
 from ctypes import POINTER, c_ubyte, c_uint, c_void_p
 from enum import IntEnum, StrEnum
@@ -106,7 +107,30 @@ from .utils import raw_to_numpy
 
 logger = logging.getLogger(__name__)
 
-_GIGE_PACKET_SIZE_CACHE: dict[str, int] = {}
+_MAX_GIGE_PACKET_SIZE_CACHE_ENTRIES: int = 64
+_GIGE_PACKET_SIZE_CACHE: OrderedDict[str, int] = OrderedDict()
+
+
+def _cache_gige_packet_size(cache_key: str, packet_size: int) -> None:
+    """
+    Store a GigE packet-size hint in a bounded LRU cache.
+    在有界 LRU 缓存中保存 GigE 包大小提示。
+    """
+    _GIGE_PACKET_SIZE_CACHE[cache_key] = packet_size
+    _GIGE_PACKET_SIZE_CACHE.move_to_end(cache_key)
+    while len(_GIGE_PACKET_SIZE_CACHE) > _MAX_GIGE_PACKET_SIZE_CACHE_ENTRIES:
+        _GIGE_PACKET_SIZE_CACHE.popitem(last=False)
+
+
+def _get_cached_gige_packet_size(cache_key: str) -> int | None:
+    """
+    Read a cached GigE packet-size hint and refresh its LRU position.
+    读取缓存的 GigE 包大小提示并刷新其 LRU 位置。
+    """
+    packet_size = _GIGE_PACKET_SIZE_CACHE.get(cache_key)
+    if packet_size is not None:
+        _GIGE_PACKET_SIZE_CACHE.move_to_end(cache_key)
+    return packet_size
 
 # ---------------------------------------------------------------------------
 # Constants / 常量
@@ -762,7 +786,7 @@ class HikCamera:
                 self.set_packet_size(packet_size)
                 cache_key = self._packet_size_cache_key()
                 if cache_key is not None:
-                    _GIGE_PACKET_SIZE_CACHE[cache_key] = packet_size
+                    _cache_gige_packet_size(cache_key, packet_size)
             except ParameterError:
                 logger.debug(
                     "Could not set GevSCPSPacketSize=%d (may not be a GigE camera)",
@@ -770,18 +794,27 @@ class HikCamera:
                 )
         else:
             cache_key = self._packet_size_cache_key()
-            cached_packet_size = None if cache_key is None else _GIGE_PACKET_SIZE_CACHE.get(cache_key)
+            cached_packet_size = None if cache_key is None else _get_cached_gige_packet_size(cache_key)
             # Auto-detect optimal / 自动检测最优值
             try:
                 if cached_packet_size is not None:
-                    self.set_packet_size(cached_packet_size)
-                    logger.debug("GigE packet size restored from cache: %d", cached_packet_size)
-                    return
+                    try:
+                        self.set_packet_size(cached_packet_size)
+                    except ParameterError:
+                        if cache_key is not None:
+                            _GIGE_PACKET_SIZE_CACHE.pop(cache_key, None)
+                        logger.debug(
+                            "Cached GigE packet size %d is no longer valid; re-probing",
+                            cached_packet_size,
+                        )
+                    else:
+                        logger.debug("GigE packet size restored from cache: %d", cached_packet_size)
+                        return
                 optimal = self.get_optimal_packet_size()
                 if optimal > 0:
                     self.set_packet_size(optimal)
                     if cache_key is not None:
-                        _GIGE_PACKET_SIZE_CACHE[cache_key] = optimal
+                        _cache_gige_packet_size(cache_key, optimal)
                     logger.debug("GigE packet size set to optimal value %d", optimal)
             except (ParameterError, HikCameraError):
                 logger.debug("Could not auto-configure GigE packet size (may not be a GigE camera)")
