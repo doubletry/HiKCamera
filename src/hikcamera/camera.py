@@ -263,16 +263,6 @@ def _int_to_ip(n: int) -> str:
     return socket.inet_ntoa(struct.pack("!I", n))
 
 
-def _copy_device_info(raw: MV_CC_DEVICE_INFO) -> MV_CC_DEVICE_INFO:
-    """
-    Copy an SDK device-info struct by value.
-    按值拷贝 SDK 设备信息结构体。
-    """
-    copied = MV_CC_DEVICE_INFO()
-    ctypes.memmove(ctypes.byref(copied), ctypes.byref(raw), ctypes.sizeof(MV_CC_DEVICE_INFO))
-    return copied
-
-
 def _transport_layer_search_order(transport_layers: TransportLayer) -> tuple[TransportLayer, ...]:
     """
     Expand a transport-layer bitmask into an ordered scan sequence.
@@ -454,7 +444,7 @@ class HikCamera:
         for i in range(dev_list.nDeviceNum):
             ptr = dev_list.pDeviceInfo[i]
             if ptr:
-                result.append(DeviceInfo(_copy_device_info(ptr.contents)))
+                result.append(DeviceInfo(ptr.contents))
         logger.debug("Enumerated %d camera(s)", len(result))
         return result
 
@@ -475,7 +465,7 @@ class HikCamera:
         for i in range(dev_list.nDeviceNum):
             ptr = dev_list.pDeviceInfo[i]
             if ptr:
-                result.append(_copy_device_info(ptr.contents))
+                result.append(ptr.contents)
         return result
 
     @classmethod

@@ -399,7 +399,6 @@ class TestPacketSize:
         gev_calls = [c for c in calls if c[0][1] == b"GevSCPSPacketSize"]
         assert len(gev_calls) == 1
         assert gev_calls[0][0][2] == GIGE_PACKET_SIZE_JUMBO
-        camera_module._GIGE_PACKET_SIZE_CACHE.clear()
 
 
 # ---------------------------------------------------------------------------
