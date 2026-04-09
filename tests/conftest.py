@@ -19,6 +19,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
+import hikcamera.camera as camera_module
 from hikcamera.camera import GIGE_PACKET_SIZE_JUMBO
 from hikcamera.enums import MvErrorCode
 from hikcamera.sdk_wrapper import (
@@ -79,6 +80,7 @@ class MockSDK:
 
     def __init__(self) -> None:
         self.MV_CC_EnumDevices = MagicMock(return_value=MvErrorCode.MV_OK)
+        self.MV_CC_CreateHandleWithoutLog = MagicMock(return_value=MvErrorCode.MV_OK)
         self.MV_CC_CreateHandle = MagicMock(return_value=MvErrorCode.MV_OK)
         self.MV_CC_DestroyHandle = MagicMock(return_value=MvErrorCode.MV_OK)
         self.MV_CC_OpenDevice = MagicMock(return_value=MvErrorCode.MV_OK)
@@ -142,6 +144,14 @@ def mock_sdk() -> MockSDK:
     return MockSDK()
 
 
+@pytest.fixture(autouse=True)
+def clear_packet_size_cache():
+    """Keep packet-size cache isolated between tests."""
+    camera_module._GIGE_PACKET_SIZE_CACHE.clear()
+    yield
+    camera_module._GIGE_PACKET_SIZE_CACHE.clear()
+
+
 @pytest.fixture()
 def gige_device() -> MV_CC_DEVICE_INFO:
     """Return a single GigE device info struct."""
@@ -193,6 +203,7 @@ def camera_with_mock_sdk(mock_sdk):
         p_handle._obj.value = 0x1234ABCD
         return MvErrorCode.MV_OK
 
+    mock_sdk.MV_CC_CreateHandleWithoutLog.side_effect = _create_handle
     mock_sdk.MV_CC_CreateHandle.side_effect = _create_handle
     mock_sdk.MV_CC_OpenDevice.return_value = MvErrorCode.MV_OK
 

@@ -45,6 +45,7 @@ import os
 import socket
 import struct
 import threading
+from collections import OrderedDict
 from collections.abc import Callable
 from ctypes import POINTER, c_ubyte, c_uint, c_void_p
 from enum import IntEnum, StrEnum
@@ -105,6 +106,31 @@ from .sdk_wrapper import (
 from .utils import raw_to_numpy
 
 logger = logging.getLogger(__name__)
+
+_MAX_GIGE_PACKET_SIZE_CACHE_ENTRIES: int = 64
+_GIGE_PACKET_SIZE_CACHE: OrderedDict[str, int] = OrderedDict()
+
+
+def _cache_gige_packet_size(cache_key: str, packet_size: int) -> None:
+    """
+    Store a GigE packet-size hint in a bounded LRU cache.
+    在有界 LRU 缓存中保存 GigE 包大小提示。
+    """
+    _GIGE_PACKET_SIZE_CACHE[cache_key] = packet_size
+    _GIGE_PACKET_SIZE_CACHE.move_to_end(cache_key)
+    while len(_GIGE_PACKET_SIZE_CACHE) > _MAX_GIGE_PACKET_SIZE_CACHE_ENTRIES:
+        _GIGE_PACKET_SIZE_CACHE.popitem(last=False)
+
+
+def _get_cached_gige_packet_size(cache_key: str) -> int | None:
+    """
+    Read a cached GigE packet-size hint and refresh its LRU position.
+    读取缓存的 GigE 包大小提示并刷新其 LRU 位置。
+    """
+    packet_size = _GIGE_PACKET_SIZE_CACHE.get(cache_key)
+    if packet_size is not None:
+        _GIGE_PACKET_SIZE_CACHE.move_to_end(cache_key)
+    return packet_size
 
 # ---------------------------------------------------------------------------
 # Constants / 常量
@@ -259,6 +285,22 @@ def _int_to_ip(n: int) -> str:
     将大端序整数转换为点分十进制 IP 字符串。
     """
     return socket.inet_ntoa(struct.pack("!I", n))
+
+
+def _transport_layer_search_order(transport_layers: TransportLayer) -> tuple[TransportLayer, ...]:
+    """
+    Expand a transport-layer bitmask into an ordered scan sequence.
+    将传输层位掩码展开为有序扫描序列。
+    """
+    ordered_layers: list[TransportLayer] = []
+    for layer in (
+        TransportLayer.GIGE,
+        TransportLayer.USB,
+        TransportLayer.CAMERALINK,
+    ):
+        if transport_layers & layer:
+            ordered_layers.append(layer)
+    return tuple(ordered_layers)
 
 
 # ---------------------------------------------------------------------------
@@ -431,6 +473,26 @@ class HikCamera:
         return result
 
     @classmethod
+    def _enumerate_raw(
+        cls,
+        transport_layer: TransportLayer,
+    ) -> list[MV_CC_DEVICE_INFO]:
+        """
+        Enumerate devices for a single transport layer and return raw structs.
+        枚举单个传输层的设备并返回原始结构体。
+        """
+        sdk = load_sdk()
+        dev_list = MV_CC_DEVICE_INFO_LIST()
+        ret = sdk.MV_CC_EnumDevices(int(transport_layer), ctypes.byref(dev_list))
+        _check(ret, "MV_CC_EnumDevices")
+        result: list[MV_CC_DEVICE_INFO] = []
+        for i in range(dev_list.nDeviceNum):
+            ptr = dev_list.pDeviceInfo[i]
+            if ptr:
+                result.append(ptr.contents)
+        return result
+
+    @classmethod
     def from_device_info(cls, device_info: DeviceInfo) -> HikCamera:
         """
         Create a :py:class:`HikCamera` from a :py:class:`DeviceInfo` object.
@@ -451,8 +513,13 @@ class HikCamera:
         """
         cam = cls()
         cam._device_info = device_info._raw
-        ret = cam._sdk.MV_CC_CreateHandle(ctypes.byref(cam._handle), ctypes.byref(device_info._raw))
-        _check(ret, "MV_CC_CreateHandle")
+        create_handle = getattr(cam._sdk, "MV_CC_CreateHandleWithoutLog", None)
+        api_name = "MV_CC_CreateHandleWithoutLog"
+        if create_handle is None:
+            create_handle = cam._sdk.MV_CC_CreateHandle
+            api_name = "MV_CC_CreateHandle"
+        ret = create_handle(ctypes.byref(cam._handle), ctypes.byref(device_info._raw))
+        _check(ret, api_name)
         logger.debug("Created handle for %s", device_info)
         return cam
 
@@ -526,10 +593,12 @@ class HikCamera:
             When no camera with that serial number is found.
             未找到该序列号的相机时抛出。
         """
-        devices = cls.enumerate(transport_layers)
-        for dev in devices:
-            if dev.serial_number == serial_number:
-                return cls.from_device_info(dev)
+        for layer in _transport_layer_search_order(transport_layers):
+            devices = cls._enumerate_raw(layer)
+            for raw_device in devices:
+                device_info = DeviceInfo(raw_device)
+                if device_info.serial_number == serial_number:
+                    return cls.from_device_info(device_info)
         raise CameraNotFoundError(f"No camera found with serial number {serial_number!r}")
 
     # ------------------------------------------------------------------
@@ -715,20 +784,56 @@ class HikCamera:
             # Manual override / 手动指定
             try:
                 self.set_packet_size(packet_size)
+                cache_key = self._packet_size_cache_key()
+                if cache_key is not None:
+                    _cache_gige_packet_size(cache_key, packet_size)
             except ParameterError:
                 logger.debug(
                     "Could not set GevSCPSPacketSize=%d (may not be a GigE camera)",
                     packet_size,
                 )
         else:
+            cache_key = self._packet_size_cache_key()
+            cached_packet_size = None if cache_key is None else _get_cached_gige_packet_size(cache_key)
             # Auto-detect optimal / 自动检测最优值
             try:
+                if cached_packet_size is not None:
+                    try:
+                        self.set_packet_size(cached_packet_size)
+                    except ParameterError:
+                        if cache_key is not None:
+                            _GIGE_PACKET_SIZE_CACHE.pop(cache_key, None)
+                        logger.debug(
+                            "Cached GigE packet size %d is no longer valid; re-probing",
+                            cached_packet_size,
+                        )
+                    else:
+                        logger.debug("GigE packet size restored from cache: %d", cached_packet_size)
+                        return
                 optimal = self.get_optimal_packet_size()
                 if optimal > 0:
                     self.set_packet_size(optimal)
+                    if cache_key is not None:
+                        _cache_gige_packet_size(cache_key, optimal)
                     logger.debug("GigE packet size set to optimal value %d", optimal)
             except (ParameterError, HikCameraError):
                 logger.debug("Could not auto-configure GigE packet size (may not be a GigE camera)")
+
+    def _packet_size_cache_key(self) -> str | None:
+        """
+        Return a stable cache key for GigE packet-size reuse.
+        返回用于复用 GigE 包大小的稳定缓存键。
+        """
+        if self._device_info is None:
+            return None
+        if self._device_info.nTLayerType != int(TransportLayer.GIGE):
+            return None
+        device_info = DeviceInfo(self._device_info)
+        if device_info.serial_number:
+            return f"sn:{device_info.serial_number}"
+        if device_info.ip:
+            return f"ip:{device_info.ip}"
+        return f"mac:{device_info.mac_address}"
 
     def get_optimal_packet_size(self) -> int:
         """
