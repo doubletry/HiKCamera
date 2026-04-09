@@ -403,7 +403,7 @@ class TestPacketSize:
         """Invalid cached packet size is discarded and re-probed immediately."""
         cam = make_camera_with_sdk(mock_sdk, open_it=False)
         cam._device_info = make_gige_device_info(serial=b"REPROBE-SN\x00")
-        camera_module._GIGE_PACKET_SIZE_CACHE["sn:REPROBE-SN"] = 1234
+        camera_module._cache_gige_packet_size("sn:REPROBE-SN", 1234)
 
         def set_int_side_effect(handle, name, value):
             if name == b"GevSCPSPacketSize" and value == 1234:
@@ -426,7 +426,7 @@ class TestPacketSize:
         cache_limit = camera_module._MAX_GIGE_PACKET_SIZE_CACHE_ENTRIES
 
         for index in range(cache_limit + 1):
-            camera_module._cache_gige_packet_size(f"sn:{index}", index)
+            camera_module._cache_gige_packet_size(f"sn:{index}", 1000 + index)
 
         assert len(camera_module._GIGE_PACKET_SIZE_CACHE) == cache_limit
         assert "sn:0" not in camera_module._GIGE_PACKET_SIZE_CACHE
