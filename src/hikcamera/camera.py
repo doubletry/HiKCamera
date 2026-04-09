@@ -801,7 +801,7 @@ class HikCamera:
         Return a stable cache key for GigE packet-size reuse.
         返回用于复用 GigE 包大小的稳定缓存键。
         """
-        if self._device_info is None or self._device_info.nTLayerType != MV_CC_DEVICE_INFO.MV_GIGE_DEVICE:
+        if self._device_info is None or self._device_info.nTLayerType != int(TransportLayer.GIGE):
             return None
         device_info = DeviceInfo(self._device_info)
         if device_info.serial_number:

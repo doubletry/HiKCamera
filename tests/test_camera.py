@@ -195,16 +195,11 @@ class TestFromIpAndSN:
 
     def test_from_serial_number_prioritizes_faster_transport_scan_order(self, mock_sdk):
         gige_dev = make_gige_device_info(serial=b"FAST-SN\x00")
-        usb_dev = make_gige_device_info(serial=b"USB-SN\x00")
 
         def side_effect(transport, p_list):
             if transport == int(camera_module.TransportLayer.GIGE):
                 p_list._obj.nDeviceNum = 1
                 p_list._obj.pDeviceInfo[0] = ctypes.pointer(gige_dev)
-                return MvErrorCode.MV_OK
-            if transport == int(camera_module.TransportLayer.USB):
-                p_list._obj.nDeviceNum = 1
-                p_list._obj.pDeviceInfo[0] = ctypes.pointer(usb_dev)
                 return MvErrorCode.MV_OK
             pytest.fail(f"Unexpected transport scan: {transport}")
 
