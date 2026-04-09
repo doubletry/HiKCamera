@@ -19,6 +19,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
+import hikcamera.camera as camera_module
 from hikcamera.camera import GIGE_PACKET_SIZE_JUMBO
 from hikcamera.enums import MvErrorCode
 from hikcamera.sdk_wrapper import (
@@ -141,6 +142,14 @@ def make_frame_info(
 def mock_sdk() -> MockSDK:
     """Return a fresh MockSDK instance."""
     return MockSDK()
+
+
+@pytest.fixture(autouse=True)
+def clear_packet_size_cache():
+    """Keep packet-size cache isolated between tests."""
+    camera_module._GIGE_PACKET_SIZE_CACHE.clear()
+    yield
+    camera_module._GIGE_PACKET_SIZE_CACHE.clear()
 
 
 @pytest.fixture()
