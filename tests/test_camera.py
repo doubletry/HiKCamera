@@ -202,6 +202,7 @@ class TestFromIpAndSN:
                 p_list._obj.pDeviceInfo[0] = ctypes.pointer(gige_dev)
                 return MvErrorCode.MV_OK
             pytest.fail(f"Unexpected transport scan: {transport}")
+            return MvErrorCode.MV_E_NODEVICE
 
         mock_sdk.MV_CC_EnumDevices.side_effect = side_effect
         mock_sdk.MV_CC_CreateHandleWithoutLog.return_value = MvErrorCode.MV_OK
@@ -382,7 +383,6 @@ class TestPacketSize:
 
     def test_open_reuses_cached_optimal_packet_size(self, mock_sdk):
         """Second open reuses cached packet size instead of probing again."""
-        camera_module._GIGE_PACKET_SIZE_CACHE.clear()
         cam = make_camera_with_sdk(mock_sdk, open_it=False)
         cam._device_info = make_gige_device_info(serial=b"CACHE-SN\x00")
 
