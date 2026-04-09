@@ -531,6 +531,7 @@ def _configure_sdk_argtypes(lib: ctypes.CDLL) -> None:  # noqa: PLR0915
 
     # Handle lifecycle / 句柄生命周期
     _set("MV_CC_CreateHandle", [POINTER(c_void_p), POINTER(MV_CC_DEVICE_INFO)])
+    _set("MV_CC_CreateHandleWithoutLog", [POINTER(c_void_p), POINTER(MV_CC_DEVICE_INFO)])
     _set("MV_CC_DestroyHandle", [c_void_p])
 
     # Open / close / 打开 / 关闭

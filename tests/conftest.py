@@ -79,6 +79,7 @@ class MockSDK:
 
     def __init__(self) -> None:
         self.MV_CC_EnumDevices = MagicMock(return_value=MvErrorCode.MV_OK)
+        self.MV_CC_CreateHandleWithoutLog = MagicMock(return_value=MvErrorCode.MV_OK)
         self.MV_CC_CreateHandle = MagicMock(return_value=MvErrorCode.MV_OK)
         self.MV_CC_DestroyHandle = MagicMock(return_value=MvErrorCode.MV_OK)
         self.MV_CC_OpenDevice = MagicMock(return_value=MvErrorCode.MV_OK)
@@ -193,6 +194,7 @@ def camera_with_mock_sdk(mock_sdk):
         p_handle._obj.value = 0x1234ABCD
         return MvErrorCode.MV_OK
 
+    mock_sdk.MV_CC_CreateHandleWithoutLog.side_effect = _create_handle
     mock_sdk.MV_CC_CreateHandle.side_effect = _create_handle
     mock_sdk.MV_CC_OpenDevice.return_value = MvErrorCode.MV_OK
 

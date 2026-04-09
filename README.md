@@ -11,7 +11,7 @@ A Python 3.12 library for Hikvision industrial cameras (MVS SDK).
 | Feature | Details |
 |---|---|
 | **Camera enumeration** | Find all GigE / USB3 / CameraLink cameras on the host |
-| **Flexible connection** | Connect by IP address or serial number |
+| **Flexible connection** | Connect by IP address or serial number; serial lookup prioritizes faster layer-specific SDK scans |
 | **Multiple access modes** | Exclusive, Control, Monitor, Exclusive-With-Switch, Multicast, Unicast |
 | **GigE packet size** | Auto-detect optimal packet size on open; manual override supported |
 | **Parameter access** | Get/set integer, float, bool, enum, string GenICam parameters with full exception handling (missing parameters are handled gracefully) |
@@ -73,6 +73,10 @@ with HikCamera.from_serial_number("SN123456") as cam:
     cam.open()
     ...
 ```
+
+`from_serial_number()` now checks GigE, USB, then CameraLink in order when you
+search across all transport layers, so common GigE setups avoid waiting for
+unrelated SDK scans.
 
 ### Polling frame capture
 

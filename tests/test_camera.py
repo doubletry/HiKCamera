@@ -11,6 +11,7 @@ from unittest.mock import patch
 import numpy as np
 import pytest
 
+import hikcamera.camera as camera_module
 from hikcamera.camera import (
     GIGE_PACKET_SIZE_DEFAULT,
     GIGE_PACKET_SIZE_JUMBO,
@@ -192,6 +193,31 @@ class TestFromIpAndSN:
             with pytest.raises(CameraNotFoundError):
                 HikCamera.from_serial_number("XXXXXXXX")
 
+    def test_from_serial_number_prioritizes_faster_transport_scan_order(self, mock_sdk):
+        gige_dev = make_gige_device_info(serial=b"FAST-SN\x00")
+        usb_dev = make_gige_device_info(serial=b"USB-SN\x00")
+
+        def side_effect(transport, p_list):
+            if transport == int(camera_module.TransportLayer.GIGE):
+                p_list._obj.nDeviceNum = 1
+                p_list._obj.pDeviceInfo[0] = ctypes.pointer(gige_dev)
+                return MvErrorCode.MV_OK
+            if transport == int(camera_module.TransportLayer.USB):
+                p_list._obj.nDeviceNum = 1
+                p_list._obj.pDeviceInfo[0] = ctypes.pointer(usb_dev)
+                return MvErrorCode.MV_OK
+            pytest.fail(f"Unexpected transport scan: {transport}")
+
+        mock_sdk.MV_CC_EnumDevices.side_effect = side_effect
+        mock_sdk.MV_CC_CreateHandleWithoutLog.return_value = MvErrorCode.MV_OK
+
+        with patch("hikcamera.camera.load_sdk", return_value=mock_sdk):
+            cam = HikCamera.from_serial_number("FAST-SN")
+
+        assert cam is not None
+        scanned_layers = [call.args[0] for call in mock_sdk.MV_CC_EnumDevices.call_args_list]
+        assert scanned_layers == [int(camera_module.TransportLayer.GIGE)]
+
 
 # ---------------------------------------------------------------------------
 # Open / close
@@ -277,6 +303,17 @@ class TestOpenClose:
         cam.open(AccessMode.EXCLUSIVE)  # should not raise
         assert cam.is_open
 
+    def test_from_device_info_prefers_create_handle_without_log(self, mock_sdk):
+        dev = make_gige_device_info()
+        device_info = DeviceInfo(dev)
+        mock_sdk.MV_CC_CreateHandleWithoutLog.return_value = MvErrorCode.MV_OK
+
+        with patch("hikcamera.camera.load_sdk", return_value=mock_sdk):
+            HikCamera.from_device_info(device_info)
+
+        mock_sdk.MV_CC_CreateHandleWithoutLog.assert_called_once()
+        mock_sdk.MV_CC_CreateHandle.assert_not_called()
+
 
 # ---------------------------------------------------------------------------
 # GigE Packet Size / GigE 包大小
@@ -347,6 +384,27 @@ class TestPacketSize:
         cam = make_camera_with_sdk(mock_sdk, open_it=False)
         with pytest.raises(ValueError, match="positive integer"):
             cam.open(packet_size=-1)
+
+    def test_open_reuses_cached_optimal_packet_size(self, mock_sdk):
+        """Second open reuses cached packet size instead of probing again."""
+        camera_module._GIGE_PACKET_SIZE_CACHE.clear()
+        cam = make_camera_with_sdk(mock_sdk, open_it=False)
+        cam._device_info = make_gige_device_info(serial=b"CACHE-SN\x00")
+
+        cam.open(AccessMode.EXCLUSIVE)
+        cam.close()
+
+        mock_sdk.MV_CC_GetOptimalPacketSize.reset_mock()
+        mock_sdk.MV_CC_SetIntValueEx.reset_mock()
+
+        cam.open(AccessMode.EXCLUSIVE)
+
+        mock_sdk.MV_CC_GetOptimalPacketSize.assert_not_called()
+        calls = mock_sdk.MV_CC_SetIntValueEx.call_args_list
+        gev_calls = [c for c in calls if c[0][1] == b"GevSCPSPacketSize"]
+        assert len(gev_calls) == 1
+        assert gev_calls[0][0][2] == GIGE_PACKET_SIZE_JUMBO
+        camera_module._GIGE_PACKET_SIZE_CACHE.clear()
 
 
 # ---------------------------------------------------------------------------
