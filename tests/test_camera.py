@@ -44,7 +44,12 @@ from hikcamera.exceptions import (
     ParameterReadOnlyError,
     ParameterValueError,
 )
-from hikcamera.params import AcquisitionControl, AnalogControl, ImageFormatControl
+from hikcamera.params import (
+    AcquisitionControl,
+    AnalogControl,
+    DeviceControl,
+    ImageFormatControl,
+)
 from hikcamera.sdk_wrapper import (
     MV_CC_DEVICE_INFO,
 )
@@ -1187,3 +1192,10 @@ class TestCameraInfo:
         assert info.get(ImageFormatControl.Height) == 1080
         assert AcquisitionControl.AcquisitionFrameRate in info
         assert AnalogControl.GainAuto in info
+
+    def test_get_camera_info_missing_paramnode_key_raises_keyerror(self, mock_sdk):
+        cam = make_camera_with_sdk(mock_sdk)
+        self._setup_param_responses(mock_sdk)
+        info = cam.get_camera_info()
+        with pytest.raises(KeyError):
+            _ = info[DeviceControl.DeviceUserID]

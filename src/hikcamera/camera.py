@@ -103,6 +103,15 @@ class CameraInfoDict(dict[str, Any]):
     Dictionary returned by :meth:`HikCamera.get_camera_info`.
     :meth:`HikCamera.get_camera_info` 返回的字典类型。
 
+    This is an internal compatibility detail of the public
+    :meth:`HikCamera.get_camera_info` API rather than a standalone data model.
+    It exists so the returned mapping keeps standard ``dict`` behavior while
+    accepting both legacy string keys and :class:`~hikcamera.params.ParamNode`
+    lookups during the migration period.
+    这是公开 API :meth:`HikCamera.get_camera_info` 的内部兼容实现细节，而不是
+    独立的数据模型。它用于在迁移期间保持标准 ``dict`` 行为的同时，兼容旧字符串
+    key 和 :class:`~hikcamera.params.ParamNode` 取值方式。
+
     Values are stored under legacy string node names for backward
     compatibility, but lookups also accept :class:`~hikcamera.params.ParamNode`
     instances.
