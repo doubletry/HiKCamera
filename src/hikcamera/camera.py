@@ -1618,14 +1618,14 @@ class HikCamera:
         """
         self._assert_open()
         selector = user_set if isinstance(user_set, UserSetSelector) else UserSetSelector(user_set)
-        selector = UserSetControl.UserSetSelector.validate(selector)
+        validated_selector = UserSetControl.UserSetSelector.validate(selector)
         self._set_parameter_by_schema(
             UserSetControl.UserSetSelector.name,
-            selector,
+            validated_selector,
             UserSetSelector,
         )
         self.UserSetSave()
-        logger.info("Camera parameters saved to user set %r", str(selector))
+        logger.info("Camera parameters saved to user set %r", str(validated_selector))
 
     def load_user_set(
         self,
@@ -1656,14 +1656,14 @@ class HikCamera:
         """
         self._assert_open()
         selector = user_set if isinstance(user_set, UserSetSelector) else UserSetSelector(user_set)
-        selector = UserSetControl.UserSetSelector.validate(selector)
+        validated_selector = UserSetControl.UserSetSelector.validate(selector)
         self._set_parameter_by_schema(
             UserSetControl.UserSetSelector.name,
-            selector,
+            validated_selector,
             UserSetSelector,
         )
         self.UserSetLoad()
-        logger.info("Camera parameters loaded from user set %r", str(selector))
+        logger.info("Camera parameters loaded from user set %r", str(validated_selector))
 
     # ------------------------------------------------------------------
     # Camera information / 相机信息

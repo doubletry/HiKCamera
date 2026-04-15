@@ -1050,6 +1050,7 @@ class TestUserSet:
         cam.load_user_set("UserSet2")
         call_args = mock_sdk.MV_CC_SetEnumValueByString.call_args
         assert call_args[0][2] == b"UserSet2"
+        mock_sdk.MV_CC_SetCommandValue.assert_called_once()
 
     def test_load_user_set_not_open_raises(self, mock_sdk):
         cam = make_camera_with_sdk(mock_sdk, open_it=False)
