@@ -32,3 +32,20 @@ deprecation in a future release:
    reflected in release notes and documentation.
 4. Eventually switch examples and public recommendations entirely to the
    `ParamNode` path.
+
+## Tentative milestones
+
+These milestones are intentionally provisional, but they document the expected
+order of work so users can plan migrations:
+
+- Next minor release:
+  - keep all legacy APIs fully working
+  - continue migrating docs, demos, and examples to `ParamNode`
+  - keep compatibility behavior in `get_camera_info()`
+- Following minor release:
+  - consider adding deprecation warnings for typed getter/setter helpers and
+    legacy string-key access in `get_camera_info()`
+  - keep runtime behavior backward compatible
+- Future major release:
+  - re-evaluate whether legacy typed helpers and legacy string-key access
+    should remain supported, based on migration feedback and adoption
