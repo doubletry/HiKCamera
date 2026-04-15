@@ -108,7 +108,10 @@ class CameraInfoDict(dict[str, Any]):
     It is not re-exported at the package level, and exists so the returned
     mapping keeps standard ``dict`` behavior while accepting both legacy string
     keys and :class:`~hikcamera.params.ParamNode` lookups during the migration
-    period.
+    period. If legacy string-key access is deprecated in a future release, this
+    helper is expected to remain as a thin mapping wrapper around the public
+    ``get_camera_info()`` result, with lookup behavior narrowed toward the
+    supported access patterns of that release.
     这是公开 API :meth:`HikCamera.get_camera_info` 在模块层面的兼容辅助类型，
     而不是独立的数据模型。它不会在包级别重新导出，其作用是在迁移期间保持标准
     ``dict`` 行为的同时，兼容旧字符串 key 和
