@@ -34,124 +34,53 @@ from dataclasses import dataclass
 from enum import IntEnum, StrEnum
 from typing import Any, Literal
 
-from .enums import (
-    AcquisitionMode as AcquisitionModeEnum,
-)
-from .enums import (
-    AutoFunctionAOISelector as AutoFunctionAOISelectorEnum,
-)
-from .enums import (
-    BalanceRatioSelector as BalanceRatioSelectorEnum,
-)
-from .enums import (
-    BalanceWhiteAuto as BalanceWhiteAutoEnum,
-)
-from .enums import (
-    DeviceCharacterSet as DeviceCharacterSetEnum,
-)
-from .enums import (
-    DeviceHeartbeatMode as DeviceHeartbeatModeEnum,
-)
-from .enums import (
-    DeviceScanType as DeviceScanTypeEnum,
-)
-from .enums import (
-    DeviceStreamChannelEndianness as DeviceStreamChannelEndiannessEnum,
-)
-from .enums import (
-    DeviceStreamChannelType as DeviceStreamChannelTypeEnum,
-)
-from .enums import (
-    DeviceType as DeviceTypeEnum,
-)
-from .enums import (
-    EncoderCounterMode as EncoderCounterModeEnum,
-)
-from .enums import (
-    EncoderSelector as EncoderSelectorEnum,
-)
-from .enums import (
-    EncoderTriggerMode as EncoderTriggerModeEnum,
-)
-from .enums import (
-    ExposureAuto as ExposureAutoEnum,
-)
-from .enums import (
-    ExposureMode as ExposureModeEnum,
-)
-from .enums import (
-    FrameSpecInfoSelector as FrameSpecInfoSelectorEnum,
-)
-from .enums import (
-    FrequencyConverterSignalAlignment as FrequencyConverterSignalAlignmentEnum,
-)
-from .enums import (
-    GainAuto as GainAutoEnum,
-)
-from .enums import (
-    GammaSelector as GammaSelectorEnum,
-)
-from .enums import (
-    GevCCP as GevCCPEnum,
-)
-from .enums import (
-    GevDeviceModeCharacterSet as GevDeviceModeCharacterSetEnum,
-)
-from .enums import (
-    ImageCompressionMode as ImageCompressionModeEnum,
-)
-from .enums import (
-    LineMode as LineModeEnum,
-)
-from .enums import (
-    LineSelector as LineSelectorEnum,
-)
-from .enums import (
-    LUTSelector as LUTSelectorEnum,
-)
-from .enums import (
-    PixelFormat as PixelFormatEnum,
-)
-from .enums import (
-    PixelSize as PixelSizeEnum,
-)
-from .enums import (
-    RegionDestination as RegionDestinationEnum,
-)
-from .enums import (
-    RegionSelector as RegionSelectorEnum,
-)
-from .enums import (
-    ShadingSelector as ShadingSelectorEnum,
-)
-from .enums import (
-    TestPattern as TestPatternEnum,
-)
-from .enums import (
-    TestPatternGeneratorSelector as TestPatternGeneratorSelectorEnum,
-)
-from .enums import (
-    TriggerActivation as TriggerActivationEnum,
-)
-from .enums import (
-    TriggerMode as TriggerModeEnum,
-)
-from .enums import (
-    TriggerSelector as TriggerSelectorEnum,
-)
-from .enums import (
-    TriggerSource as TriggerSourceEnum,
-)
-from .enums import (
-    UserSetDefault as UserSetDefaultEnum,
-)
-from .enums import (
-    UserSetSelector as UserSetSelectorEnum,
-)
+from . import enums as camera_enums
 from .exceptions import ParameterReadOnlyError, ParameterValueError
 
 # Sentinel for "no value set" (distinct from ``None``).
 _UNSET: object = object()
+
+# Local enum aliases keep ``ParamNode.data_type`` visually distinct from
+# same-named ``ParamNode`` members such as ``ImageFormatControl.RegionSelector``.
+AcquisitionModeEnum = camera_enums.AcquisitionMode
+AutoFunctionAOISelectorEnum = camera_enums.AutoFunctionAOISelector
+BalanceRatioSelectorEnum = camera_enums.BalanceRatioSelector
+BalanceWhiteAutoEnum = camera_enums.BalanceWhiteAuto
+DeviceCharacterSetEnum = camera_enums.DeviceCharacterSet
+DeviceHeartbeatModeEnum = camera_enums.DeviceHeartbeatMode
+DeviceScanTypeEnum = camera_enums.DeviceScanType
+DeviceStreamChannelEndiannessEnum = camera_enums.DeviceStreamChannelEndianness
+DeviceStreamChannelTypeEnum = camera_enums.DeviceStreamChannelType
+DeviceTypeEnum = camera_enums.DeviceType
+EncoderCounterModeEnum = camera_enums.EncoderCounterMode
+EncoderSelectorEnum = camera_enums.EncoderSelector
+EncoderTriggerModeEnum = camera_enums.EncoderTriggerMode
+ExposureAutoEnum = camera_enums.ExposureAuto
+ExposureModeEnum = camera_enums.ExposureMode
+FrameSpecInfoSelectorEnum = camera_enums.FrameSpecInfoSelector
+FrequencyConverterSignalAlignmentEnum = camera_enums.FrequencyConverterSignalAlignment
+GainAutoEnum = camera_enums.GainAuto
+GammaSelectorEnum = camera_enums.GammaSelector
+GevCCPEnum = camera_enums.GevCCP
+GevDeviceModeCharacterSetEnum = camera_enums.GevDeviceModeCharacterSet
+ImageCompressionModeEnum = camera_enums.ImageCompressionMode
+LUTSelectorEnum = camera_enums.LUTSelector
+LineModeEnum = camera_enums.LineMode
+LineSelectorEnum = camera_enums.LineSelector
+PixelFormatEnum = camera_enums.PixelFormat
+PixelSizeEnum = camera_enums.PixelSize
+RegionDestinationEnum = camera_enums.RegionDestination
+RegionSelectorEnum = camera_enums.RegionSelector
+ShadingSelectorEnum = camera_enums.ShadingSelector
+TestPatternEnum = camera_enums.TestPattern
+TestPatternGeneratorSelectorEnum = camera_enums.TestPatternGeneratorSelector
+TriggerActivationEnum = camera_enums.TriggerActivation
+TriggerModeEnum = camera_enums.TriggerMode
+TriggerSelectorEnum = camera_enums.TriggerSelector
+TriggerSourceEnum = camera_enums.TriggerSource
+UserSetDefaultEnum = camera_enums.UserSetDefault
+UserSetSelectorEnum = camera_enums.UserSetSelector
+
 
 
 @dataclass(frozen=True, slots=True)
