@@ -290,7 +290,9 @@ with HikCamera.from_device_info(cameras[0]) as cam:
         print("Width is read-only while grabbing")
 ```
 
-#### Legacy compatibility example
+#### ⚠️ Legacy compatibility example *(compatibility path only)*
+
+> _Legacy compatibility path: kept for migration and older codebases. Prefer the structured API shown above._
 
 ```python
 with HikCamera.from_device_info(cameras[0]) as cam:
@@ -319,7 +321,9 @@ with HikCamera.from_ip("192.168.1.100") as cam:
     print(f"Model: {info.get(DeviceControl.DeviceModelName)}")
 ```
 
-#### Legacy compatibility example
+#### ⚠️ Legacy compatibility example *(compatibility path only)*
+
+> _Legacy compatibility path: kept for migration and older codebases. Prefer the structured API shown above._
 
 ```python
 with HikCamera.from_ip("192.168.1.100") as cam:
@@ -360,7 +364,9 @@ with HikCamera.from_ip("192.168.1.100") as cam:
     cam.load_user_set(UserSetControl.UserSetSelector.USER_SET_1)
 ```
 
-#### Legacy compatibility example
+#### ⚠️ Legacy compatibility example *(compatibility path only)*
+
+> _Legacy compatibility path: kept for migration and older codebases. Prefer the structured API shown above._
 
 ```python
 with HikCamera.from_ip("192.168.1.100") as cam:
@@ -396,7 +402,9 @@ compatibility APIs and may be gradually deprecated.
 | `get_optimal_packet_size()` | Query SDK for the optimal GigE packet size (GigE only) |
 | `get_packet_size()` / `set_packet_size(size)` | Get/set GigE streaming packet size (`GevSCPSPacketSize`) |
 
-### Legacy compatibility API
+### ⚠️ Legacy compatibility API *(gradually deprecated compatibility path)*
+
+> _Use these interfaces only when migrating older code. New code should prefer the structured API above._
 
 | Method / style | Description |
 |---|---|

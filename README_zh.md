@@ -286,7 +286,9 @@ with HikCamera.from_device_info(cameras[0]) as cam:
         print("取帧期间 Width 为只读参数")
 ```
 
-#### 旧版兼容写法示例
+#### ⚠️ 旧版兼容写法示例（仅兼容迁移路径）
+
+> _旧版兼容路径：保留用于迁移和维护历史代码；新代码请优先使用上方结构化新接口。_
 
 ```python
 with HikCamera.from_device_info(cameras[0]) as cam:
@@ -315,7 +317,9 @@ with HikCamera.from_ip("192.168.1.100") as cam:
     print(f"型号: {info.get(DeviceControl.DeviceModelName)}")
 ```
 
-#### 旧版兼容写法示例
+#### ⚠️ 旧版兼容写法示例（仅兼容迁移路径）
+
+> _旧版兼容路径：保留用于迁移和维护历史代码；新代码请优先使用上方结构化新接口。_
 
 ```python
 with HikCamera.from_ip("192.168.1.100") as cam:
@@ -356,7 +360,9 @@ with HikCamera.from_ip("192.168.1.100") as cam:
     cam.load_user_set(UserSetControl.UserSetSelector.USER_SET_1)
 ```
 
-#### 旧版兼容写法示例
+#### ⚠️ 旧版兼容写法示例（仅兼容迁移路径）
+
+> _旧版兼容路径：保留用于迁移和维护历史代码；新代码请优先使用上方结构化新接口。_
 
 ```python
 with HikCamera.from_ip("192.168.1.100") as cam:
@@ -388,7 +394,9 @@ getter/setter 仍保留用于向后兼容，但应视为兼容接口，后续可
 | `get_optimal_packet_size()` | 查询 SDK 获取 GigE 最优包大小（仅 GigE 相机） |
 | `get_packet_size()` / `set_packet_size(size)` | 获取/设置 GigE 流传输包大小（`GevSCPSPacketSize`） |
 
-### 旧版兼容接口
+### ⚠️ 旧版兼容接口（逐步废弃的兼容路径）
+
+> _这些接口仅建议在迁移旧代码时使用；新代码请优先使用上方结构化新接口。_
 
 | 方法 / 方式 | 说明 |
 |---|---|
