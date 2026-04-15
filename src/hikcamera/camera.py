@@ -1949,9 +1949,7 @@ class HikCamera:
         for getter in getters:
             try:
                 return getter(name)
-            except ParameterNotSupportedError:
-                continue
-            except ParameterError:
+            except (ParameterNotSupportedError, ParameterError):
                 continue
         return default
 
@@ -2047,10 +2045,7 @@ class HikCamera:
         Allocate (or reallocate) the frame buffer based on PayloadSize.
         根据 PayloadSize 分配（或重新分配）帧缓冲区。
         """
-        try:
-            payload_size = self.get_parameter(TransportLayerControl.PayloadSize, default=0)
-        except ParameterError:
-            payload_size = 0
+        payload_size = self.get_parameter(TransportLayerControl.PayloadSize, default=0)
 
         # Use a reasonable fallback if PayloadSize is unavailable
         # 如果 PayloadSize 不可用，使用合理的回退值
