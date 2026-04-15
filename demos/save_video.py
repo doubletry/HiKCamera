@@ -31,6 +31,8 @@ import numpy as np
 
 from hikcamera import (
     AccessMode,
+    AcquisitionControl,
+    AnalogControl,
     HikCamera,
     OutputFormat,
     SDKNotFoundError,
@@ -114,9 +116,9 @@ def main() -> None:
         print("Camera opened.")
 
         if args.exposure is not None:
-            cam.set_parameter("ExposureTime", args.exposure)
+            cam.set_parameter(AcquisitionControl.ExposureTime, args.exposure)
         if args.gain is not None:
-            cam.set_parameter("Gain", args.gain)
+            cam.set_parameter(AnalogControl.Gain, args.gain)
 
         # Grab the first frame to get image dimensions
         # 抓取第一帧以获取图像尺寸

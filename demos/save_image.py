@@ -26,6 +26,8 @@ import numpy as np
 
 from hikcamera import (
     AccessMode,
+    AcquisitionControl,
+    AnalogControl,
     HikCamera,
     OutputFormat,
     SDKNotFoundError,
@@ -92,11 +94,11 @@ def main() -> None:
         print("Camera opened.")
 
         if args.exposure is not None:
-            cam.set_parameter("ExposureTime", args.exposure)
+            cam.set_parameter(AcquisitionControl.ExposureTime, args.exposure)
             print(f"ExposureTime set to {args.exposure} µs")
 
         if args.gain is not None:
-            cam.set_parameter("Gain", args.gain)
+            cam.set_parameter(AnalogControl.Gain, args.gain)
             print(f"Gain set to {args.gain}")
 
         cam.start_grabbing()

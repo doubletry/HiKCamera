@@ -7,12 +7,12 @@ Typical usage (polling) / 典型用法（轮询模式）
 
 .. code-block:: python
 
-    from hikcamera import HikCamera, AccessMode, OutputFormat
+    from hikcamera import AccessMode, AcquisitionControl, HikCamera, OutputFormat
 
     cameras = HikCamera.enumerate()
     with HikCamera.from_device_info(cameras[0]) as cam:
         cam.open(AccessMode.EXCLUSIVE)
-        cam.set_parameter("ExposureTime", 5000.0)
+        cam.set_parameter(AcquisitionControl.ExposureTime, 5000.0)
         cam.start_grabbing()
         frame = cam.get_frame(timeout_ms=1000, output_format=OutputFormat.BGR8)
         cam.stop_grabbing()

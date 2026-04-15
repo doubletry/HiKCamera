@@ -7,7 +7,13 @@ Quick start / 快速上手
 
 .. code-block:: python
 
-    from hikcamera import HikCamera, AccessMode, OutputFormat
+    from hikcamera import (
+        AccessMode,
+        AcquisitionControl,
+        AnalogControl,
+        HikCamera,
+        OutputFormat,
+    )
 
     # Enumerate available cameras / 枚举可用相机
     cameras = HikCamera.enumerate()
@@ -17,10 +23,13 @@ Quick start / 快速上手
     with HikCamera.from_device_info(cameras[0]) as cam:
         cam.open(AccessMode.EXCLUSIVE)
 
-        # Adjust parameters (silently ignores unsupported ones)
-        # 设置参数（自动忽略不支持的参数）
-        cam.set_parameter("ExposureTime", 5000.0)
-        cam.set_parameter("Gain", 1.0)
+        # Prefer ParamNode-based configuration for IDE completion and
+        # validation. Legacy string names remain compatible for now, but will
+        # be gradually deprecated.
+        # 优先使用 ParamNode 配置方式以获得 IDE 补全和校验。旧字符串参数名
+        # 当前仍兼容，但后续会逐步废弃。
+        cam.set_parameter(AcquisitionControl.ExposureTime, 5000.0)
+        cam.set_parameter(AnalogControl.Gain, 1.0)
 
         # Poll for frames / 轮询取帧
         cam.start_grabbing()

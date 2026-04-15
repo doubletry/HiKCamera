@@ -14,7 +14,7 @@
 | **灵活连接** | 通过 IP 地址或序列号连接；按序列号搜索时优先使用更快的分层 SDK 枚举 |
 | **多种访问模式** | 独占、控制、监视、独占带切换、组播、单播 |
 | **GigE 包大小** | 打开时自动检测最优包大小；支持手动配置 |
-| **参数访问** | 获取/设置整型、浮点、布尔、枚举、字符串 GenICam 参数，完善的异常处理（不支持的参数会被优雅处理） |
+| **参数访问** | 推荐使用结构化 `ParamNode` 参数组进行读写，具备 IDE 补全与类型/范围/访问权限校验；旧字符串参数名当前仍兼容 |
 | **相机信息** | `get_camera_info()` 一次调用即可获取常用参数（图像尺寸、帧率、曝光、增益、像素格式、设备型号等） |
 | **配置管理** | 导出/导入相机配置文件；保存/加载设备用户集 |
 | **帧捕获 – 轮询模式** | `start_grabbing()` + `get_frame()` |
@@ -82,15 +82,22 @@ CameraLink 的顺序优先扫描，因此常见的 GigE 场景无需等待无关
 
 ```python
 import cv2
-from hikcamera import HikCamera, AccessMode, OutputFormat
+from hikcamera import (
+    AccessMode,
+    AcquisitionControl,
+    AnalogControl,
+    HikCamera,
+    OutputFormat,
+)
 
 cameras = HikCamera.enumerate()
 with HikCamera.from_device_info(cameras[0]) as cam:
     cam.open(AccessMode.EXCLUSIVE)
 
-    # 设置参数（自动忽略不支持的参数）
-    cam.set_parameter("ExposureTime", 5000.0)
-    cam.set_parameter("Gain", 1.0)
+    # 优先使用结构化 ParamNode 参数，IDE 补全和校验更完整。
+    # 旧的字符串参数名目前仍兼容，但后续会逐步废弃。
+    cam.set_parameter(AcquisitionControl.ExposureTime, 5000.0)
+    cam.set_parameter(AnalogControl.Gain, 1.0)
 
     cam.start_grabbing()
     frame = cam.get_frame(timeout_ms=1000, output_format=OutputFormat.BGR8)
@@ -98,6 +105,11 @@ with HikCamera.from_device_info(cameras[0]) as cam:
 
 cv2.imwrite("frame.png", frame)
 ```
+
+推荐优先使用 `AcquisitionControl.ExposureTime`、`AnalogControl.Gain` 这类
+`ParamNode` 写法。旧的字符串方式如
+`cam.set_parameter("ExposureTime", 5000.0)` 当前仍保持兼容，但新代码建议尽快
+迁移到结构化 API，后续会逐步废弃字符串参数名写法。
 
 ### 回调模式帧捕获
 
@@ -247,13 +259,19 @@ with HikCamera.from_ip("192.168.1.100") as cam:
 ### 带错误处理的参数访问
 
 ```python
-from hikcamera import HikCamera, ParameterNotSupportedError, ParameterReadOnlyError, GainAuto
+from hikcamera import (
+    AnalogControl,
+    GainAuto,
+    HikCamera,
+    ParameterNotSupportedError,
+    ParameterReadOnlyError,
+)
 
 with HikCamera.from_device_info(cameras[0]) as cam:
     cam.open()
 
     # 安全方式：自动忽略当前型号不支持的参数
-    cam.set_parameter("GainAuto", GainAuto.OFF)
+    cam.set_parameter(AnalogControl.GainAuto, GainAuto.OFF)
 
     # 或显式处理
     try:
@@ -323,13 +341,15 @@ with HikCamera.from_ip("192.168.1.100") as cam:
 
 > **注意：** 并非每个型号的相机都支持所有参数。不支持的参数会抛出
 > `ParameterNotSupportedError`（或被 `set_parameter()` / `get_parameter()` 静默跳过）。
+> 推荐优先传入 `AcquisitionControl.ExposureTime` 这类 `ParamNode`；旧的字符串参数名
+> 仅为兼容保留，后续会逐步废弃。
 
 ### 参数访问方法
 
 | 方法 | 说明 |
 |---|---|
-| `set_parameter(name, value)` | 通过 `isinstance` 校验的自动分派；枚举参数需传入对应枚举值（如 `GainAuto.OFF`）；自动跳过不支持的参数 |
-| `get_parameter(name, default=None)` | 按 int → float → string 顺序尝试；不支持时返回 *default* |
+| `set_parameter(name, value)` | `name` 可传 `ParamNode` 或旧字符串；推荐 `ParamNode`，可获得 IDE 补全以及 SDK 调用前的类型/范围/访问权限校验；自动跳过不支持的参数 |
+| `get_parameter(name, default=None)` | `name` 可传 `ParamNode` 或旧字符串；按 int → float → string 顺序尝试；不支持时返回 *default* |
 | `get_int_parameter(name)` / `set_int_parameter(name, value)` | 整型参数访问 |
 | `get_float_parameter(name)` / `set_float_parameter(name, value)` | 浮点型参数访问 |
 | `get_bool_parameter(name)` / `set_bool_parameter(name, value)` | 布尔型参数访问 |
@@ -418,7 +438,14 @@ with HikCamera.from_ip("192.168.1.100") as cam:
 ### 示例：读写参数
 
 ```python
-from hikcamera import HikCamera, AccessMode, GainAuto
+from hikcamera import (
+    AccessMode,
+    AcquisitionControl,
+    AnalogControl,
+    GainAuto,
+    HikCamera,
+    ImageFormatControl,
+)
 
 with HikCamera.from_ip("192.168.1.100") as cam:
     cam.open(AccessMode.EXCLUSIVE)
@@ -427,15 +454,15 @@ with HikCamera.from_ip("192.168.1.100") as cam:
     info = cam.get_camera_info()
     print(info)
 
-    # 高层便捷方法（自动类型分派）
-    cam.set_parameter("ExposureTime", 5000.0)
-    cam.set_parameter("Gain", 2.5)
-    cam.set_parameter("AcquisitionFrameRateEnable", True)
-    cam.set_parameter("GainAuto", GainAuto.OFF)    # 类型化枚举
+    # 推荐的高层便捷写法：使用结构化 ParamNode
+    cam.set_parameter(AcquisitionControl.ExposureTime, 5000.0)
+    cam.set_parameter(AnalogControl.Gain, 2.5)
+    cam.set_parameter(AcquisitionControl.AcquisitionFrameRateEnable, True)
+    cam.set_parameter(AnalogControl.GainAuto, GainAuto.OFF)
 
-    # 带类型的访问方式（可获取完整错误信息）
-    exposure = cam.get_float_parameter("ExposureTime")
-    width = cam.get_int_parameter("Width")
+    # 基于 ParamNode 的读取方式
+    exposure = cam.get_parameter(AcquisitionControl.ExposureTime)
+    width = cam.get_parameter(ImageFormatControl.Width)
 
     # 执行命令
     cam.execute_command("TriggerSoftware")

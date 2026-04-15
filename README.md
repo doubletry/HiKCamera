@@ -14,7 +14,7 @@ A Python 3.12 library for Hikvision industrial cameras (MVS SDK).
 | **Flexible connection** | Connect by IP address or serial number; serial lookup prioritizes faster layer-specific SDK scans |
 | **Multiple access modes** | Exclusive, Control, Monitor, Exclusive-With-Switch, Multicast, Unicast |
 | **GigE packet size** | Auto-detect optimal packet size on open; manual override supported |
-| **Parameter access** | Get/set integer, float, bool, enum, string GenICam parameters with full exception handling (missing parameters are handled gracefully) |
+| **Parameter access** | Prefer structured `ParamNode` groups for get/set operations with IDE completion, type/range/access validation; legacy string names remain compatible for now |
 | **Camera information** | `get_camera_info()` retrieves common parameters (image size, frame rate, exposure, gain, pixel format, device model, etc.) in a single call |
 | **Configuration management** | Export/import camera configuration files; save/load device user sets |
 | **Frame capture – polling** | `start_grabbing()` + `get_frame()` |
@@ -82,15 +82,23 @@ unrelated SDK scans.
 
 ```python
 import cv2
-from hikcamera import HikCamera, AccessMode, OutputFormat
+from hikcamera import (
+    AccessMode,
+    AcquisitionControl,
+    AnalogControl,
+    HikCamera,
+    OutputFormat,
+)
 
 cameras = HikCamera.enumerate()
 with HikCamera.from_device_info(cameras[0]) as cam:
     cam.open(AccessMode.EXCLUSIVE)
 
-    # Adjust parameters (silently ignores unsupported ones)
-    cam.set_parameter("ExposureTime", 5000.0)
-    cam.set_parameter("Gain", 1.0)
+    # Prefer structured ParamNode parameters for IDE completion and validation.
+    # String names are still supported for backward compatibility, but will be
+    # gradually deprecated in future releases.
+    cam.set_parameter(AcquisitionControl.ExposureTime, 5000.0)
+    cam.set_parameter(AnalogControl.Gain, 1.0)
 
     cam.start_grabbing()
     frame = cam.get_frame(timeout_ms=1000, output_format=OutputFormat.BGR8)
@@ -98,6 +106,12 @@ with HikCamera.from_device_info(cameras[0]) as cam:
 
 cv2.imwrite("frame.png", frame)
 ```
+
+Prefer `ParamNode`-based access such as `AcquisitionControl.ExposureTime` and
+`AnalogControl.Gain`. Legacy string-based calls like
+`cam.set_parameter("ExposureTime", 5000.0)` remain compatible for now, but new
+code should migrate to the structured API because string-based parameter names
+will be gradually deprecated.
 
 ### Callback frame capture
 
@@ -249,13 +263,19 @@ with HikCamera.from_ip("192.168.1.100") as cam:
 ### Parameter access with error handling
 
 ```python
-from hikcamera import HikCamera, ParameterNotSupportedError, ParameterReadOnlyError, GainAuto
+from hikcamera import (
+    AnalogControl,
+    GainAuto,
+    HikCamera,
+    ParameterNotSupportedError,
+    ParameterReadOnlyError,
+)
 
 with HikCamera.from_device_info(cameras[0]) as cam:
     cam.open()
 
     # Safe: silently ignores parameters not present on this model
-    cam.set_parameter("GainAuto", GainAuto.OFF)
+    cam.set_parameter(AnalogControl.GainAuto, GainAuto.OFF)
 
     # Or handle explicitly
     try:
@@ -326,14 +346,16 @@ typed getter/setter methods.
 
 > **Note:** Not every camera model supports every parameter.  Unsupported
 > parameters raise `ParameterNotSupportedError` (or are silently skipped by
-> `set_parameter()` / `get_parameter()`).
+> `set_parameter()` / `get_parameter()`). Prefer passing `ParamNode` objects
+> such as `AcquisitionControl.ExposureTime`; legacy string names remain
+> supported for backward compatibility but will be gradually deprecated.
 
 ### Parameter access methods
 
 | Method | Description |
 |---|---|
-| `set_parameter(name, value)` | Auto-dispatch with `isinstance` validation; enum params require typed enum values (e.g. `GainAuto.OFF`); silently skips unsupported parameters |
-| `get_parameter(name, default=None)` | Auto-tries int → float → string; returns *default* if unsupported |
+| `set_parameter(name, value)` | `name` can be a `ParamNode` or legacy string; prefer `ParamNode` for IDE completion plus type/range/access validation before SDK calls; silently skips unsupported parameters |
+| `get_parameter(name, default=None)` | `name` can be a `ParamNode` or legacy string; auto-tries int → float → string; returns *default* if unsupported |
 | `get_int_parameter(name)` / `set_int_parameter(name, value)` | Integer parameter access |
 | `get_float_parameter(name)` / `set_float_parameter(name, value)` | Float parameter access |
 | `get_bool_parameter(name)` / `set_bool_parameter(name, value)` | Boolean parameter access |
@@ -422,7 +444,14 @@ These nodes are executed via `execute_command()`:
 ### Example: reading & writing parameters
 
 ```python
-from hikcamera import HikCamera, AccessMode, GainAuto
+from hikcamera import (
+    AccessMode,
+    AcquisitionControl,
+    AnalogControl,
+    GainAuto,
+    HikCamera,
+    ImageFormatControl,
+)
 
 with HikCamera.from_ip("192.168.1.100") as cam:
     cam.open(AccessMode.EXCLUSIVE)
@@ -431,15 +460,15 @@ with HikCamera.from_ip("192.168.1.100") as cam:
     info = cam.get_camera_info()
     print(info)
 
-    # High-level convenience (auto type dispatch)
-    cam.set_parameter("ExposureTime", 5000.0)
-    cam.set_parameter("Gain", 2.5)
-    cam.set_parameter("AcquisitionFrameRateEnable", True)
-    cam.set_parameter("GainAuto", GainAuto.OFF)    # typed enum
+    # Preferred high-level convenience API: structured ParamNode objects
+    cam.set_parameter(AcquisitionControl.ExposureTime, 5000.0)
+    cam.set_parameter(AnalogControl.Gain, 2.5)
+    cam.set_parameter(AcquisitionControl.AcquisitionFrameRateEnable, True)
+    cam.set_parameter(AnalogControl.GainAuto, GainAuto.OFF)
 
-    # Typed access (gives full error info)
-    exposure = cam.get_float_parameter("ExposureTime")
-    width = cam.get_int_parameter("Width")
+    # ParamNode-based read access
+    exposure = cam.get_parameter(AcquisitionControl.ExposureTime)
+    width = cam.get_parameter(ImageFormatControl.Width)
 
     # Execute a command
     cam.execute_command("TriggerSoftware")
