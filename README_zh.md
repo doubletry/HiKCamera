@@ -265,22 +265,26 @@ from hikcamera import (
     HikCamera,
     ParameterNotSupportedError,
     ParameterReadOnlyError,
+    AcquisitionControl,
+    ImageFormatControl,
 )
 
 with HikCamera.from_device_info(cameras[0]) as cam:
     cam.open()
 
-    # 安全方式：自动忽略当前型号不支持的参数
+    # 推荐：基于 ParamNode 的访问方式
     cam.set_parameter(AnalogControl.GainAuto, GainAuto.OFF)
 
-    # 或显式处理
+    # 基于 ParamNode 的读取方式
     try:
-        value = cam.get_float_parameter("ExposureTime")
+        value = cam.get_parameter(AcquisitionControl.ExposureTime)
     except ParameterNotSupportedError:
         print("此相机不支持 ExposureTime 参数")
 
+    # 兼容接口如 set_int_parameter() 目前仍可用，
+    # 但新代码建议迁移到 ParamNode 方式。
     try:
-        cam.set_int_parameter("Width", 1920)
+        cam.set_parameter(ImageFormatControl.Width, 1920)
     except ParameterReadOnlyError:
         print("取帧期间 Width 为只读参数")
 ```
@@ -288,19 +292,19 @@ with HikCamera.from_device_info(cameras[0]) as cam:
 ### 获取相机信息
 
 ```python
-from hikcamera import HikCamera, AccessMode
+from hikcamera import AccessMode, AcquisitionControl, AnalogControl, HikCamera, ImageFormatControl
 
 with HikCamera.from_ip("192.168.1.100") as cam:
     cam.open(AccessMode.EXCLUSIVE)
 
     # 一次获取所有常用相机参数
     info = cam.get_camera_info()
-    print(f"分辨率: {info.get('Width')}x{info.get('Height')}")
-    print(f"曝光: {info.get('ExposureTime')} µs")
-    print(f"增益: {info.get('Gain')}")
-    print(f"帧率: {info.get('AcquisitionFrameRate')} fps")
-    print(f"像素格式: {info.get('PixelFormat')}")
-    print(f"型号: {info.get('DeviceModelName')}")
+    print(f"分辨率: {info.get(ImageFormatControl.Width)}x{info.get(ImageFormatControl.Height)}")
+    print(f"曝光: {info.get(AcquisitionControl.ExposureTime)} µs")
+    print(f"增益: {info.get(AnalogControl.Gain)}")
+    print(f"帧率: {info.get(AcquisitionControl.AcquisitionFrameRate)} fps")
+    print(f"像素格式: {info.get(ImageFormatControl.PixelFormat)}")
+    print(f"型号: {info.get('DeviceModelName')}")  # 旧字符串 key 目前仍兼容
 ```
 
 ### 导出 / 导入相机配置
@@ -336,13 +340,16 @@ with HikCamera.from_ip("192.168.1.100") as cam:
 ## 可调参数
 
 相机通过 MVS SDK 暴露 **GenICam** 标准参数。下表列出了 `get_camera_info()` 自动
-收集的常用参数，但您可以通过带类型的 getter/setter 方法按名称访问**任何** GenICam
-节点。
+收集的常用参数，但新代码应优先使用基于 `ParamNode` 的
+`get_parameter()` / `set_parameter()` 访问方式。旧的带类型
+getter/setter 仍保留用于向后兼容，但应视为兼容接口，后续可能逐步废弃。
 
 > **注意：** 并非每个型号的相机都支持所有参数。不支持的参数会抛出
 > `ParameterNotSupportedError`（或被 `set_parameter()` / `get_parameter()` 静默跳过）。
 > 推荐优先传入 `AcquisitionControl.ExposureTime` 这类 `ParamNode`；旧的字符串参数名
 > 仅为兼容保留，后续会逐步废弃。
+> `get_int_parameter()` / `set_int_parameter()` 等带类型接口目前也仍可使用，
+> 但新代码建议迁移到基于 `ParamNode` 的 `get_parameter()` / `set_parameter()`。
 
 ### 参数访问方法
 
@@ -350,14 +357,14 @@ with HikCamera.from_ip("192.168.1.100") as cam:
 |---|---|
 | `set_parameter(name, value)` | `name` 可传 `ParamNode` 或旧字符串；推荐 `ParamNode`，可获得 IDE 补全以及 SDK 调用前的类型/范围/访问权限校验；自动跳过不支持的参数 |
 | `get_parameter(name, default=None)` | `name` 可传 `ParamNode` 或旧字符串；按 int → float → string 顺序尝试；不支持时返回 *default* |
-| `get_int_parameter(name)` / `set_int_parameter(name, value)` | 整型参数访问 |
-| `get_float_parameter(name)` / `set_float_parameter(name, value)` | 浮点型参数访问 |
-| `get_bool_parameter(name)` / `set_bool_parameter(name, value)` | 布尔型参数访问 |
-| `get_enum_parameter(name)` / `set_enum_parameter(name, value)` | 枚举型参数访问（整数值） |
+| `get_int_parameter(name)` / `set_int_parameter(name, value)` | 整型参数的兼容接口；新代码建议改用基于 `ParamNode` 的 `get_parameter()` / `set_parameter()` |
+| `get_float_parameter(name)` / `set_float_parameter(name, value)` | 浮点参数的兼容接口；新代码建议改用基于 `ParamNode` 的 `get_parameter()` / `set_parameter()` |
+| `get_bool_parameter(name)` / `set_bool_parameter(name, value)` | 布尔参数的兼容接口；新代码建议改用基于 `ParamNode` 的 `get_parameter()` / `set_parameter()` |
+| `get_enum_parameter(name)` / `set_enum_parameter(name, value)` | 枚举参数的兼容接口；新代码建议改用基于 `ParamNode` 的 `get_parameter()` / `set_parameter()` |
 | `set_enum_parameter_by_string(name, string_value)` | 按符号名称设置枚举参数（如 `"Off"`、`"Continuous"`） |
-| `get_string_parameter(name)` / `set_string_parameter(name, value)` | 字符串型参数访问 |
+| `get_string_parameter(name)` / `set_string_parameter(name, value)` | 字符串参数的兼容接口；新代码建议改用基于 `ParamNode` 的 `get_parameter()` / `set_parameter()` |
 | `execute_command(name)` | 执行命令节点（如 `"TriggerSoftware"`） |
-| `get_camera_info()` | 一次调用获取下表中所有常用参数 |
+| `get_camera_info()` | 一次调用获取下表中所有常用参数；返回结果同时支持 `ParamNode` 和旧字符串 key 访问，但推荐优先使用 `ParamNode` |
 | `get_optimal_packet_size()` | 查询 SDK 获取 GigE 最优包大小（仅 GigE 相机） |
 | `get_packet_size()` / `set_packet_size(size)` | 获取/设置 GigE 流传输包大小（`GevSCPSPacketSize`） |
 

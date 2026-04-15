@@ -98,6 +98,35 @@ _MAX_GIGE_PACKET_SIZE_CACHE_ENTRIES: int = 64
 _GIGE_PACKET_SIZE_CACHE: OrderedDict[str, int] = OrderedDict()
 
 
+class CameraInfoDict(dict[str, Any]):
+    """
+    Dictionary returned by :meth:`HikCamera.get_camera_info`.
+    :meth:`HikCamera.get_camera_info` 返回的字典类型。
+
+    Values are stored under legacy string node names for backward
+    compatibility, but lookups also accept :class:`~hikcamera.params.ParamNode`
+    instances.
+    值仍以旧的字符串节点名存储以保持向后兼容，但取值时也支持
+    :class:`~hikcamera.params.ParamNode` 实例。
+    """
+
+    @staticmethod
+    def _normalize_key(key: object) -> object:
+        """Convert ParamNode keys to their GenICam string names."""
+        if isinstance(key, ParamNode):
+            return key.name
+        return key
+
+    def __getitem__(self, key: object) -> Any:
+        return super().__getitem__(self._normalize_key(key))
+
+    def get(self, key: object, default: Any = None) -> Any:
+        return super().get(self._normalize_key(key), default)
+
+    def __contains__(self, key: object) -> bool:
+        return super().__contains__(self._normalize_key(key))
+
+
 def _cache_gige_packet_size(cache_key: str, packet_size: int) -> None:
     """
     Store a GigE packet-size hint in a bounded LRU cache.
@@ -1569,14 +1598,18 @@ class HikCamera:
         Returns / 返回
         --------------
         dict[str, Any]
-            A dictionary with available parameter values.  Typical keys
-            include ``"Width"``, ``"Height"``, ``"PixelFormat"``,
-            ``"ExposureTime"``, ``"Gain"``, ``"AcquisitionFrameRate"``,
-            ``"PayloadSize"``, ``"DeviceModelName"``, etc.
-            包含可用参数值的字典。典型键包括 ``"Width"``、``"Height"``、
-            ``"PixelFormat"``、``"ExposureTime"``、``"Gain"``、
-            ``"AcquisitionFrameRate"``、``"PayloadSize"``、
-            ``"DeviceModelName"`` 等。
+            A dictionary-like object with available parameter values.
+            Stored keys remain the legacy string names (for backward
+            compatibility), but lookups also accept ``ParamNode`` objects such
+            as ``ImageFormatControl.Width`` and ``AcquisitionControl.ExposureTime``.
+            String-key access remains supported for now, but new code should
+            prefer ``ParamNode`` lookups and string-key access may be gradually
+            deprecated in a future release.
+            包含可用参数值的类字典对象。实际存储的键仍是旧的字符串名称
+            （保持向后兼容），但取值时也支持 ``ParamNode``，例如
+            ``ImageFormatControl.Width``、``AcquisitionControl.ExposureTime``。
+            目前仍兼容字符串 key，但新代码应优先使用 ``ParamNode`` 访问；
+            后续版本中字符串 key 访问可能会逐步废弃。
 
         Raises / 异常
         -------------
@@ -1584,7 +1617,7 @@ class HikCamera:
             When the camera is not open. / 当相机未打开时抛出。
         """
         self._assert_open()
-        info: dict[str, Any] = {}
+        info: CameraInfoDict = CameraInfoDict()
 
         # Integer parameters / 整型参数
         for name in (

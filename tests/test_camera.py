@@ -15,6 +15,7 @@ import hikcamera.camera as camera_module
 from hikcamera.camera import (
     GIGE_PACKET_SIZE_DEFAULT,
     GIGE_PACKET_SIZE_JUMBO,
+    CameraInfoDict,
     DeviceInfo,
     HikCamera,
     _frame_info_to_dict,
@@ -43,6 +44,7 @@ from hikcamera.exceptions import (
     ParameterReadOnlyError,
     ParameterValueError,
 )
+from hikcamera.params import AcquisitionControl, AnalogControl, ImageFormatControl
 from hikcamera.sdk_wrapper import (
     MV_CC_DEVICE_INFO,
 )
@@ -1112,6 +1114,7 @@ class TestCameraInfo:
         self._setup_param_responses(mock_sdk)
         info = cam.get_camera_info()
         assert isinstance(info, dict)
+        assert isinstance(info, CameraInfoDict)
 
     def test_get_camera_info_contains_image_dimensions(self, mock_sdk):
         cam = make_camera_with_sdk(mock_sdk)
@@ -1168,3 +1171,19 @@ class TestCameraInfo:
         info = cam.get_camera_info()
         assert info["AcquisitionFrameRateEnable"] is True
         assert info["GammaEnable"] is False
+
+    def test_get_camera_info_supports_paramnode_getitem(self, mock_sdk):
+        cam = make_camera_with_sdk(mock_sdk)
+        self._setup_param_responses(mock_sdk)
+        info = cam.get_camera_info()
+        assert info[ImageFormatControl.Width] == 1920
+        assert info[AcquisitionControl.ExposureTime] == pytest.approx(5000.0)
+        assert info[AnalogControl.Gain] == pytest.approx(1.5)
+
+    def test_get_camera_info_supports_paramnode_get_and_contains(self, mock_sdk):
+        cam = make_camera_with_sdk(mock_sdk)
+        self._setup_param_responses(mock_sdk)
+        info = cam.get_camera_info()
+        assert info.get(ImageFormatControl.Height) == 1080
+        assert AcquisitionControl.AcquisitionFrameRate in info
+        assert AnalogControl.GainAuto in info

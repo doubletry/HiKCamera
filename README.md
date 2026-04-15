@@ -269,22 +269,26 @@ from hikcamera import (
     HikCamera,
     ParameterNotSupportedError,
     ParameterReadOnlyError,
+    AcquisitionControl,
+    ImageFormatControl,
 )
 
 with HikCamera.from_device_info(cameras[0]) as cam:
     cam.open()
 
-    # Safe: silently ignores parameters not present on this model
+    # Preferred: ParamNode-based access
     cam.set_parameter(AnalogControl.GainAuto, GainAuto.OFF)
 
-    # Or handle explicitly
+    # ParamNode-based read access
     try:
-        value = cam.get_float_parameter("ExposureTime")
+        value = cam.get_parameter(AcquisitionControl.ExposureTime)
     except ParameterNotSupportedError:
         print("ExposureTime not available on this camera")
 
+    # Compatibility APIs like set_int_parameter() still work for now,
+    # but new code should migrate to ParamNode-based access.
     try:
-        cam.set_int_parameter("Width", 1920)
+        cam.set_parameter(ImageFormatControl.Width, 1920)
     except ParameterReadOnlyError:
         print("Width is read-only while grabbing")
 ```
@@ -292,19 +296,19 @@ with HikCamera.from_device_info(cameras[0]) as cam:
 ### Get camera information
 
 ```python
-from hikcamera import HikCamera, AccessMode
+from hikcamera import AccessMode, AcquisitionControl, AnalogControl, HikCamera, ImageFormatControl
 
 with HikCamera.from_ip("192.168.1.100") as cam:
     cam.open(AccessMode.EXCLUSIVE)
 
     # Get all common camera parameters at once
     info = cam.get_camera_info()
-    print(f"Resolution: {info.get('Width')}x{info.get('Height')}")
-    print(f"Exposure: {info.get('ExposureTime')} µs")
-    print(f"Gain: {info.get('Gain')}")
-    print(f"Frame rate: {info.get('AcquisitionFrameRate')} fps")
-    print(f"Pixel format: {info.get('PixelFormat')}")
-    print(f"Model: {info.get('DeviceModelName')}")
+    print(f"Resolution: {info.get(ImageFormatControl.Width)}x{info.get(ImageFormatControl.Height)}")
+    print(f"Exposure: {info.get(AcquisitionControl.ExposureTime)} µs")
+    print(f"Gain: {info.get(AnalogControl.Gain)}")
+    print(f"Frame rate: {info.get(AcquisitionControl.AcquisitionFrameRate)} fps")
+    print(f"Pixel format: {info.get(ImageFormatControl.PixelFormat)}")
+    print(f"Model: {info.get('DeviceModelName')}")  # legacy string key still works for now
 ```
 
 ### Export / import camera configuration
@@ -339,16 +343,21 @@ with HikCamera.from_ip("192.168.1.100") as cam:
 
 ## Adjustable Parameters
 
-The camera exposes **GenICam** standard parameters via the MVS SDK.  The table
+The camera exposes **GenICam** standard parameters via the MVS SDK. The table
 below lists the commonly used parameters that `get_camera_info()` collects
-automatically, but you can access **any** GenICam node by name through the
-typed getter/setter methods.
+automatically, but new code should prefer `ParamNode`-based
+`get_parameter()` / `set_parameter()` access. The older typed getter/setter
+helpers remain available for backward compatibility, but should be considered
+compatibility APIs and may be gradually deprecated.
 
 > **Note:** Not every camera model supports every parameter.  Unsupported
 > parameters raise `ParameterNotSupportedError` (or are silently skipped by
 > `set_parameter()` / `get_parameter()`). Prefer passing `ParamNode` objects
-> such as `AcquisitionControl.ExposureTime`; legacy string names remain
+> such as `AcquisitionControl.ExposureTime`. Legacy string names remain
 > supported for backward compatibility but will be gradually deprecated.
+> Legacy typed helpers like `get_int_parameter()` / `set_int_parameter()` also
+> remain available for now, but new code should migrate to `ParamNode`-based
+> `get_parameter()` / `set_parameter()`.
 
 ### Parameter access methods
 
@@ -356,14 +365,14 @@ typed getter/setter methods.
 |---|---|
 | `set_parameter(name, value)` | `name` can be a `ParamNode` or legacy string; prefer `ParamNode` for IDE completion plus type/range/access validation before SDK calls; silently skips unsupported parameters |
 | `get_parameter(name, default=None)` | `name` can be a `ParamNode` or legacy string; auto-tries int → float → string; returns *default* if unsupported |
-| `get_int_parameter(name)` / `set_int_parameter(name, value)` | Integer parameter access |
-| `get_float_parameter(name)` / `set_float_parameter(name, value)` | Float parameter access |
-| `get_bool_parameter(name)` / `set_bool_parameter(name, value)` | Boolean parameter access |
-| `get_enum_parameter(name)` / `set_enum_parameter(name, value)` | Enum parameter access (integer value) |
+| `get_int_parameter(name)` / `set_int_parameter(name, value)` | Legacy compatibility helpers for integer parameters; new code should prefer `get_parameter()` / `set_parameter()` with `ParamNode` |
+| `get_float_parameter(name)` / `set_float_parameter(name, value)` | Legacy compatibility helpers for float parameters; new code should prefer `get_parameter()` / `set_parameter()` with `ParamNode` |
+| `get_bool_parameter(name)` / `set_bool_parameter(name, value)` | Legacy compatibility helpers for boolean parameters; new code should prefer `get_parameter()` / `set_parameter()` with `ParamNode` |
+| `get_enum_parameter(name)` / `set_enum_parameter(name, value)` | Legacy compatibility helpers for enum parameters; new code should prefer `get_parameter()` / `set_parameter()` with `ParamNode` |
 | `set_enum_parameter_by_string(name, string_value)` | Enum parameter set by symbolic name (e.g. `"Off"`, `"Continuous"`) |
-| `get_string_parameter(name)` / `set_string_parameter(name, value)` | String parameter access |
+| `get_string_parameter(name)` / `set_string_parameter(name, value)` | Legacy compatibility helpers for string parameters; new code should prefer `get_parameter()` / `set_parameter()` with `ParamNode` |
 | `execute_command(name)` | Execute a command node (e.g. `"TriggerSoftware"`) |
-| `get_camera_info()` | Retrieve all common parameters listed below in a single call |
+| `get_camera_info()` | Retrieve all common parameters listed below in a single call; returned mapping supports both `ParamNode` and legacy string-key access, but `ParamNode` access is preferred |
 | `get_optimal_packet_size()` | Query SDK for the optimal GigE packet size (GigE only) |
 | `get_packet_size()` / `set_packet_size(size)` | Get/set GigE streaming packet size (`GevSCPSPacketSize`) |
 
