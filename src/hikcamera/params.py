@@ -677,6 +677,10 @@ class EncoderControl:
         "EncoderCounterMax", int, "R/W",
         "编码器计数器最大值 / Encoder counter max", min_value=1,
     )
+    # NOTE: The SDK documentation (V4.7.0) marks these command nodes as "R/W".
+    # This is unusual for commands but matches the official parameter node table.
+    # 注：SDK 文档（V4.7.0）将这些命令节点标记为 "R/W"。
+    # 这对命令来说不常见，但与官方参数节点表一致。
     EncoderCounterReset = ParamNode(
         "EncoderCounterReset", "command", "R/W",
         "编码器计数器复位 / Encoder counter reset",
@@ -725,6 +729,8 @@ class ShadingCorrection:
         "ShadingSelector", ShadingSelector, "R/W",
         "明暗场校正选择 / Shading correction selector",
     )
+    # NOTE: The SDK documentation (V4.7.0) marks this command node as "R/(W)".
+    # 注：SDK 文档（V4.7.0）将此命令节点标记为 "R/(W)"。
     ActivateShading = ParamNode(
         "ActivateShading", "command", "R/(W)",
         "主动校正 / Activate shading correction",

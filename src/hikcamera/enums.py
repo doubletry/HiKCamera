@@ -620,6 +620,10 @@ class GevCCP(StrEnum):
     GigE Vision control channel privilege.
     GigE Vision 控制通道权限。
     """
+    # NOTE: "OpenAcess" (single 's') matches the SDK documentation (V4.7.0)
+    # parameter node table.  This is the actual string the camera accepts.
+    # 注：SDK 文档（V4.7.0）参数节点表中使用 "OpenAcess"（单 s），
+    # 这是相机实际接受的字符串。
     OPEN_ACCESS = "OpenAcess"
     EXCLUSIVE_ACCESS = "ExclusiveAccess"
     CONTROL_ACCESS = "ControlAccess"
