@@ -38,14 +38,14 @@ deprecation in a future release:
 These milestones are intentionally provisional, but they document the expected
 order of work so users can plan migrations:
 
-- Next minor release:
+- Next minor release (tentatively `v0.2.x`):
   - keep all legacy APIs fully working
   - continue migrating docs, demos, and examples to `ParamNode`
   - keep compatibility behavior in `get_camera_info()`
-- Following minor release:
+- Following minor release (tentatively `v0.3.x`):
   - consider adding deprecation warnings for typed getter/setter helpers and
     legacy string-key access in `get_camera_info()`
   - keep runtime behavior backward compatible
-- Future major release:
+- Future major release (tentatively `v1.0` or later):
   - re-evaluate whether legacy typed helpers and legacy string-key access
     should remain supported, based on migration feedback and adoption
