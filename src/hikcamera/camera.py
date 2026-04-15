@@ -1502,6 +1502,14 @@ class HikCamera:
         ``cam.TriggerSoftware()`` -> ``cam.execute_command(AcquisitionControl.TriggerSoftware)``
         ``cam.UserSetSave()`` -> ``cam.execute_command(UserSetControl.UserSetSave)``
         """
+        cache: dict[str, Callable[[], None]] = self.__dict__.setdefault(
+            "_command_method_cache",
+            {},
+        )
+        cached = cache.get(name)
+        if cached is not None:
+            return cached
+
         node = _COMMAND_NODE_LOOKUP.get(name)
         if node is None:
             raise AttributeError(f"{type(self).__name__!s} object has no attribute {name!r}")
@@ -1510,7 +1518,17 @@ class HikCamera:
             self.execute_command(node)
 
         _invoke_command.__name__ = name
+        cache[name] = _invoke_command
         return _invoke_command
+
+    @staticmethod
+    def _resolve_user_set_selector(user_set: UserSetSelector | str) -> UserSetSelector:
+        """
+        Normalize a user-set helper argument to ``UserSetSelector``.
+        将用户集辅助方法参数标准化为 ``UserSetSelector``。
+        """
+        selector = user_set if isinstance(user_set, UserSetSelector) else UserSetSelector(user_set)
+        return UserSetControl.UserSetSelector.validate(selector)
 
     # ------------------------------------------------------------------
     # Configuration file import / export
@@ -1617,8 +1635,7 @@ class HikCamera:
             When the SDK call fails. / 当 SDK 调用失败时抛出。
         """
         self._assert_open()
-        selector = user_set if isinstance(user_set, UserSetSelector) else UserSetSelector(user_set)
-        validated_selector = UserSetControl.UserSetSelector.validate(selector)
+        validated_selector = self._resolve_user_set_selector(user_set)
         self._set_parameter_by_schema(
             UserSetControl.UserSetSelector.name,
             validated_selector,
@@ -1655,8 +1672,7 @@ class HikCamera:
             When the SDK call fails. / 当 SDK 调用失败时抛出。
         """
         self._assert_open()
-        selector = user_set if isinstance(user_set, UserSetSelector) else UserSetSelector(user_set)
-        validated_selector = UserSetControl.UserSetSelector.validate(selector)
+        validated_selector = self._resolve_user_set_selector(user_set)
         self._set_parameter_by_schema(
             UserSetControl.UserSetSelector.name,
             validated_selector,
