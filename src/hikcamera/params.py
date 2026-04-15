@@ -225,7 +225,7 @@ class ParamNode:
             and hasattr(self.data_type, name)
         ):
             return getattr(self.data_type, name)
-        raise AttributeError(f"{type(self).__name__!s} object has no attribute {name!r}")
+        raise AttributeError(f"{type(self).__name__} object has no attribute {name!r}")
 
 
 # ===================================================================
