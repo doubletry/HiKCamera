@@ -261,7 +261,6 @@ with HikCamera.from_ip("192.168.1.100") as cam:
 ```python
 from hikcamera import (
     AnalogControl,
-    GainAuto,
     HikCamera,
     ParameterNotSupportedError,
     ParameterReadOnlyError,
@@ -273,7 +272,7 @@ with HikCamera.from_device_info(cameras[0]) as cam:
     cam.open()
 
     # 推荐：基于 ParamNode 的访问方式
-    cam.set_parameter(AnalogControl.GainAuto, GainAuto.OFF)
+    cam.set_parameter(AnalogControl.GainAuto, AnalogControl.GainAuto.OFF)
 
     # 基于 ParamNode 的读取方式
     try:
@@ -325,16 +324,16 @@ with HikCamera.from_ip("192.168.1.100") as cam:
 ### 保存 / 加载设备用户集
 
 ```python
-from hikcamera import AccessMode, HikCamera, UserSetSelector
+from hikcamera import AccessMode, HikCamera, UserSetControl
 
 with HikCamera.from_ip("192.168.1.100") as cam:
     cam.open(AccessMode.EXCLUSIVE)
 
     # 推荐：使用结构化枚举值
-    cam.save_user_set(UserSetSelector.USER_SET_1)
+    cam.save_user_set(UserSetControl.UserSetSelector.USER_SET_1)
 
     # 稍后，从用户集 1 恢复参数
-    cam.load_user_set(UserSetSelector.USER_SET_1)
+    cam.load_user_set(UserSetControl.UserSetSelector.USER_SET_1)
 
     # 旧字符串参数目前仍兼容
     cam.save_user_set("UserSet1")
@@ -368,7 +367,7 @@ getter/setter 仍保留用于向后兼容，但应视为兼容接口，后续可
 | `get_string_parameter(name)` / `set_string_parameter(name, value)` | 字符串参数的兼容接口；新代码建议改用基于 `ParamNode` 的 `get_parameter()` / `set_parameter()` |
 | `cam.<CommandNode>()` | 推荐的命令调用方式，例如 `cam.TriggerSoftware()` / `cam.UserSetLoad()` |
 | `execute_command(name)` | 命令节点的兼容接口；新代码建议优先使用 `cam.<CommandNode>()` |
-| `save_user_set(user_set)` / `load_user_set(user_set)` | 高层辅助接口；推荐传入 `UserSetSelector.USER_SET_1` 这类枚举值，旧字符串目前仍兼容 |
+| `save_user_set(user_set)` / `load_user_set(user_set)` | 高层辅助接口；推荐传入 `UserSetControl.UserSetSelector.USER_SET_1` 这类结构化枚举成员，旧字符串目前仍兼容 |
 | `get_camera_info()` | 一次调用获取下表中所有常用参数；返回结果同时支持 `ParamNode` 和旧字符串 key 访问，但推荐优先使用 `ParamNode` |
 | `get_optimal_packet_size()` | 查询 SDK 获取 GigE 最优包大小（仅 GigE 相机） |
 | `get_packet_size()` / `set_packet_size(size)` | 获取/设置 GigE 流传输包大小（`GevSCPSPacketSize`） |
@@ -455,10 +454,9 @@ from hikcamera import (
     AccessMode,
     AcquisitionControl,
     AnalogControl,
-    GainAuto,
     HikCamera,
     ImageFormatControl,
-    UserSetSelector,
+    UserSetControl,
 )
 
 with HikCamera.from_ip("192.168.1.100") as cam:
@@ -472,7 +470,7 @@ with HikCamera.from_ip("192.168.1.100") as cam:
     cam.set_parameter(AcquisitionControl.ExposureTime, 5000.0)
     cam.set_parameter(AnalogControl.Gain, 2.5)
     cam.set_parameter(AcquisitionControl.AcquisitionFrameRateEnable, True)
-    cam.set_parameter(AnalogControl.GainAuto, GainAuto.OFF)
+    cam.set_parameter(AnalogControl.GainAuto, AnalogControl.GainAuto.OFF)
 
     # 基于 ParamNode 的读取方式
     exposure = cam.get_parameter(AcquisitionControl.ExposureTime)
@@ -482,7 +480,7 @@ with HikCamera.from_ip("192.168.1.100") as cam:
     cam.TriggerSoftware()
 
     # 使用结构化枚举值保存用户集
-    cam.save_user_set(UserSetSelector.USER_SET_1)
+    cam.save_user_set(UserSetControl.UserSetSelector.USER_SET_1)
 ```
 
 ## 示例程序

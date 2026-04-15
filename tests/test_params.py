@@ -145,6 +145,10 @@ class TestParamNodeTypeValidation:
         node = ParamNode("GainAuto", GainAuto, "R/W", "Auto gain")
         assert node.validate(GainAuto.OFF) == GainAuto.OFF
 
+    def test_enum_paramnode_exposes_enum_members(self):
+        assert AnalogControl.GainAuto.OFF == GainAuto.OFF
+        assert UserSetControl.UserSetSelector.USER_SET_1.name == "USER_SET_1"
+
     def test_enum_rejects_raw_string(self):
         node = ParamNode("GainAuto", GainAuto, "R/W", "Auto gain")
         with pytest.raises(ParameterValueError, match="expects GainAuto"):
@@ -429,7 +433,7 @@ class TestSetParameterWithParamNode:
 
     def test_set_parameter_with_param_node_enum(self, camera_with_mock_sdk):
         cam = camera_with_mock_sdk
-        cam.set_parameter(AnalogControl.GainAuto, GainAuto.OFF)
+        cam.set_parameter(AnalogControl.GainAuto, AnalogControl.GainAuto.OFF)
         cam._sdk.MV_CC_SetEnumValueByString.assert_called()
 
     def test_set_parameter_with_param_node_string(self, camera_with_mock_sdk):

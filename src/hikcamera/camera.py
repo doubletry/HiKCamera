@@ -1476,10 +1476,10 @@ class HikCamera:
         This method remains available for backward compatibility, but new code
         should prefer bound command-style calls such as ``cam.TriggerSoftware()``
         or high-level helpers such as
-        ``cam.save_user_set(UserSetSelector.USER_SET_1)``.
+        ``cam.save_user_set(UserSetControl.UserSetSelector.USER_SET_1)``.
         该方法目前仍保留用于向后兼容，但新代码应优先使用
         ``cam.TriggerSoftware()`` 这类绑定命令调用，或
-        ``cam.save_user_set(UserSetSelector.USER_SET_1)`` 这类高层辅助方法。
+        ``cam.save_user_set(UserSetControl.UserSetSelector.USER_SET_1)`` 这类高层辅助方法。
         """
         if isinstance(name, ParamNode):
             if name.data_type != "command":
@@ -1609,7 +1609,7 @@ class HikCamera:
 
     def save_user_set(
         self,
-        user_set: UserSetSelector | str = UserSetSelector.USER_SET_1,
+        user_set: UserSetSelector | str = UserSetControl.UserSetSelector.USER_SET_1,
     ) -> None:
         """
         Save the current camera parameters to a user set stored on the device.
@@ -1618,11 +1618,12 @@ class HikCamera:
         Parameters / 参数
         -----------------
         user_set:
-            Preferred: a ``UserSetSelector`` enum member such as
-            ``UserSetSelector.USER_SET_1``. Legacy string names like
+            Preferred: the enum-style member exposed by the structured node, such as
+            ``UserSetControl.UserSetSelector.USER_SET_1``. Legacy string names like
             ``"UserSet1"`` remain supported for backward compatibility.
-            推荐传入 ``UserSetSelector.USER_SET_1`` 这类 ``UserSetSelector``
-            枚举成员。旧字符串名称如 ``"UserSet1"`` 目前仍兼容。
+            推荐传入结构化节点暴露的枚举成员，例如
+            ``UserSetControl.UserSetSelector.USER_SET_1``。旧字符串名称如
+            ``"UserSet1"`` 目前仍兼容。
 
         Raises / 异常
         -------------
@@ -1646,7 +1647,7 @@ class HikCamera:
 
     def load_user_set(
         self,
-        user_set: UserSetSelector | str = UserSetSelector.USER_SET_1,
+        user_set: UserSetSelector | str = UserSetControl.UserSetSelector.USER_SET_1,
     ) -> None:
         """
         Load camera parameters from a user set stored on the device.
@@ -1655,11 +1656,12 @@ class HikCamera:
         Parameters / 参数
         -----------------
         user_set:
-            Preferred: a ``UserSetSelector`` enum member such as
-            ``UserSetSelector.USER_SET_1``. Legacy string names like
+            Preferred: the enum-style member exposed by the structured node, such as
+            ``UserSetControl.UserSetSelector.USER_SET_1``. Legacy string names like
             ``"UserSet1"`` remain supported for backward compatibility.
-            推荐传入 ``UserSetSelector.USER_SET_1`` 这类 ``UserSetSelector``
-            枚举成员。旧字符串名称如 ``"UserSet1"`` 目前仍兼容。
+            推荐传入结构化节点暴露的枚举成员，例如
+            ``UserSetControl.UserSetSelector.USER_SET_1``。旧字符串名称如
+            ``"UserSet1"`` 目前仍兼容。
 
         Raises / 异常
         -------------
@@ -1791,11 +1793,12 @@ class HikCamera:
             :class:`ParamNode` 实例或 GenICam 节点名称字符串。
         value:
             New value.  For schema-registered parameters, the value must be an
-            instance of the declared type (e.g. ``GainAuto.OFF`` for
-            ``"GainAuto"``).  For unknown parameters the method dispatches by
-            Python type.
-            新值。对于已注册模式的参数，值必须是声明类型的实例（如 ``"GainAuto"``
-            需传入 ``GainAuto.OFF``）。对于未知参数，按 Python 类型分派。
+            instance of the declared type (e.g.
+            ``AnalogControl.GainAuto.OFF`` for ``"GainAuto"``). For unknown
+            parameters the method dispatches by Python type.
+            新值。对于已注册模式的参数，值必须是声明类型的实例（例如 ``"GainAuto"``
+            推荐传入 ``AnalogControl.GainAuto.OFF``）。对于未知参数，按 Python
+            类型分派。
 
         Raises / 异常
         -------------

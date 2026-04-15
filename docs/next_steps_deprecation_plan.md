@@ -24,7 +24,7 @@ deprecation in a future release:
   - `get_string_parameter()` / `set_string_parameter()`
 - `execute_command("NodeName")` string-based command execution
 - Legacy string arguments such as `"UserSet1"` in helpers that now prefer
-  structured enum values like `UserSetSelector.USER_SET_1`
+  structured enum values like `UserSetControl.UserSetSelector.USER_SET_1`
 - String-key access on `get_camera_info()` results
 
 ## Recommended rollout

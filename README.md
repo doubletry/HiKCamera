@@ -265,7 +265,6 @@ with HikCamera.from_ip("192.168.1.100") as cam:
 ```python
 from hikcamera import (
     AnalogControl,
-    GainAuto,
     HikCamera,
     ParameterNotSupportedError,
     ParameterReadOnlyError,
@@ -277,7 +276,7 @@ with HikCamera.from_device_info(cameras[0]) as cam:
     cam.open()
 
     # Preferred: ParamNode-based access
-    cam.set_parameter(AnalogControl.GainAuto, GainAuto.OFF)
+    cam.set_parameter(AnalogControl.GainAuto, AnalogControl.GainAuto.OFF)
 
     # ParamNode-based read access
     try:
@@ -329,16 +328,16 @@ with HikCamera.from_ip("192.168.1.100") as cam:
 ### Save / load device user sets
 
 ```python
-from hikcamera import AccessMode, HikCamera, UserSetSelector
+from hikcamera import AccessMode, HikCamera, UserSetControl
 
 with HikCamera.from_ip("192.168.1.100") as cam:
     cam.open(AccessMode.EXCLUSIVE)
 
     # Preferred: structured enum values
-    cam.save_user_set(UserSetSelector.USER_SET_1)
+    cam.save_user_set(UserSetControl.UserSetSelector.USER_SET_1)
 
     # Later, restore parameters from user set 1
-    cam.load_user_set(UserSetSelector.USER_SET_1)
+    cam.load_user_set(UserSetControl.UserSetSelector.USER_SET_1)
 
     # Legacy strings remain compatible for now
     cam.save_user_set("UserSet1")
@@ -376,7 +375,7 @@ compatibility APIs and may be gradually deprecated.
 | `get_string_parameter(name)` / `set_string_parameter(name, value)` | Legacy compatibility helpers for string parameters; new code should prefer `get_parameter()` / `set_parameter()` with `ParamNode` |
 | `cam.<CommandNode>()` | Preferred command invocation for command nodes, e.g. `cam.TriggerSoftware()` / `cam.UserSetLoad()` |
 | `execute_command(name)` | Legacy compatibility helper for command nodes; new code should prefer `cam.<CommandNode>()` |
-| `save_user_set(user_set)` / `load_user_set(user_set)` | High-level helpers; prefer `UserSetSelector.USER_SET_1`-style enum values, but legacy strings remain compatible |
+| `save_user_set(user_set)` / `load_user_set(user_set)` | High-level helpers; prefer structured enum access such as `UserSetControl.UserSetSelector.USER_SET_1`, but legacy strings remain compatible |
 | `get_camera_info()` | Retrieve all common parameters listed below in a single call; returned mapping supports both `ParamNode` and legacy string-key access, but `ParamNode` access is preferred |
 | `get_optimal_packet_size()` | Query SDK for the optimal GigE packet size (GigE only) |
 | `get_packet_size()` / `set_packet_size(size)` | Get/set GigE streaming packet size (`GevSCPSPacketSize`) |
@@ -464,10 +463,9 @@ from hikcamera import (
     AccessMode,
     AcquisitionControl,
     AnalogControl,
-    GainAuto,
     HikCamera,
     ImageFormatControl,
-    UserSetSelector,
+    UserSetControl,
 )
 
 with HikCamera.from_ip("192.168.1.100") as cam:
@@ -481,7 +479,7 @@ with HikCamera.from_ip("192.168.1.100") as cam:
     cam.set_parameter(AcquisitionControl.ExposureTime, 5000.0)
     cam.set_parameter(AnalogControl.Gain, 2.5)
     cam.set_parameter(AcquisitionControl.AcquisitionFrameRateEnable, True)
-    cam.set_parameter(AnalogControl.GainAuto, GainAuto.OFF)
+    cam.set_parameter(AnalogControl.GainAuto, AnalogControl.GainAuto.OFF)
 
     # ParamNode-based read access
     exposure = cam.get_parameter(AcquisitionControl.ExposureTime)
@@ -491,7 +489,7 @@ with HikCamera.from_ip("192.168.1.100") as cam:
     cam.TriggerSoftware()
 
     # High-level user-set helper with structured enum value
-    cam.save_user_set(UserSetSelector.USER_SET_1)
+    cam.save_user_set(UserSetControl.UserSetSelector.USER_SET_1)
 ```
 
 ## Demos

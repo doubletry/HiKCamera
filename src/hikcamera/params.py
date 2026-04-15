@@ -22,6 +22,7 @@ Typical usage / 典型用法
     # IDE auto-completion & validation before the SDK call
     cam.set_parameter(AcquisitionControl.ExposureTime, 5000.0)
     cam.set_parameter(AnalogControl.Gain, 10.0)
+    cam.set_parameter(AnalogControl.GainAuto, AnalogControl.GainAuto.OFF)
 
     # String-based calls continue to work as before
     cam.set_parameter("ExposureTime", 5000.0)
@@ -30,6 +31,7 @@ Typical usage / 典型用法
 from __future__ import annotations
 
 from dataclasses import dataclass
+from enum import IntEnum, StrEnum
 from typing import Any, Literal
 
 from .enums import (
@@ -206,6 +208,24 @@ class ParamNode:
     # 允许 ParamNode 直接作为字符串键（其名称）使用。
     def __str__(self) -> str:
         return self.name
+
+    def __getattr__(self, name: str) -> Any:
+        """
+        Allow enum-valued nodes to expose enum members directly.
+        允许枚举类型节点直接暴露枚举成员。
+
+        Examples / 示例
+        ----------------
+        ``AnalogControl.GainAuto.OFF`` -> ``GainAuto.OFF``
+        ``UserSetControl.UserSetSelector.USER_SET_1`` -> ``UserSetSelector.USER_SET_1``
+        """
+        if (
+            isinstance(self.data_type, type)
+            and issubclass(self.data_type, (StrEnum, IntEnum))
+            and hasattr(self.data_type, name)
+        ):
+            return getattr(self.data_type, name)
+        raise AttributeError(f"{type(self).__name__!s} object has no attribute {name!r}")
 
 
 # ===================================================================

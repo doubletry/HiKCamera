@@ -24,13 +24,11 @@ from hikcamera.camera import (
 )
 from hikcamera.enums import (
     AccessMode,
-    GainAuto,
     MvErrorCode,
     OutputFormat,
     PixelFormat,
     StreamingMode,
     TriggerMode,
-    UserSetSelector,
 )
 from hikcamera.exceptions import (
     CameraAlreadyOpenError,
@@ -50,6 +48,7 @@ from hikcamera.params import (
     AnalogControl,
     DeviceControl,
     ImageFormatControl,
+    UserSetControl,
 )
 from hikcamera.sdk_wrapper import (
     MV_CC_DEVICE_INFO,
@@ -679,7 +678,7 @@ class TestParameters:
 
     def test_set_parameter_auto_dispatch_enum(self, mock_sdk):
         cam = make_camera_with_sdk(mock_sdk)
-        cam.set_parameter("GainAuto", GainAuto.OFF)
+        cam.set_parameter("GainAuto", AnalogControl.GainAuto.OFF)
         mock_sdk.MV_CC_SetEnumValueByString.assert_called()
 
     def test_set_parameter_string_for_non_enum_goes_to_string_setter(self, mock_sdk):
@@ -1015,7 +1014,7 @@ class TestConfigExportImport:
 class TestUserSet:
     def test_save_user_set(self, mock_sdk):
         cam = make_camera_with_sdk(mock_sdk)
-        cam.save_user_set(UserSetSelector.USER_SET_1)
+        cam.save_user_set(UserSetControl.UserSetSelector.USER_SET_1)
         mock_sdk.MV_CC_SetEnumValueByString.assert_called_once()
         mock_sdk.MV_CC_SetCommandValue.assert_called_once()
 
@@ -1040,7 +1039,7 @@ class TestUserSet:
 
     def test_load_user_set(self, mock_sdk):
         cam = make_camera_with_sdk(mock_sdk)
-        cam.load_user_set(UserSetSelector.USER_SET_2)
+        cam.load_user_set(UserSetControl.UserSetSelector.USER_SET_2)
         call_args = mock_sdk.MV_CC_SetEnumValueByString.call_args
         assert call_args[0][2] == b"UserSet2"
         mock_sdk.MV_CC_SetCommandValue.assert_called_once()
