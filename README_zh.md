@@ -325,16 +325,19 @@ with HikCamera.from_ip("192.168.1.100") as cam:
 ### 保存 / 加载设备用户集
 
 ```python
-from hikcamera import HikCamera, AccessMode
+from hikcamera import AccessMode, HikCamera, UserSetSelector
 
 with HikCamera.from_ip("192.168.1.100") as cam:
     cam.open(AccessMode.EXCLUSIVE)
 
-    # 保存当前参数到用户集 1
-    cam.save_user_set("UserSet1")
+    # 推荐：使用结构化枚举值
+    cam.save_user_set(UserSetSelector.USER_SET_1)
 
     # 稍后，从用户集 1 恢复参数
-    cam.load_user_set("UserSet1")
+    cam.load_user_set(UserSetSelector.USER_SET_1)
+
+    # 旧字符串参数目前仍兼容
+    cam.save_user_set("UserSet1")
 ```
 
 ## 可调参数
@@ -356,14 +359,16 @@ getter/setter 仍保留用于向后兼容，但应视为兼容接口，后续可
 | 方法 | 说明 |
 |---|---|
 | `set_parameter(name, value)` | `name` 可传 `ParamNode` 或旧字符串；推荐 `ParamNode`，可获得 IDE 补全以及 SDK 调用前的类型/范围/访问权限校验；自动跳过不支持的参数 |
-| `get_parameter(name, default=None)` | `name` 可传 `ParamNode` 或旧字符串；按 int → float → string 顺序尝试；不支持时返回 *default* |
+| `get_parameter(name, default=None)` | `name` 可传 `ParamNode` 或旧字符串；已知节点按结构化模式读取（包括 bool/enum），未知旧字符串回退为按 int → float → string 顺序探测；不支持时返回 *default* |
 | `get_int_parameter(name)` / `set_int_parameter(name, value)` | 整型参数的兼容接口；新代码建议改用基于 `ParamNode` 的 `get_parameter()` / `set_parameter()` |
 | `get_float_parameter(name)` / `set_float_parameter(name, value)` | 浮点参数的兼容接口；新代码建议改用基于 `ParamNode` 的 `get_parameter()` / `set_parameter()` |
 | `get_bool_parameter(name)` / `set_bool_parameter(name, value)` | 布尔参数的兼容接口；新代码建议改用基于 `ParamNode` 的 `get_parameter()` / `set_parameter()` |
 | `get_enum_parameter(name)` / `set_enum_parameter(name, value)` | 枚举参数的兼容接口；新代码建议改用基于 `ParamNode` 的 `get_parameter()` / `set_parameter()` |
 | `set_enum_parameter_by_string(name, string_value)` | 按符号名称设置枚举参数（如 `"Off"`、`"Continuous"`） |
 | `get_string_parameter(name)` / `set_string_parameter(name, value)` | 字符串参数的兼容接口；新代码建议改用基于 `ParamNode` 的 `get_parameter()` / `set_parameter()` |
-| `execute_command(name)` | 执行命令节点（如 `"TriggerSoftware"`） |
+| `cam.<CommandNode>()` | 推荐的命令调用方式，例如 `cam.TriggerSoftware()` / `cam.UserSetLoad()` |
+| `execute_command(name)` | 命令节点的兼容接口；新代码建议优先使用 `cam.<CommandNode>()` |
+| `save_user_set(user_set)` / `load_user_set(user_set)` | 高层辅助接口；推荐传入 `UserSetSelector.USER_SET_1` 这类枚举值，旧字符串目前仍兼容 |
 | `get_camera_info()` | 一次调用获取下表中所有常用参数；返回结果同时支持 `ParamNode` 和旧字符串 key 访问，但推荐优先使用 `ParamNode` |
 | `get_optimal_packet_size()` | 查询 SDK 获取 GigE 最优包大小（仅 GigE 相机） |
 | `get_packet_size()` / `set_packet_size(size)` | 获取/设置 GigE 流传输包大小（`GevSCPSPacketSize`） |
@@ -372,75 +377,76 @@ getter/setter 仍保留用于向后兼容，但应视为兼容接口，后续可
 
 #### 图像格式
 
-| 参数名 | 类型 | 读写 | 说明 |
+| ParamNode 成员 | 类型 | 读写 | 说明 |
 |---|---|---|---|
-| `Width` | int | R/W ¹ | 图像宽度（像素） |
-| `Height` | int | R/W ¹ | 图像高度（像素） |
-| `OffsetX` | int | R/W | 水平偏移（ROI 起点） |
-| `OffsetY` | int | R/W | 垂直偏移（ROI 起点） |
-| `PixelFormat` | enum | R/W | 像素格式（返回原始 `int`；可通过 `PixelFormat(val)` 转换为枚举） |
-| `WidthMax` | int | R | 最大允许宽度 |
-| `HeightMax` | int | R | 最大允许高度 |
-| `PayloadSize` | int | R | 图像数据负载大小（字节） |
+| `ImageFormatControl.Width` | int | R/W ¹ | 图像宽度（像素） |
+| `ImageFormatControl.Height` | int | R/W ¹ | 图像高度（像素） |
+| `ImageFormatControl.OffsetX` | int | R/W | 水平偏移（ROI 起点） |
+| `ImageFormatControl.OffsetY` | int | R/W | 垂直偏移（ROI 起点） |
+| `ImageFormatControl.PixelFormat` | enum | R/W | 像素格式（返回原始 `int`；可通过 `PixelFormat(val)` 转换为枚举） |
+| `ImageFormatControl.WidthMax` | int | R | 最大允许宽度 |
+| `ImageFormatControl.HeightMax` | int | R | 最大允许高度 |
+| `TransportLayerControl.PayloadSize` | int | R | 图像数据负载大小（字节） |
 
 > ¹ 取帧期间可能变为只读，取决于相机型号。
 
 #### 曝光与增益
 
-| 参数名 | 类型 | 读写 | 说明 |
+| ParamNode 成员 | 类型 | 读写 | 说明 |
 |---|---|---|---|
-| `ExposureTime` | float | R/W | 曝光时间（µs） |
-| `ExposureAuto` | enum | R/W | 自动曝光模式（`Off` / `Once` / `Continuous`） |
-| `Gain` | float | R/W | 增益值（dB） |
-| `GainAuto` | enum | R/W | 自动增益模式（`Off` / `Once` / `Continuous`） |
-| `Gamma` | float | R/W | Gamma 校正值 |
-| `GammaEnable` | bool | R/W | 启用 / 禁用 Gamma 校正 |
+| `AcquisitionControl.ExposureTime` | float | R/W | 曝光时间（µs） |
+| `AcquisitionControl.ExposureAuto` | enum | R/W | 自动曝光模式（`Off` / `Once` / `Continuous`） |
+| `AnalogControl.Gain` | float | R/W | 增益值（dB） |
+| `AnalogControl.GainAuto` | enum | R/W | 自动增益模式（`Off` / `Once` / `Continuous`） |
+| `AnalogControl.Gamma` | float | R/W | Gamma 校正值 |
+| `AnalogControl.GammaEnable` | bool | R/W | 启用 / 禁用 Gamma 校正 |
 
 #### 帧率
 
-| 参数名 | 类型 | 读写 | 说明 |
+| ParamNode 成员 | 类型 | 读写 | 说明 |
 |---|---|---|---|
-| `AcquisitionFrameRate` | float | R/W | 目标采集帧率（fps） |
-| `AcquisitionFrameRateEnable` | bool | R/W | 启用 / 禁用帧率限制 |
-| `ResultingFrameRate` | float | R | 实际帧率（fps） |
+| `AcquisitionControl.AcquisitionFrameRate` | float | R/W | 目标采集帧率（fps） |
+| `AcquisitionControl.AcquisitionFrameRateEnable` | bool | R/W | 启用 / 禁用帧率限制 |
+| `AcquisitionControl.ResultingFrameRate` | float | R | 实际帧率（fps） |
 
 #### 触发
 
-| 参数名 | 类型 | 读写 | 说明 |
+| ParamNode 成员 | 类型 | 读写 | 说明 |
 |---|---|---|---|
-| `TriggerMode` | enum | R/W | 触发模式（`On` / `Off`） |
-| `TriggerSource` | enum | R/W | 触发源（如 `Software`、`Line0`） |
+| `AcquisitionControl.TriggerMode` | enum | R/W | 触发模式（`On` / `Off`） |
+| `AcquisitionControl.TriggerSource` | enum | R/W | 触发源（如 `Software`、`Line0`） |
 
 #### 白平衡
 
-| 参数名 | 类型 | 读写 | 说明 |
+| ParamNode 成员 | 类型 | 读写 | 说明 |
 |---|---|---|---|
-| `BalanceWhiteAuto` | enum | R/W | 自动白平衡模式（`Off` / `Once` / `Continuous`） |
+| `AnalogControl.BalanceWhiteAuto` | enum | R/W | 自动白平衡模式（`Off` / `Once` / `Continuous`） |
 
 #### 设备信息（只读）
 
-| 参数名 | 类型 | 读写 | 说明 |
+| ParamNode 成员 | 类型 | 读写 | 说明 |
 |---|---|---|---|
-| `DeviceModelName` | string | R | 相机型号名称 |
-| `DeviceSerialNumber` | string | R | 序列号 |
-| `DeviceFirmwareVersion` | string | R | 固件版本 |
-| `DeviceUserID` | string | R/W | 用户自定义相机标识 |
+| `DeviceControl.DeviceModelName` | string | R | 相机型号名称 |
+| `DeviceControl.DeviceSerialNumber` | string | R | 序列号 |
+| `DeviceControl.DeviceFirmwareVersion` | string | R | 固件版本 |
+| `DeviceControl.DeviceUserID` | string | R/W | 用户自定义相机标识 |
 
 #### GigE 网络（仅 GigE 相机）
 
-| 参数名 | 类型 | 读写 | 说明 |
+| ParamNode 成员 | 类型 | 读写 | 说明 |
 |---|---|---|---|
-| `GevSCPSPacketSize` | int | R/W | GigE 流传输包大小（字节），`open()` 时自动配置 |
+| `TransportLayerControl.GevSCPSPacketSize` | int | R/W | GigE 流传输包大小（字节），`open()` 时自动配置 |
 
 #### 常用命令
 
-以下节点通过 `execute_command()` 执行：
+推荐优先使用 `cam.TriggerSoftware()` 这类绑定命令调用。旧的
+`execute_command("TriggerSoftware")` 形式目前仍兼容，但后续可能逐步废弃。
 
-| 命令 | 说明 |
-|---|---|
-| `TriggerSoftware` | 发送软触发 |
-| `UserSetSave` | 将当前参数保存到选定的用户集 |
-| `UserSetLoad` | 从选定的用户集加载参数 |
+| ParamNode 成员 | 推荐调用方式 | 说明 |
+|---|---|---|
+| `AcquisitionControl.TriggerSoftware` | `cam.TriggerSoftware()` | 发送软触发 |
+| `UserSetControl.UserSetSave` | `cam.UserSetSave()` | 将当前参数保存到选定的用户集 |
+| `UserSetControl.UserSetLoad` | `cam.UserSetLoad()` | 从选定的用户集加载参数 |
 
 ### 示例：读写参数
 
@@ -452,6 +458,7 @@ from hikcamera import (
     GainAuto,
     HikCamera,
     ImageFormatControl,
+    UserSetSelector,
 )
 
 with HikCamera.from_ip("192.168.1.100") as cam:
@@ -471,8 +478,11 @@ with HikCamera.from_ip("192.168.1.100") as cam:
     exposure = cam.get_parameter(AcquisitionControl.ExposureTime)
     width = cam.get_parameter(ImageFormatControl.Width)
 
-    # 执行命令
-    cam.execute_command("TriggerSoftware")
+    # 推荐的命令调用方式
+    cam.TriggerSoftware()
+
+    # 使用结构化枚举值保存用户集
+    cam.save_user_set(UserSetSelector.USER_SET_1)
 ```
 
 ## 示例程序

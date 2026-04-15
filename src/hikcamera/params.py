@@ -483,6 +483,10 @@ class AcquisitionControl:
         "TriggerDelay", float, "R/W",
         "触发延时 / Trigger delay", unit="us", min_value=0.0,
     )
+    TriggerSoftware = ParamNode(
+        "TriggerSoftware", "command", "W",
+        "软触发执行 / Execute software trigger",
+    )
     ExposureMode = ParamNode(
         "ExposureMode", ExposureMode, "R/W",
         "曝光模式选择 / Exposure mode",

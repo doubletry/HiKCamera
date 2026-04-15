@@ -329,16 +329,19 @@ with HikCamera.from_ip("192.168.1.100") as cam:
 ### Save / load device user sets
 
 ```python
-from hikcamera import HikCamera, AccessMode
+from hikcamera import AccessMode, HikCamera, UserSetSelector
 
 with HikCamera.from_ip("192.168.1.100") as cam:
     cam.open(AccessMode.EXCLUSIVE)
 
-    # Save current parameters to user set 1
-    cam.save_user_set("UserSet1")
+    # Preferred: structured enum values
+    cam.save_user_set(UserSetSelector.USER_SET_1)
 
     # Later, restore parameters from user set 1
-    cam.load_user_set("UserSet1")
+    cam.load_user_set(UserSetSelector.USER_SET_1)
+
+    # Legacy strings remain compatible for now
+    cam.save_user_set("UserSet1")
 ```
 
 ## Adjustable Parameters
@@ -364,14 +367,16 @@ compatibility APIs and may be gradually deprecated.
 | Method | Description |
 |---|---|
 | `set_parameter(name, value)` | `name` can be a `ParamNode` or legacy string; prefer `ParamNode` for IDE completion plus type/range/access validation before SDK calls; silently skips unsupported parameters |
-| `get_parameter(name, default=None)` | `name` can be a `ParamNode` or legacy string; auto-tries int → float → string; returns *default* if unsupported |
+| `get_parameter(name, default=None)` | `name` can be a `ParamNode` or legacy string; known nodes are read with schema-aware dispatch (including bool/enum), unknown legacy strings fall back to int → float → string probing; returns *default* if unsupported |
 | `get_int_parameter(name)` / `set_int_parameter(name, value)` | Legacy compatibility helpers for integer parameters; new code should prefer `get_parameter()` / `set_parameter()` with `ParamNode` |
 | `get_float_parameter(name)` / `set_float_parameter(name, value)` | Legacy compatibility helpers for float parameters; new code should prefer `get_parameter()` / `set_parameter()` with `ParamNode` |
 | `get_bool_parameter(name)` / `set_bool_parameter(name, value)` | Legacy compatibility helpers for boolean parameters; new code should prefer `get_parameter()` / `set_parameter()` with `ParamNode` |
 | `get_enum_parameter(name)` / `set_enum_parameter(name, value)` | Legacy compatibility helpers for enum parameters; new code should prefer `get_parameter()` / `set_parameter()` with `ParamNode` |
 | `set_enum_parameter_by_string(name, string_value)` | Enum parameter set by symbolic name (e.g. `"Off"`, `"Continuous"`) |
 | `get_string_parameter(name)` / `set_string_parameter(name, value)` | Legacy compatibility helpers for string parameters; new code should prefer `get_parameter()` / `set_parameter()` with `ParamNode` |
-| `execute_command(name)` | Execute a command node (e.g. `"TriggerSoftware"`) |
+| `cam.<CommandNode>()` | Preferred command invocation for command nodes, e.g. `cam.TriggerSoftware()` / `cam.UserSetLoad()` |
+| `execute_command(name)` | Legacy compatibility helper for command nodes; new code should prefer `cam.<CommandNode>()` |
+| `save_user_set(user_set)` / `load_user_set(user_set)` | High-level helpers; prefer `UserSetSelector.USER_SET_1`-style enum values, but legacy strings remain compatible |
 | `get_camera_info()` | Retrieve all common parameters listed below in a single call; returned mapping supports both `ParamNode` and legacy string-key access, but `ParamNode` access is preferred |
 | `get_optimal_packet_size()` | Query SDK for the optimal GigE packet size (GigE only) |
 | `get_packet_size()` / `set_packet_size(size)` | Get/set GigE streaming packet size (`GevSCPSPacketSize`) |
@@ -380,75 +385,77 @@ compatibility APIs and may be gradually deprecated.
 
 #### Image format
 
-| Parameter | Type | R/W | Description |
+| ParamNode member | Type | R/W | Description |
 |---|---|---|---|
-| `Width` | int | R/W ¹ | Image width in pixels |
-| `Height` | int | R/W ¹ | Image height in pixels |
-| `OffsetX` | int | R/W | Horizontal offset (ROI origin) |
-| `OffsetY` | int | R/W | Vertical offset (ROI origin) |
-| `PixelFormat` | enum | R/W | Pixel format (raw `int`; wrap with `PixelFormat(val)` to get the enum) |
-| `WidthMax` | int | R | Maximum allowed width |
-| `HeightMax` | int | R | Maximum allowed height |
-| `PayloadSize` | int | R | Image payload size in bytes |
+| `ImageFormatControl.Width` | int | R/W ¹ | Image width in pixels |
+| `ImageFormatControl.Height` | int | R/W ¹ | Image height in pixels |
+| `ImageFormatControl.OffsetX` | int | R/W | Horizontal offset (ROI origin) |
+| `ImageFormatControl.OffsetY` | int | R/W | Vertical offset (ROI origin) |
+| `ImageFormatControl.PixelFormat` | enum | R/W | Pixel format (raw `int`; wrap with `PixelFormat(val)` to get the enum) |
+| `ImageFormatControl.WidthMax` | int | R | Maximum allowed width |
+| `ImageFormatControl.HeightMax` | int | R | Maximum allowed height |
+| `TransportLayerControl.PayloadSize` | int | R | Image payload size in bytes |
 
 > ¹ May become read-only while grabbing, depending on camera model.
 
 #### Exposure & gain
 
-| Parameter | Type | R/W | Description |
+| ParamNode member | Type | R/W | Description |
 |---|---|---|---|
-| `ExposureTime` | float | R/W | Exposure time in µs |
-| `ExposureAuto` | enum | R/W | Auto-exposure mode (`Off` / `Once` / `Continuous`) |
-| `Gain` | float | R/W | Gain value in dB |
-| `GainAuto` | enum | R/W | Auto-gain mode (`Off` / `Once` / `Continuous`) |
-| `Gamma` | float | R/W | Gamma correction value |
-| `GammaEnable` | bool | R/W | Enable / disable gamma correction |
+| `AcquisitionControl.ExposureTime` | float | R/W | Exposure time in µs |
+| `AcquisitionControl.ExposureAuto` | enum | R/W | Auto-exposure mode (`Off` / `Once` / `Continuous`) |
+| `AnalogControl.Gain` | float | R/W | Gain value in dB |
+| `AnalogControl.GainAuto` | enum | R/W | Auto-gain mode (`Off` / `Once` / `Continuous`) |
+| `AnalogControl.Gamma` | float | R/W | Gamma correction value |
+| `AnalogControl.GammaEnable` | bool | R/W | Enable / disable gamma correction |
 
 #### Frame rate
 
-| Parameter | Type | R/W | Description |
+| ParamNode member | Type | R/W | Description |
 |---|---|---|---|
-| `AcquisitionFrameRate` | float | R/W | Target acquisition frame rate (fps) |
-| `AcquisitionFrameRateEnable` | bool | R/W | Enable / disable frame rate limiting |
-| `ResultingFrameRate` | float | R | Actual resulting frame rate (fps) |
+| `AcquisitionControl.AcquisitionFrameRate` | float | R/W | Target acquisition frame rate (fps) |
+| `AcquisitionControl.AcquisitionFrameRateEnable` | bool | R/W | Enable / disable frame rate limiting |
+| `AcquisitionControl.ResultingFrameRate` | float | R | Actual resulting frame rate (fps) |
 
 #### Trigger
 
-| Parameter | Type | R/W | Description |
+| ParamNode member | Type | R/W | Description |
 |---|---|---|---|
-| `TriggerMode` | enum | R/W | Trigger mode (`On` / `Off`) |
-| `TriggerSource` | enum | R/W | Trigger source (e.g. `Software`, `Line0`) |
+| `AcquisitionControl.TriggerMode` | enum | R/W | Trigger mode (`On` / `Off`) |
+| `AcquisitionControl.TriggerSource` | enum | R/W | Trigger source (e.g. `Software`, `Line0`) |
 
 #### White balance
 
-| Parameter | Type | R/W | Description |
+| ParamNode member | Type | R/W | Description |
 |---|---|---|---|
-| `BalanceWhiteAuto` | enum | R/W | Auto white-balance mode (`Off` / `Once` / `Continuous`) |
+| `AnalogControl.BalanceWhiteAuto` | enum | R/W | Auto white-balance mode (`Off` / `Once` / `Continuous`) |
 
 #### Device info (read-only)
 
-| Parameter | Type | R/W | Description |
+| ParamNode member | Type | R/W | Description |
 |---|---|---|---|
-| `DeviceModelName` | string | R | Camera model name |
-| `DeviceSerialNumber` | string | R | Serial number |
-| `DeviceFirmwareVersion` | string | R | Firmware version |
-| `DeviceUserID` | string | R/W | User-defined camera identifier |
+| `DeviceControl.DeviceModelName` | string | R | Camera model name |
+| `DeviceControl.DeviceSerialNumber` | string | R | Serial number |
+| `DeviceControl.DeviceFirmwareVersion` | string | R | Firmware version |
+| `DeviceControl.DeviceUserID` | string | R/W | User-defined camera identifier |
 
 #### GigE network (GigE cameras only)
 
-| Parameter | Type | R/W | Description |
+| ParamNode member | Type | R/W | Description |
 |---|---|---|---|
-| `GevSCPSPacketSize` | int | R/W | GigE streaming packet size in bytes (auto-configured on `open()`) |
+| `TransportLayerControl.GevSCPSPacketSize` | int | R/W | GigE streaming packet size in bytes (auto-configured on `open()`) |
 
 #### Common commands
 
-These nodes are executed via `execute_command()`:
+Prefer bound command-style calls such as `cam.TriggerSoftware()`. The legacy
+`execute_command("TriggerSoftware")` form remains compatible for now, but may be
+gradually deprecated.
 
-| Command | Description |
-|---|---|
-| `TriggerSoftware` | Fire a software trigger |
-| `UserSetSave` | Save current parameters to the selected user set |
-| `UserSetLoad` | Load parameters from the selected user set |
+| ParamNode member | Preferred call | Description |
+|---|---|---|
+| `AcquisitionControl.TriggerSoftware` | `cam.TriggerSoftware()` | Fire a software trigger |
+| `UserSetControl.UserSetSave` | `cam.UserSetSave()` | Save current parameters to the selected user set |
+| `UserSetControl.UserSetLoad` | `cam.UserSetLoad()` | Load parameters from the selected user set |
 
 ### Example: reading & writing parameters
 
@@ -460,6 +467,7 @@ from hikcamera import (
     GainAuto,
     HikCamera,
     ImageFormatControl,
+    UserSetSelector,
 )
 
 with HikCamera.from_ip("192.168.1.100") as cam:
@@ -479,8 +487,11 @@ with HikCamera.from_ip("192.168.1.100") as cam:
     exposure = cam.get_parameter(AcquisitionControl.ExposureTime)
     width = cam.get_parameter(ImageFormatControl.Width)
 
-    # Execute a command
-    cam.execute_command("TriggerSoftware")
+    # Preferred command invocation
+    cam.TriggerSoftware()
+
+    # High-level user-set helper with structured enum value
+    cam.save_user_set(UserSetSelector.USER_SET_1)
 ```
 
 ## Demos

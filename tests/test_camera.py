@@ -30,6 +30,7 @@ from hikcamera.enums import (
     PixelFormat,
     StreamingMode,
     TriggerMode,
+    UserSetSelector,
 )
 from hikcamera.exceptions import (
     CameraAlreadyOpenError,
@@ -632,6 +633,16 @@ class TestParameters:
         cam.execute_command("TriggerSoftware")
         mock_sdk.MV_CC_SetCommandValue.assert_called_once()
 
+    def test_execute_command_accepts_command_param_node(self, mock_sdk):
+        cam = make_camera_with_sdk(mock_sdk)
+        cam.execute_command(AcquisitionControl.TriggerSoftware)
+        mock_sdk.MV_CC_SetCommandValue.assert_called_once()
+
+    def test_bound_command_method_executes_command_node(self, mock_sdk):
+        cam = make_camera_with_sdk(mock_sdk)
+        cam.TriggerSoftware()
+        mock_sdk.MV_CC_SetCommandValue.assert_called_once()
+
     # Error handling
 
     def test_not_supported_raises_parameter_not_supported(self, mock_sdk):
@@ -1004,7 +1015,7 @@ class TestConfigExportImport:
 class TestUserSet:
     def test_save_user_set(self, mock_sdk):
         cam = make_camera_with_sdk(mock_sdk)
-        cam.save_user_set("UserSet1")
+        cam.save_user_set(UserSetSelector.USER_SET_1)
         mock_sdk.MV_CC_SetEnumValueByString.assert_called_once()
         mock_sdk.MV_CC_SetCommandValue.assert_called_once()
 
@@ -1029,10 +1040,16 @@ class TestUserSet:
 
     def test_load_user_set(self, mock_sdk):
         cam = make_camera_with_sdk(mock_sdk)
-        cam.load_user_set("UserSet2")
+        cam.load_user_set(UserSetSelector.USER_SET_2)
         call_args = mock_sdk.MV_CC_SetEnumValueByString.call_args
         assert call_args[0][2] == b"UserSet2"
         mock_sdk.MV_CC_SetCommandValue.assert_called_once()
+
+    def test_load_user_set_accepts_legacy_string(self, mock_sdk):
+        cam = make_camera_with_sdk(mock_sdk)
+        cam.load_user_set("UserSet2")
+        call_args = mock_sdk.MV_CC_SetEnumValueByString.call_args
+        assert call_args[0][2] == b"UserSet2"
 
     def test_load_user_set_not_open_raises(self, mock_sdk):
         cam = make_camera_with_sdk(mock_sdk, open_it=False)

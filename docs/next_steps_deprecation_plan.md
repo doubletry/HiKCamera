@@ -22,6 +22,9 @@ deprecation in a future release:
   - `get_bool_parameter()` / `set_bool_parameter()`
   - `get_enum_parameter()` / `set_enum_parameter()`
   - `get_string_parameter()` / `set_string_parameter()`
+- `execute_command("NodeName")` string-based command execution
+- Legacy string arguments such as `"UserSet1"` in helpers that now prefer
+  structured enum values like `UserSetSelector.USER_SET_1`
 - String-key access on `get_camera_info()` results
 
 ## Recommended rollout
@@ -45,6 +48,8 @@ order of work so users can plan migrations:
 - Following minor release (tentatively `v0.3.x`):
   - consider adding deprecation warnings for typed getter/setter helpers and
     legacy string-key access in `get_camera_info()`
+  - consider adding deprecation warnings for `execute_command("NodeName")`
+    and legacy string user-set helper arguments
   - keep runtime behavior backward compatible
 - Future major release (tentatively `v1.0` or later):
   - re-evaluate whether legacy typed helpers and legacy string-key access

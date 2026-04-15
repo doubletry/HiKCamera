@@ -338,6 +338,10 @@ class TestCategoryNamespaces:
         assert UserSetControl.UserSetLoad.access == "W"
         assert isinstance(UserSetControl.UserSetSelector, ParamNode)
 
+    def test_acquisition_control_trigger_software_command(self):
+        assert AcquisitionControl.TriggerSoftware.data_type == "command"
+        assert AcquisitionControl.TriggerSoftware.access == "W"
+
 
 # ---------------------------------------------------------------------------
 # Schema and lookup builders / 模式和查找表构建器
@@ -361,6 +365,7 @@ class TestSchemaAndLookup:
         assert "UserSetLoad" not in schema
         assert "UserSetSave" not in schema
         assert "AcquisitionStart" not in schema
+        assert "TriggerSoftware" not in schema
 
     def test_node_lookup_contains_all_nodes(self):
         lookup = _build_node_lookup()
@@ -370,6 +375,7 @@ class TestSchemaAndLookup:
         assert "GainAuto" in lookup
         assert "DeviceReset" in lookup  # commands ARE in lookup
         assert "GevSCPSPacketSize" in lookup
+        assert "TriggerSoftware" in lookup
 
     def test_param_node_lookup_is_pre_built(self):
         assert isinstance(PARAM_NODE_LOOKUP, dict)
