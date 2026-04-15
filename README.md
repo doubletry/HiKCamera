@@ -284,18 +284,27 @@ with HikCamera.from_device_info(cameras[0]) as cam:
     except ParameterNotSupportedError:
         print("ExposureTime not available on this camera")
 
-    # Compatibility APIs like set_int_parameter() still work for now,
-    # but new code should migrate to ParamNode-based access.
     try:
         cam.set_parameter(ImageFormatControl.Width, 1920)
     except ParameterReadOnlyError:
         print("Width is read-only while grabbing")
 ```
 
+#### Legacy compatibility example
+
+```python
+with HikCamera.from_device_info(cameras[0]) as cam:
+    cam.open()
+
+    width = cam.get_int_parameter("Width")
+    cam.set_int_parameter("Width", width)
+    exposure = cam.get_parameter("ExposureTime")
+```
+
 ### Get camera information
 
 ```python
-from hikcamera import AccessMode, AcquisitionControl, AnalogControl, HikCamera, ImageFormatControl
+from hikcamera import AccessMode, AcquisitionControl, AnalogControl, DeviceControl, HikCamera, ImageFormatControl
 
 with HikCamera.from_ip("192.168.1.100") as cam:
     cam.open(AccessMode.EXCLUSIVE)
@@ -307,7 +316,18 @@ with HikCamera.from_ip("192.168.1.100") as cam:
     print(f"Gain: {info.get(AnalogControl.Gain)}")
     print(f"Frame rate: {info.get(AcquisitionControl.AcquisitionFrameRate)} fps")
     print(f"Pixel format: {info.get(ImageFormatControl.PixelFormat)}")
-    print(f"Model: {info.get('DeviceModelName')}")  # legacy string key still works for now
+    print(f"Model: {info.get(DeviceControl.DeviceModelName)}")
+```
+
+#### Legacy compatibility example
+
+```python
+with HikCamera.from_ip("192.168.1.100") as cam:
+    cam.open(AccessMode.EXCLUSIVE)
+    info = cam.get_camera_info()
+
+    width = info["Width"]
+    model = info["DeviceModelName"]
 ```
 
 ### Export / import camera configuration
@@ -338,9 +358,15 @@ with HikCamera.from_ip("192.168.1.100") as cam:
 
     # Later, restore parameters from user set 1
     cam.load_user_set(UserSetControl.UserSetSelector.USER_SET_1)
+```
 
-    # Legacy strings remain compatible for now
+#### Legacy compatibility example
+
+```python
+with HikCamera.from_ip("192.168.1.100") as cam:
+    cam.open(AccessMode.EXCLUSIVE)
     cam.save_user_set("UserSet1")
+    cam.load_user_set("UserSet1")
 ```
 
 ## Adjustable Parameters
@@ -354,31 +380,37 @@ compatibility APIs and may be gradually deprecated.
 
 > **Note:** Not every camera model supports every parameter.  Unsupported
 > parameters raise `ParameterNotSupportedError` (or are silently skipped by
-> `set_parameter()` / `get_parameter()`). Prefer passing `ParamNode` objects
-> such as `AcquisitionControl.ExposureTime`. Legacy string names remain
-> supported for backward compatibility but will be gradually deprecated.
-> Legacy typed helpers like `get_int_parameter()` / `set_int_parameter()` also
-> remain available for now, but new code should migrate to `ParamNode`-based
-> `get_parameter()` / `set_parameter()`.
+> `set_parameter()` / `get_parameter()`). The documentation below separates the
+> recommended structured API from the legacy compatibility API to avoid mixing
+> the two styles in one place.
 
-### Parameter access methods
+### Recommended structured API
 
-| Method | Description |
+| Method / style | Description |
 |---|---|
-| `set_parameter(name, value)` | `name` can be a `ParamNode` or legacy string; prefer `ParamNode` for IDE completion plus type/range/access validation before SDK calls; silently skips unsupported parameters |
-| `get_parameter(name, default=None)` | `name` can be a `ParamNode` or legacy string; known nodes are read with schema-aware dispatch (including bool/enum), unknown legacy strings fall back to int → float → string probing; returns *default* if unsupported |
-| `get_int_parameter(name)` / `set_int_parameter(name, value)` | Legacy compatibility helpers for integer parameters; new code should prefer `get_parameter()` / `set_parameter()` with `ParamNode` |
-| `get_float_parameter(name)` / `set_float_parameter(name, value)` | Legacy compatibility helpers for float parameters; new code should prefer `get_parameter()` / `set_parameter()` with `ParamNode` |
-| `get_bool_parameter(name)` / `set_bool_parameter(name, value)` | Legacy compatibility helpers for boolean parameters; new code should prefer `get_parameter()` / `set_parameter()` with `ParamNode` |
-| `get_enum_parameter(name)` / `set_enum_parameter(name, value)` | Legacy compatibility helpers for enum parameters; new code should prefer `get_parameter()` / `set_parameter()` with `ParamNode` |
-| `set_enum_parameter_by_string(name, string_value)` | Enum parameter set by symbolic name (e.g. `"Off"`, `"Continuous"`) |
-| `get_string_parameter(name)` / `set_string_parameter(name, value)` | Legacy compatibility helpers for string parameters; new code should prefer `get_parameter()` / `set_parameter()` with `ParamNode` |
-| `cam.<CommandNode>()` | Preferred command invocation for command nodes, e.g. `cam.TriggerSoftware()` / `cam.UserSetLoad()` |
-| `execute_command(name)` | Legacy compatibility helper for command nodes; new code should prefer `cam.<CommandNode>()` |
-| `save_user_set(user_set)` / `load_user_set(user_set)` | High-level helpers; prefer structured enum access such as `UserSetControl.UserSetSelector.USER_SET_1`, but legacy strings remain compatible |
-| `get_camera_info()` | Retrieve all common parameters listed below in a single call; returned mapping supports both `ParamNode` and legacy string-key access, but `ParamNode` access is preferred |
+| `set_parameter(param_node, value)` | Recommended write path. Pass `ParamNode` members such as `AcquisitionControl.ExposureTime` or `AnalogControl.GainAuto`; this enables IDE completion plus type/range/access validation before SDK calls |
+| `get_parameter(param_node, default=None)` | Recommended read path. Known nodes are read with schema-aware dispatch (including bool/enum/string/int/float) |
+| `cam.<CommandNode>()` | Recommended command invocation for command nodes, e.g. `cam.TriggerSoftware()` / `cam.UserSetLoad()` |
+| `save_user_set(user_set)` / `load_user_set(user_set)` | Recommended with structured enum members such as `UserSetControl.UserSetSelector.USER_SET_1` |
+| `get_camera_info()` | Recommended with `ParamNode` keys such as `info[ImageFormatControl.Width]` or `info.get(AcquisitionControl.ExposureTime)` |
 | `get_optimal_packet_size()` | Query SDK for the optimal GigE packet size (GigE only) |
 | `get_packet_size()` / `set_packet_size(size)` | Get/set GigE streaming packet size (`GevSCPSPacketSize`) |
+
+### Legacy compatibility API
+
+| Method / style | Description |
+|---|---|
+| `set_parameter(name, value)` | Legacy string-based writes such as `set_parameter("ExposureTime", 5000.0)` remain compatible for now |
+| `get_parameter(name, default=None)` | Legacy string-based reads remain compatible; unknown legacy strings still fall back to int → float → string probing |
+| `get_int_parameter(name)` / `set_int_parameter(name, value)` | Legacy compatibility helpers for integer parameters |
+| `get_float_parameter(name)` / `set_float_parameter(name, value)` | Legacy compatibility helpers for float parameters |
+| `get_bool_parameter(name)` / `set_bool_parameter(name, value)` | Legacy compatibility helpers for boolean parameters |
+| `get_enum_parameter(name)` / `set_enum_parameter(name, value)` | Legacy compatibility helpers for enum parameters |
+| `set_enum_parameter_by_string(name, string_value)` | Legacy helper for enum writes by symbolic name (e.g. `"Off"`, `"Continuous"`) |
+| `get_string_parameter(name)` / `set_string_parameter(name, value)` | Legacy compatibility helpers for string parameters |
+| `execute_command(name)` | Legacy string-based command invocation; prefer `cam.<CommandNode>()` in new code |
+| `save_user_set("UserSet1")` / `load_user_set("UserSet1")` | Legacy string-based user-set helpers remain compatible for now |
+| `info["Width"]` / `info["DeviceModelName"]` | Legacy string-key access on `get_camera_info()` results remains compatible for now |
 
 ### Common parameters
 

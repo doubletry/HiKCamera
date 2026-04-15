@@ -280,18 +280,27 @@ with HikCamera.from_device_info(cameras[0]) as cam:
     except ParameterNotSupportedError:
         print("此相机不支持 ExposureTime 参数")
 
-    # 兼容接口如 set_int_parameter() 目前仍可用，
-    # 但新代码建议迁移到 ParamNode 方式。
     try:
         cam.set_parameter(ImageFormatControl.Width, 1920)
     except ParameterReadOnlyError:
         print("取帧期间 Width 为只读参数")
 ```
 
+#### 旧版兼容写法示例
+
+```python
+with HikCamera.from_device_info(cameras[0]) as cam:
+    cam.open()
+
+    width = cam.get_int_parameter("Width")
+    cam.set_int_parameter("Width", width)
+    exposure = cam.get_parameter("ExposureTime")
+```
+
 ### 获取相机信息
 
 ```python
-from hikcamera import AccessMode, AcquisitionControl, AnalogControl, HikCamera, ImageFormatControl
+from hikcamera import AccessMode, AcquisitionControl, AnalogControl, DeviceControl, HikCamera, ImageFormatControl
 
 with HikCamera.from_ip("192.168.1.100") as cam:
     cam.open(AccessMode.EXCLUSIVE)
@@ -303,7 +312,18 @@ with HikCamera.from_ip("192.168.1.100") as cam:
     print(f"增益: {info.get(AnalogControl.Gain)}")
     print(f"帧率: {info.get(AcquisitionControl.AcquisitionFrameRate)} fps")
     print(f"像素格式: {info.get(ImageFormatControl.PixelFormat)}")
-    print(f"型号: {info.get('DeviceModelName')}")  # 旧字符串 key 目前仍兼容
+    print(f"型号: {info.get(DeviceControl.DeviceModelName)}")
+```
+
+#### 旧版兼容写法示例
+
+```python
+with HikCamera.from_ip("192.168.1.100") as cam:
+    cam.open(AccessMode.EXCLUSIVE)
+    info = cam.get_camera_info()
+
+    width = info["Width"]
+    model = info["DeviceModelName"]
 ```
 
 ### 导出 / 导入相机配置
@@ -334,9 +354,15 @@ with HikCamera.from_ip("192.168.1.100") as cam:
 
     # 稍后，从用户集 1 恢复参数
     cam.load_user_set(UserSetControl.UserSetSelector.USER_SET_1)
+```
 
-    # 旧字符串参数目前仍兼容
+#### 旧版兼容写法示例
+
+```python
+with HikCamera.from_ip("192.168.1.100") as cam:
+    cam.open(AccessMode.EXCLUSIVE)
     cam.save_user_set("UserSet1")
+    cam.load_user_set("UserSet1")
 ```
 
 ## 可调参数
@@ -348,29 +374,35 @@ getter/setter 仍保留用于向后兼容，但应视为兼容接口，后续可
 
 > **注意：** 并非每个型号的相机都支持所有参数。不支持的参数会抛出
 > `ParameterNotSupportedError`（或被 `set_parameter()` / `get_parameter()` 静默跳过）。
-> 推荐优先传入 `AcquisitionControl.ExposureTime` 这类 `ParamNode`；旧的字符串参数名
-> 仅为兼容保留，后续会逐步废弃。
-> `get_int_parameter()` / `set_int_parameter()` 等带类型接口目前也仍可使用，
-> 但新代码建议迁移到基于 `ParamNode` 的 `get_parameter()` / `set_parameter()`。
+> 下方文档已将推荐的结构化新接口与旧版兼容接口分开列出，避免两种写法混排。
 
-### 参数访问方法
+### 推荐的新接口
 
-| 方法 | 说明 |
+| 方法 / 方式 | 说明 |
 |---|---|
-| `set_parameter(name, value)` | `name` 可传 `ParamNode` 或旧字符串；推荐 `ParamNode`，可获得 IDE 补全以及 SDK 调用前的类型/范围/访问权限校验；自动跳过不支持的参数 |
-| `get_parameter(name, default=None)` | `name` 可传 `ParamNode` 或旧字符串；已知节点按结构化模式读取（包括 bool/enum），未知旧字符串回退为按 int → float → string 顺序探测；不支持时返回 *default* |
-| `get_int_parameter(name)` / `set_int_parameter(name, value)` | 整型参数的兼容接口；新代码建议改用基于 `ParamNode` 的 `get_parameter()` / `set_parameter()` |
-| `get_float_parameter(name)` / `set_float_parameter(name, value)` | 浮点参数的兼容接口；新代码建议改用基于 `ParamNode` 的 `get_parameter()` / `set_parameter()` |
-| `get_bool_parameter(name)` / `set_bool_parameter(name, value)` | 布尔参数的兼容接口；新代码建议改用基于 `ParamNode` 的 `get_parameter()` / `set_parameter()` |
-| `get_enum_parameter(name)` / `set_enum_parameter(name, value)` | 枚举参数的兼容接口；新代码建议改用基于 `ParamNode` 的 `get_parameter()` / `set_parameter()` |
-| `set_enum_parameter_by_string(name, string_value)` | 按符号名称设置枚举参数（如 `"Off"`、`"Continuous"`） |
-| `get_string_parameter(name)` / `set_string_parameter(name, value)` | 字符串参数的兼容接口；新代码建议改用基于 `ParamNode` 的 `get_parameter()` / `set_parameter()` |
+| `set_parameter(param_node, value)` | 推荐的写入方式。传入 `AcquisitionControl.ExposureTime`、`AnalogControl.GainAuto` 这类 `ParamNode` 成员，可获得 IDE 补全以及 SDK 调用前的类型/范围/访问权限校验 |
+| `get_parameter(param_node, default=None)` | 推荐的读取方式。已知节点按结构化模式读取（包括 bool/enum/string/int/float） |
 | `cam.<CommandNode>()` | 推荐的命令调用方式，例如 `cam.TriggerSoftware()` / `cam.UserSetLoad()` |
-| `execute_command(name)` | 命令节点的兼容接口；新代码建议优先使用 `cam.<CommandNode>()` |
-| `save_user_set(user_set)` / `load_user_set(user_set)` | 高层辅助接口；推荐传入 `UserSetControl.UserSetSelector.USER_SET_1` 这类结构化枚举成员，旧字符串目前仍兼容 |
-| `get_camera_info()` | 一次调用获取下表中所有常用参数；返回结果同时支持 `ParamNode` 和旧字符串 key 访问，但推荐优先使用 `ParamNode` |
+| `save_user_set(user_set)` / `load_user_set(user_set)` | 推荐传入 `UserSetControl.UserSetSelector.USER_SET_1` 这类结构化枚举成员 |
+| `get_camera_info()` | 推荐通过 `ParamNode` key 访问返回值，例如 `info[ImageFormatControl.Width]`、`info.get(AcquisitionControl.ExposureTime)` |
 | `get_optimal_packet_size()` | 查询 SDK 获取 GigE 最优包大小（仅 GigE 相机） |
 | `get_packet_size()` / `set_packet_size(size)` | 获取/设置 GigE 流传输包大小（`GevSCPSPacketSize`） |
+
+### 旧版兼容接口
+
+| 方法 / 方式 | 说明 |
+|---|---|
+| `set_parameter(name, value)` | 旧的字符串写入方式，例如 `set_parameter("ExposureTime", 5000.0)`，目前仍兼容 |
+| `get_parameter(name, default=None)` | 旧的字符串读取方式目前仍兼容；未知旧字符串仍会回退为按 int → float → string 顺序探测 |
+| `get_int_parameter(name)` / `set_int_parameter(name, value)` | 整型参数的兼容接口 |
+| `get_float_parameter(name)` / `set_float_parameter(name, value)` | 浮点参数的兼容接口 |
+| `get_bool_parameter(name)` / `set_bool_parameter(name, value)` | 布尔参数的兼容接口 |
+| `get_enum_parameter(name)` / `set_enum_parameter(name, value)` | 枚举参数的兼容接口 |
+| `set_enum_parameter_by_string(name, string_value)` | 通过符号名称写入枚举值的兼容接口（如 `"Off"`、`"Continuous"`） |
+| `get_string_parameter(name)` / `set_string_parameter(name, value)` | 字符串参数的兼容接口 |
+| `execute_command(name)` | 旧的字符串命令调用方式；新代码建议改用 `cam.<CommandNode>()` |
+| `save_user_set("UserSet1")` / `load_user_set("UserSet1")` | 旧的字符串用户集辅助接口，目前仍兼容 |
+| `info["Width"]` / `info["DeviceModelName"]` | `get_camera_info()` 返回值上的旧字符串 key 访问方式，目前仍兼容 |
 
 ### 常用参数
 

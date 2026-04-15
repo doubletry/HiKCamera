@@ -34,46 +34,7 @@ from dataclasses import dataclass
 from enum import IntEnum, StrEnum
 from typing import Any, Literal
 
-from .enums import (
-    AcquisitionMode,
-    AutoFunctionAOISelector,
-    BalanceRatioSelector,
-    BalanceWhiteAuto,
-    DeviceCharacterSet,
-    DeviceHeartbeatMode,
-    DeviceScanType,
-    DeviceStreamChannelEndianness,
-    DeviceStreamChannelType,
-    DeviceType,
-    EncoderCounterMode,
-    EncoderSelector,
-    EncoderTriggerMode,
-    ExposureAuto,
-    ExposureMode,
-    FrameSpecInfoSelector,
-    FrequencyConverterSignalAlignment,
-    GainAuto,
-    GammaSelector,
-    GevCCP,
-    GevDeviceModeCharacterSet,
-    ImageCompressionMode,
-    LineMode,
-    LineSelector,
-    LUTSelector,
-    PixelFormat,
-    PixelSize,
-    RegionDestination,
-    RegionSelector,
-    ShadingSelector,
-    TestPattern,
-    TestPatternGeneratorSelector,
-    TriggerActivation,
-    TriggerMode,
-    TriggerSelector,
-    TriggerSource,
-    UserSetDefault,
-    UserSetSelector,
-)
+from . import enums as enum_types
 from .exceptions import ParameterReadOnlyError, ParameterValueError
 
 # Sentinel for "no value set" (distinct from ``None``).
@@ -239,11 +200,11 @@ class DeviceControl:
     Device Control parameters.  设备控制参数。
     """
     DeviceType = ParamNode(
-        "DeviceType", DeviceType, "R",
+        "DeviceType", enum_types.DeviceType, "R",
         "设备类型 / Device type",
     )
     DeviceScanType = ParamNode(
-        "DeviceScanType", DeviceScanType, "R",
+        "DeviceScanType", enum_types.DeviceScanType, "R",
         "设备 sensor 的扫描方式 / Device sensor scan type",
     )
     DeviceVendorName = ParamNode(
@@ -295,7 +256,7 @@ class DeviceControl:
         "设备连接数量 / Device link connection count", min_value=0,
     )
     DeviceLinkHeartbeatMode = ParamNode(
-        "DeviceLinkHeartbeatMode", DeviceHeartbeatMode, "R/W",
+        "DeviceLinkHeartbeatMode", enum_types.DeviceHeartbeatMode, "R/W",
         "是否需要心跳 / Heartbeat mode",
     )
     DeviceStreamChannelCount = ParamNode(
@@ -307,7 +268,7 @@ class DeviceControl:
         "流通道选择 / Stream channel selector", min_value=0,
     )
     DeviceStreamChannelType = ParamNode(
-        "DeviceStreamChannelType", DeviceStreamChannelType, "R",
+        "DeviceStreamChannelType", enum_types.DeviceStreamChannelType, "R",
         "流通道类型 / Stream channel type",
     )
     DeviceStreamChannelLink = ParamNode(
@@ -315,7 +276,7 @@ class DeviceControl:
         "流通道连接数量 / Stream channel link count", min_value=0,
     )
     DeviceStreamChannelEndianness = ParamNode(
-        "DeviceStreamChannelEndianness", DeviceStreamChannelEndianness, "R",
+        "DeviceStreamChannelEndianness", enum_types.DeviceStreamChannelEndianness, "R",
         "图像数据的字节序 / Image data byte order",
     )
     DeviceStreamChannelPacketSize = ParamNode(
@@ -328,7 +289,7 @@ class DeviceControl:
         "设备支持的事件通道数 / Event channel count", min_value=0,
     )
     DeviceCharacterSet = ParamNode(
-        "DeviceCharacterSet", DeviceCharacterSet, "R",
+        "DeviceCharacterSet", enum_types.DeviceCharacterSet, "R",
         "设备寄存器中使用的字符集 / Character set in device registers",
     )
     DeviceReset = ParamNode(
@@ -362,11 +323,11 @@ class ImageFormatControl:
         "图像最大高度 / Maximum image height", min_value=1,
     )
     RegionSelector = ParamNode(
-        "RegionSelector", RegionSelector, "R/(W)",
+        "RegionSelector", enum_types.RegionSelector, "R/(W)",
         "ROI 选择器 / ROI selector",
     )
     RegionDestination = ParamNode(
-        "RegionDestination", RegionDestination, "R/(W)",
+        "RegionDestination", enum_types.RegionDestination, "R/(W)",
         "该 ROI 对应的码流 / Stream destination for region",
     )
     Width = ParamNode(
@@ -390,15 +351,15 @@ class ImageFormatControl:
         "转换扫描方向 / Reverse scan direction",
     )
     PixelFormat = ParamNode(
-        "PixelFormat", PixelFormat, "R/(W)",
+        "PixelFormat", enum_types.PixelFormat, "R/(W)",
         "图像像素格式 / Image pixel format",
     )
     PixelSize = ParamNode(
-        "PixelSize", PixelSize, "R/(W)",
+        "PixelSize", enum_types.PixelSize, "R/(W)",
         "一个像素包含的比特数 / Bits per pixel",
     )
     ImageCompressionMode = ParamNode(
-        "ImageCompressionMode", ImageCompressionMode, "R/(W)",
+        "ImageCompressionMode", enum_types.ImageCompressionMode, "R/(W)",
         "图像压缩模式 / Image compression mode",
     )
     ImageCompressionQuality = ParamNode(
@@ -406,15 +367,15 @@ class ImageFormatControl:
         "图像压缩质量 / Image compression quality", min_value=50,
     )
     TestPatternGeneratorSelector = ParamNode(
-        "TestPatternGeneratorSelector", TestPatternGeneratorSelector, "R/(W)",
+        "TestPatternGeneratorSelector", enum_types.TestPatternGeneratorSelector, "R/(W)",
         "测试图像生成器选择 / Test pattern generator selector",
     )
     TestPattern = ParamNode(
-        "TestPattern", TestPattern, "R/(W)",
+        "TestPattern", enum_types.TestPattern, "R/(W)",
         "测试图像选择 / Test pattern selection",
     )
     FrameSpecInfoSelector = ParamNode(
-        "FrameSpecInfoSelector", FrameSpecInfoSelector, "R/(W)",
+        "FrameSpecInfoSelector", enum_types.FrameSpecInfoSelector, "R/(W)",
         "水印信息选择 / Watermark info selector",
     )
     FrameSpecInfo = ParamNode(
@@ -444,7 +405,7 @@ class AcquisitionControl:
     Acquisition Control parameters.  采集控制参数。
     """
     AcquisitionMode = ParamNode(
-        "AcquisitionMode", AcquisitionMode, "R/(W)",
+        "AcquisitionMode", enum_types.AcquisitionMode, "R/(W)",
         "采集模式 / Acquisition mode (single/multi/continuous)",
     )
     AcquisitionStart = ParamNode(
@@ -484,19 +445,19 @@ class AcquisitionControl:
         "帧率控制使能 / Frame rate control enable",
     )
     TriggerSelector = ParamNode(
-        "TriggerSelector", TriggerSelector, "R/W",
+        "TriggerSelector", enum_types.TriggerSelector, "R/W",
         "触发事件选择 / Trigger event selector",
     )
     TriggerMode = ParamNode(
-        "TriggerMode", TriggerMode, "R/W",
+        "TriggerMode", enum_types.TriggerMode, "R/W",
         "触发模式 / Trigger mode (on/off)",
     )
     TriggerSource = ParamNode(
-        "TriggerSource", TriggerSource, "R/W",
+        "TriggerSource", enum_types.TriggerSource, "R/W",
         "触发源 / Trigger source",
     )
     TriggerActivation = ParamNode(
-        "TriggerActivation", TriggerActivation, "R/W",
+        "TriggerActivation", enum_types.TriggerActivation, "R/W",
         "触发沿/电平 / Trigger activation edge/level",
     )
     TriggerDelay = ParamNode(
@@ -508,7 +469,7 @@ class AcquisitionControl:
         "软触发执行 / Execute software trigger",
     )
     ExposureMode = ParamNode(
-        "ExposureMode", ExposureMode, "R/W",
+        "ExposureMode", enum_types.ExposureMode, "R/W",
         "曝光模式选择 / Exposure mode",
     )
     ExposureTime = ParamNode(
@@ -516,7 +477,7 @@ class AcquisitionControl:
         "曝光时间 / Exposure time", unit="us", min_value=0.0,
     )
     ExposureAuto = ParamNode(
-        "ExposureAuto", ExposureAuto, "R/W",
+        "ExposureAuto", enum_types.ExposureAuto, "R/W",
         "自动曝光 / Auto exposure",
     )
     AutoExposureTimeLowerLimit = ParamNode(
@@ -546,7 +507,7 @@ class AnalogControl:
         "增益值 / Gain", unit="dB", min_value=0.0,
     )
     GainAuto = ParamNode(
-        "GainAuto", GainAuto, "R/W",
+        "GainAuto", enum_types.GainAuto, "R/W",
         "自动增益 / Auto gain",
     )
     AutoGainLowerLimit = ParamNode(
@@ -582,11 +543,11 @@ class AnalogControl:
         "黑电平调节使能 / Black level enable",
     )
     BalanceWhiteAuto = ParamNode(
-        "BalanceWhiteAuto", BalanceWhiteAuto, "R/W",
+        "BalanceWhiteAuto", enum_types.BalanceWhiteAuto, "R/W",
         "自动白平衡 / Auto white balance",
     )
     BalanceRatioSelector = ParamNode(
-        "BalanceRatioSelector", BalanceRatioSelector, "R",
+        "BalanceRatioSelector", enum_types.BalanceRatioSelector, "R",
         "白平衡比例选择 / White balance ratio selector",
     )
     BalanceRatio = ParamNode(
@@ -598,7 +559,7 @@ class AnalogControl:
         "伽马调节 / Gamma correction", min_value=0.0,
     )
     GammaSelector = ParamNode(
-        "GammaSelector", GammaSelector, "R/W",
+        "GammaSelector", enum_types.GammaSelector, "R/W",
         "Gamma 选择 / Gamma selector",
     )
     GammaEnable = ParamNode(
@@ -622,7 +583,7 @@ class AnalogControl:
         "饱和度使能 / Saturation enable",
     )
     AutoFunctionAOISelector = ParamNode(
-        "AutoFunctionAOISelector", AutoFunctionAOISelector, "R/W",
+        "AutoFunctionAOISelector", enum_types.AutoFunctionAOISelector, "R/W",
         "自动 AOI 选择 / Auto function AOI selector",
     )
     AutoFunctionAOIWidth = ParamNode(
@@ -652,7 +613,7 @@ class LUTControl:
     LUT Control parameters.  LUT 控制参数。
     """
     LUTSelector = ParamNode(
-        "LUTSelector", LUTSelector, "R/W",
+        "LUTSelector", enum_types.LUTSelector, "R/W",
         "LUT 通道选择 / LUT channel selector",
     )
     LUTEnable = ParamNode(
@@ -674,23 +635,23 @@ class EncoderControl:
     Encoder Control parameters.  编码器控制参数。
     """
     EncoderSelector = ParamNode(
-        "EncoderSelector", EncoderSelector, "R/W",
+        "EncoderSelector", enum_types.EncoderSelector, "R/W",
         "编码器选择 / Encoder selector",
     )
     EncoderSourceA = ParamNode(
-        "EncoderSourceA", LineSelector, "R/W",
+        "EncoderSourceA", enum_types.LineSelector, "R/W",
         "编码器 A 源选择 / Encoder source A",
     )
     EncoderSourceB = ParamNode(
-        "EncoderSourceB", LineSelector, "R/W",
+        "EncoderSourceB", enum_types.LineSelector, "R/W",
         "编码器 B 源选择 / Encoder source B",
     )
     EncoderTriggerMode = ParamNode(
-        "EncoderTriggerMode", EncoderTriggerMode, "R/W",
+        "EncoderTriggerMode", enum_types.EncoderTriggerMode, "R/W",
         "编码器触发模式 / Encoder trigger mode",
     )
     EncoderCounterMode = ParamNode(
-        "EncoderCounterMode", EncoderCounterMode, "R/W",
+        "EncoderCounterMode", enum_types.EncoderCounterMode, "R/W",
         "编码器计数模式 / Encoder counter mode",
     )
     EncoderCounter = ParamNode(
@@ -724,11 +685,11 @@ class FrequencyConverterControl:
     Frequency Converter Control parameters.  分频器控制参数。
     """
     InputSource = ParamNode(
-        "InputSource", LineSelector, "R/W",
+        "InputSource", enum_types.LineSelector, "R/W",
         "分频器输入源 / Frequency converter input source",
     )
     SignalAlignment = ParamNode(
-        "SignalAlignment", FrequencyConverterSignalAlignment, "R/W",
+        "SignalAlignment", enum_types.FrequencyConverterSignalAlignment, "R/W",
         "分频器信号方向 / Signal alignment edge",
     )
     PreDivider = ParamNode(
@@ -750,7 +711,7 @@ class ShadingCorrection:
     Shading Correction parameters.  明暗场校正参数。
     """
     ShadingSelector = ParamNode(
-        "ShadingSelector", ShadingSelector, "R/W",
+        "ShadingSelector", enum_types.ShadingSelector, "R/W",
         "明暗场校正选择 / Shading correction selector",
     )
     # NOTE: The SDK documentation (V4.7.0) marks this command node as "R/(W)".
@@ -774,11 +735,11 @@ class DigitalIOControl:
     Digital IO Control parameters.  数字 IO 控制参数。
     """
     LineSelector = ParamNode(
-        "LineSelector", LineSelector, "R/W",
+        "LineSelector", enum_types.LineSelector, "R/W",
         "I/O 选择 / I/O line selector",
     )
     LineMode = ParamNode(
-        "LineMode", LineMode, "R/(W)",
+        "LineMode", enum_types.LineMode, "R/(W)",
         "I/O 模式 / I/O line mode",
     )
     LineStatus = ParamNode(
@@ -816,7 +777,7 @@ class TransportLayerControl:
         "大端模式 / Big-endian mode",
     )
     GevDeviceModeCharacterSet = ParamNode(
-        "GevDeviceModeCharacterSet", GevDeviceModeCharacterSet, "R",
+        "GevDeviceModeCharacterSet", enum_types.GevDeviceModeCharacterSet, "R",
         "字符集 / Character set",
     )
     GevInterfaceSelector = ParamNode(
@@ -916,7 +877,7 @@ class TransportLayerControl:
         "时间戳值 / Timestamp value",
     )
     GevCCP = ParamNode(
-        "GevCCP", GevCCP, "R/W",
+        "GevCCP", enum_types.GevCCP, "R/W",
         "App 端的控制权限 / Control channel privilege",
     )
     GevStreamChannelSelector = ParamNode(
@@ -975,7 +936,7 @@ class UserSetControl:
         "当前用户参数 / Current user set", min_value=0,
     )
     UserSetSelector = ParamNode(
-        "UserSetSelector", UserSetSelector, "R/W",
+        "UserSetSelector", enum_types.UserSetSelector, "R/W",
         "设置载入的参数 / User set selector",
     )
     UserSetLoad = ParamNode(
@@ -987,7 +948,7 @@ class UserSetControl:
         "保存 / Save user set",
     )
     UserSetDefault = ParamNode(
-        "UserSetDefault", UserSetDefault, "R/W",
+        "UserSetDefault", enum_types.UserSetDefault, "R/W",
         "默认用户集 / Default user set loaded at boot",
     )
 
