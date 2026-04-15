@@ -125,7 +125,7 @@ class CameraInfoDict(dict[str, Any]):
     """
 
     @staticmethod
-    def _normalize_key(key: object) -> object:
+    def _normalize_key(key: object) -> str | object:
         """
         Convert ParamNode keys to their GenICam string names.
         将 ParamNode key 转换为对应的 GenICam 字符串名称。
