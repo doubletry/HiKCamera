@@ -387,3 +387,247 @@ class UserSetDefault(StrEnum):
     USER_SET_1 = "UserSet1"
     USER_SET_2 = "UserSet2"
     USER_SET_3 = "UserSet3"
+
+
+# ---------------------------------------------------------------------------
+# Additional GenICam parameter value enumerations / 附加 GenICam 参数值枚举
+# ---------------------------------------------------------------------------
+# The following enums correspond to camera parameter nodes from the SDK
+# development guide's parameter node table (相机参数节点表).
+# 以下枚举对应 SDK 开发指南中参数节点表中的相机参数节点。
+
+class DeviceType(StrEnum):
+    """
+    Device type.  设备类型。
+    """
+    TRANSMITTER = "Transmitter"
+    RECEIVER = "Receiver"
+    TRANSCEIVER = "Transceiver"
+    PERIPHERAL = "Peripheral"
+
+
+class DeviceScanType(StrEnum):
+    """
+    Device sensor scan type (area-scan vs line-scan).
+    设备 sensor 的扫描方式（面阵 / 线阵）。
+    """
+    AREASCAN = "Areascan"
+    LINESCAN = "Linescan"
+
+
+class DeviceHeartbeatMode(StrEnum):
+    """
+    Device heartbeat mode.  设备心跳模式。
+    """
+    ON = "On"
+    OFF = "Off"
+
+
+class DeviceStreamChannelType(StrEnum):
+    """
+    Device stream channel type.  设备流通道类型。
+    """
+    TRANSMITTER = "Transmitter"
+    RECEIVER = "Receiver"
+
+
+class DeviceStreamChannelEndianness(StrEnum):
+    """
+    Byte order of image data from stream channel.
+    流通道图像数据的字节序。
+    """
+    LITTLE = "Little"
+    BIG = "Big"
+
+
+class DeviceCharacterSet(StrEnum):
+    """
+    Character set used in device registers.
+    设备寄存器中使用的字符集。
+    """
+    UTF8 = "UTF-8"
+    ASCII = "ASCII"
+
+
+class RegionSelector(StrEnum):
+    """
+    ROI region selector.  ROI 区域选择器。
+    """
+    REGION0 = "Region0"
+    REGION1 = "Region1"
+    REGION2 = "Region2"
+    ALL = "All"
+
+
+class RegionDestination(StrEnum):
+    """
+    Stream destination for a given ROI region.
+    指定 ROI 区域的流目标。
+    """
+    STREAM0 = "Stream0"
+    STREAM1 = "Stream1"
+    STREAM2 = "Stream2"
+
+
+class PixelSize(StrEnum):
+    """
+    Number of bits per pixel.  每像素比特数。
+    """
+    BPP8 = "Bpp8"
+    BPP10 = "Bpp10"
+    BPP12 = "Bpp12"
+    BPP16 = "Bpp16"
+    BPP24 = "Bpp24"
+    BPP32 = "Bpp32"
+
+
+class ImageCompressionMode(StrEnum):
+    """
+    Image compression mode.  图像压缩模式。
+    """
+    OFF = "Off"
+    JPEG = "JPEG"
+
+
+class TestPatternGeneratorSelector(StrEnum):
+    """
+    Test pattern generator selector.  测试图像生成器选择。
+    """
+    SENSOR = "Sensor"
+    REGION0 = "Region0"
+    REGION1 = "Region1"
+    REGION2 = "Region2"
+
+
+class TestPattern(StrEnum):
+    """
+    Test pattern selection.  测试图像选择。
+    """
+    OFF = "Off"
+    BLACK = "Black"
+    WHITE = "White"
+    GREY_HORIZONTAL_RAMP = "GreyHorizontalRamp"
+    GREY_VERTICAL_RAMP = "GreyVerticalRamp"
+    GREY_HORIZONTAL_RAMP_MOVING = "GreyHorizontalRampMoving"
+    GREY_VERTICAL_RAMP_MOVING = "GreyVerticalRampMoving"
+    HORIZONTAL_LINE_MOVING = "HorizontalLineMoving"
+    VERTICAL_LINE_MOVING = "VerticalLineMoving"
+    COLOR_BAR = "ColorBar"
+    FRAME_COUNTER = "FrameCounter"
+    MONO_BAR = "MonoBar"
+    TEST_IMAGE_12 = "TestImage12"
+    TEST_IMAGE_13 = "TestImage13"
+    OBLIQUE_MONO_BAR = "ObliqueMonoBar"
+    OBLIQUE_COLOR_BAR = "ObliqueColorBar"
+    GRADUAL_MONO_BAR = "GradualMonoBar"
+
+
+class FrameSpecInfoSelector(StrEnum):
+    """
+    Watermark / frame-embedded info selector.  水印信息选择。
+    """
+    TIMESTAMP = "Timestamp"
+    GAIN = "Gain"
+    EXPOSURE = "Exposure"
+    BRIGHTNESS_INFO = "BrightnessInfo"
+    WHITE_BALANCE = "WhiteBalance"
+    FRAME_COUNTER = "Framecounter"
+    EXT_TRIGGER_COUNT = "ExtTriggerCount"
+    LINE_INPUT_OUTPUT = "LineInputOutput"
+    ROI_POSITION = "ROIPosition"
+
+
+class ExposureMode(StrEnum):
+    """
+    Exposure mode.  曝光模式。
+    """
+    TIMED = "Timed"
+    TRIGGER_WIDTH = "TriggerWidth"
+
+
+class BalanceRatioSelector(StrEnum):
+    """
+    White-balance channel selector.  白平衡通道选择。
+    """
+    RED = "Red"
+    GREEN = "Green"
+    BLUE = "Blue"
+
+
+class AutoFunctionAOISelector(StrEnum):
+    """
+    Auto-function AOI (area of interest) selector.
+    自动功能 AOI（感兴趣区域）选择。
+    """
+    AOI1 = "AOI1"
+    AOI2 = "AOI2"
+
+
+class LUTSelector(StrEnum):
+    """
+    LUT channel selector.  LUT 通道选择。
+    """
+    LUMINANCE = "Luminance"
+    RED = "Red"
+    GREEN = "Green"
+    BLUE = "Blue"
+
+
+class EncoderSelector(StrEnum):
+    """
+    Encoder selector.  编码器选择。
+    """
+    ENCODER0 = "Encoder0"
+    ENCODER1 = "Encoder1"
+    ENCODER2 = "Encoder2"
+
+
+class EncoderTriggerMode(StrEnum):
+    """
+    Encoder trigger mode.  编码器触发模式。
+    """
+    ANY_DIRECTION = "AnyDirection"
+    FORWARD_ONLY = "ForwardOnly"
+
+
+class EncoderCounterMode(StrEnum):
+    """
+    Encoder counter mode.  编码器计数模式。
+    """
+    IGNORE_DIRECTION = "IgnoreDirection"
+    FOLLOW_DIRECTION = "FollowDirection"
+
+
+class FrequencyConverterSignalAlignment(StrEnum):
+    """
+    Frequency converter signal alignment edge.
+    分频器信号方向。
+    """
+    RISING_EDGE = "RisingEdge"
+    FALLING_EDGE = "FallingEdge"
+
+
+class ShadingSelector(StrEnum):
+    """
+    Shading correction selector.  明暗场校正选择。
+    """
+    FPNC_CORRECTION = "FPNCCorrection"
+    PRNUC_CORRECTION = "PRNUCCorrection"
+
+
+class GevCCP(StrEnum):
+    """
+    GigE Vision control channel privilege.
+    GigE Vision 控制通道权限。
+    """
+    OPEN_ACCESS = "OpenAcess"
+    EXCLUSIVE_ACCESS = "ExclusiveAccess"
+    CONTROL_ACCESS = "ControlAccess"
+
+
+class GevDeviceModeCharacterSet(StrEnum):
+    """
+    GigE Vision device mode character set.
+    GigE Vision 设备模式字符集。
+    """
+    UTF8 = "UTF8"

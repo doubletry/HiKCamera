@@ -55,24 +55,10 @@ import numpy as np
 
 from .enums import (
     AccessMode,
-    AcquisitionMode,
-    BalanceWhiteAuto,
-    ExposureAuto,
-    GainAuto,
-    GammaSelector,
-    LineMode,
-    LineSelector,
     MvErrorCode,
     OutputFormat,
-    PixelFormat,
     StreamingMode,
     TransportLayer,
-    TriggerActivation,
-    TriggerMode,
-    TriggerSelector,
-    TriggerSource,
-    UserSetDefault,
-    UserSetSelector,
 )
 from .exceptions import (
     CameraAlreadyOpenError,
@@ -90,6 +76,7 @@ from .exceptions import (
     ParameterReadOnlyError,
     ParameterValueError,
 )
+from .params import PARAM_NODE_LOOKUP, ParamNode, _build_param_schema
 from .sdk_wrapper import (
     EXCEPTION_CALLBACK,
     IMAGE_CALLBACK,
@@ -156,71 +143,13 @@ _DEFAULT_FRAME_BUFFER_SIZE: int = 10 * 1024 * 1024
 # SDK 设备断开连接异常消息类型。
 _MV_EXCEPTION_DEV_DISCONNECT: int = 0x00008001
 
-# GenICam parameter schema used by :py:meth:`set_parameter` for automatic
-# type dispatch and value validation.  Each entry maps a GenICam node name to
-# its expected Python type.  For enum parameters the value is the concrete
-# ``StrEnum`` or ``IntEnum`` subclass; ``isinstance(value, expected_type)`` is
-# used for validation.  Parameters not listed here fall back to Python-type
-# dispatch.
-# GenICam 参数模式，供 :py:meth:`set_parameter` 用于自动类型分派与值校验。
-# 每个条目将 GenICam 节点名称映射到其期望的 Python 类型。枚举参数的值为具体
-# 的 ``StrEnum`` 或 ``IntEnum`` 子类；使用 ``isinstance(value, expected_type)``
-# 进行校验。此处未列出的参数按 Python 类型回退分派。
-_PARAMETER_SCHEMA: dict[str, type] = {
-    # Image format / 图像格式
-    "Width": int,
-    "Height": int,
-    "OffsetX": int,
-    "OffsetY": int,
-
-    # Exposure & gain / 曝光与增益
-    "ExposureTime": float,
-    "ExposureAuto": ExposureAuto,
-    "Gain": float,
-    "GainAuto": GainAuto,
-    "Gamma": float,
-    "GammaEnable": bool,
-    "GammaSelector": GammaSelector,
-
-    # Frame rate / 帧率
-    "AcquisitionFrameRate": float,
-    "AcquisitionFrameRateEnable": bool,
-
-    # Acquisition / 采集
-    "AcquisitionMode": AcquisitionMode,
-
-    # Trigger / 触发
-    "TriggerMode": TriggerMode,
-    "TriggerSource": TriggerSource,
-    "TriggerActivation": TriggerActivation,
-    "TriggerSelector": TriggerSelector,
-
-    # I/O / 输入输出
-    "LineSelector": LineSelector,
-    "LineMode": LineMode,
-
-    # White balance / 白平衡
-    "BalanceWhiteAuto": BalanceWhiteAuto,
-
-    # User set / 用户集
-    "UserSetSelector": UserSetSelector,
-    "UserSetDefault": UserSetDefault,
-
-    # Device info (string) / 设备信息（字符串）
-    "DeviceUserID": str,
-
-    # GigE network / GigE 网络
-    "GevSCPSPacketSize": int,
-
-    # Pixel format / 像素格式
-    "PixelFormat": PixelFormat,
-
-    # Binning / 合并
-    "BinningHorizontal": int,
-    "BinningVertical": int,
-    "DecimationHorizontal": int,
-    "DecimationVertical": int,
-}
+# GenICam parameter schema auto-built from :mod:`hikcamera.params` definitions.
+# This replaces the old hard-coded dict with a single source of truth derived
+# from :class:`ParamNode` metadata across all category namespace classes.
+# GenICam 参数模式，从 :mod:`hikcamera.params` 定义自动构建。
+# 此映射取代旧的硬编码字典，作为由所有分类命名空间类中
+# :class:`ParamNode` 元数据派生的唯一真实来源。
+_PARAMETER_SCHEMA: dict[str, type] = _build_param_schema()
 
 # ---------------------------------------------------------------------------
 # Helpers / 辅助函数
@@ -1724,33 +1653,38 @@ class HikCamera:
 
         return info
 
-    def set_parameter(self, name: str, value: int | float | bool | str) -> None:
+    def set_parameter(
+        self,
+        name: ParamNode | str,
+        value: int | float | bool | str,
+    ) -> None:
         """
         Set a camera parameter with automatic type dispatch and validation.
         自动类型分派并校验设置相机参数。
 
-        If *name* appears in :data:`_PARAMETER_SCHEMA`, the value is validated
-        via ``isinstance(value, expected_type)`` **before** any SDK call is
-        made.  For enum parameters the expected type is the corresponding
-        ``StrEnum`` / ``IntEnum`` subclass (e.g. :py:class:`GainAuto`), so
-        only values of that exact enum type are accepted.  For parameters not
-        in the schema, dispatch falls back to Python type:
-        bool → integer → float → string.
-        Silently absorbs :py:exc:`ParameterNotSupportedError` when the
-        parameter is absent on this camera model (logs a debug message).
+        *name* can be a :class:`~hikcamera.params.ParamNode` (for full IDE
+        auto-completion and range validation) **or** a plain ``str`` for
+        backward compatibility.
 
-        如果 *name* 存在于 :data:`_PARAMETER_SCHEMA`，则在调用 SDK 之前，先通过
-        ``isinstance(value, expected_type)`` 进行校验。枚举参数的期望类型为对应
-        的 ``StrEnum`` / ``IntEnum`` 子类（如 :py:class:`GainAuto`），因此只接受
-        该枚举类型的值。不在模式中的参数按 Python 类型回退分派：
-        bool → 整型 → 浮点 → 字符串。
-        当参数在此相机型号上不存在时，静默吸收
-        :py:exc:`ParameterNotSupportedError`（输出调试日志）。
+        *name* 可以是 :class:`~hikcamera.params.ParamNode`（获得完整的 IDE
+        自动补全和范围校验），也可以是普通 ``str`` 以保持向后兼容。
+
+        When a :class:`ParamNode` is passed, its :meth:`~ParamNode.validate`
+        method is called first to check access mode, type, and numeric range.
+        When a plain ``str`` is passed, the method falls back to the
+        ``_PARAMETER_SCHEMA`` dict (auto-built from all ``ParamNode``
+        definitions) for type dispatch and validation.
+
+        当传入 :class:`ParamNode` 时，会先调用其
+        :meth:`~ParamNode.validate` 方法检查访问模式、类型和数值范围。
+        当传入普通 ``str`` 时，方法回退到 ``_PARAMETER_SCHEMA`` 字典
+        （从所有 ``ParamNode`` 定义自动构建）进行类型分派和校验。
 
         Parameters / 参数
         -----------------
         name:
-            GenICam node name. / GenICam 节点名称。
+            A :class:`ParamNode` instance or a GenICam node name string.
+            :class:`ParamNode` 实例或 GenICam 节点名称字符串。
         value:
             New value.  For schema-registered parameters, the value must be an
             instance of the declared type (e.g. ``GainAuto.OFF`` for
@@ -1763,14 +1697,27 @@ class HikCamera:
         -------------
         ParameterValueError
             When the value does not match the expected type for a known
-            parameter.
-            当值与已知参数的期望类型不匹配时抛出。
+            parameter, or when a numeric value is out of range.
+            当值与已知参数的期望类型不匹配，或数值超出范围时抛出。
         ParameterReadOnlyError
             When the parameter is read-only. / 当参数为只读时抛出。
         ParameterError
             When the underlying SDK call fails for an unrelated reason.
             当底层 SDK 调用因其他原因失败时抛出。
         """
+        # Resolve ParamNode → perform full validation (type + range + access)
+        # 解析 ParamNode → 执行完整校验（类型 + 范围 + 访问模式）
+        node: ParamNode | None = None
+        if isinstance(name, ParamNode):
+            node = name
+            name = node.name
+            value = node.validate(value)
+        else:
+            # Try to look up the ParamNode for full validation
+            node = PARAM_NODE_LOOKUP.get(name)
+            if node is not None and node.access != "R":
+                value = node.validate(value)
+
         expected_type = _PARAMETER_SCHEMA.get(name)
         try:
             if expected_type is not None:
@@ -1845,24 +1792,30 @@ class HikCamera:
                 f"Unsupported schema type {expected_type.__name__} for parameter {name!r}"
             )
 
-    def get_parameter(self, name: str, default: Any = None) -> Any:
+    def get_parameter(self, name: ParamNode | str, default: Any = None) -> Any:
         """
         Get a camera parameter with automatic type dispatch.
         自动类型分派获取相机参数。
 
-        Tries integer → float → string in order.  Returns *default* when
-        the parameter is absent on this camera model.
+        *name* can be a :class:`~hikcamera.params.ParamNode` or a plain
+        ``str``.  Tries integer → float → string in order.  Returns
+        *default* when the parameter is absent on this camera model.
+
+        *name* 可以是 :class:`~hikcamera.params.ParamNode` 或普通 ``str``。
         按 整型 → 浮点 → 字符串 的顺序尝试。当参数在此相机型号上不存在时
         返回 *default*。
 
         Parameters / 参数
         -----------------
         name:
-            GenICam node name. / GenICam 节点名称。
+            A :class:`ParamNode` instance or GenICam node name string.
+            :class:`ParamNode` 实例或 GenICam 节点名称字符串。
         default:
             Value returned when the parameter is not supported.
             当参数不受支持时返回的值。
         """
+        if isinstance(name, ParamNode):
+            name = name.name
         for getter in (
             self.get_int_parameter,
             self.get_float_parameter,
