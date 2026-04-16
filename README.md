@@ -330,14 +330,19 @@ below lists a few common nodes. The recommended public API is the structured
 
 ### Structured parameter API
 
-| Method / style | Description |
-|---|---|
-| `cam.params.<Category>.<Node>.set(value)` | Recommended write path with node-level type/range/access validation |
-| `cam.params.<Category>.<Node>.get(default=None)` | Recommended read path for structured nodes |
-| `cam.params.<Category>.<Command>.execute()` | Recommended command invocation for command nodes |
-| `get_camera_info()` | Batch-read common parameters, then access them with `ParamNode` keys such as `info[ImageFormatControl.Width]` or `info.get(AcquisitionControl.ExposureTime)` |
-| `get_optimal_packet_size()` | Query SDK for the optimal GigE packet size (GigE only) |
-| `get_packet_size()` / `set_packet_size(size)` | Get/set GigE streaming packet size (`GevSCPSPacketSize`) |
+- `cam.params.<Category>.<Node>.set(value)`  
+  Recommended write path with node-level type/range/access validation.
+- `cam.params.<Category>.<Node>.get(default=None)`  
+  Recommended read path for structured nodes.
+- `cam.params.<Category>.<Command>.execute()`  
+  Recommended command invocation for command nodes.
+- `get_camera_info()`  
+  Batch-read common parameters, then access them with `ParamNode` keys such as
+  `info[ImageFormatControl.Width]` or `info.get(AcquisitionControl.ExposureTime)`.
+- `get_optimal_packet_size()`  
+  Query SDK for the optimal GigE packet size (GigE only).
+- `get_packet_size()` / `set_packet_size(size)`  
+  Get/set GigE streaming packet size (`GevSCPSPacketSize`).
 
 ### Common parameters
 
@@ -366,7 +371,9 @@ below lists a few common nodes. The recommended public API is the structured
 | `cam.params.UserSetControl.UserSetLoad` | `.execute()` | Load parameters from the selected user set |
 
 For the complete parameter node tables, see
-[`docs/camera_parameter_nodes.md`](docs/camera_parameter_nodes.md).
+[`docs/camera_parameter_nodes.md`](docs/camera_parameter_nodes.md). For the
+Chinese version, see
+[`docs/camera_parameter_nodes_zh.md`](docs/camera_parameter_nodes_zh.md).
 
 ### Example: reading & writing common parameters
 
@@ -428,6 +435,7 @@ demos/
   reconnect.py         # Demo: automatic reconnection after disconnect
 docs/
   camera_parameter_nodes.md  # Full structured camera parameter node reference
+  camera_parameter_nodes_zh.md  # 中文版结构化相机参数节点参考
 tests/
   conftest.py          # Fixtures and mock SDK helpers
   test_camera.py       # HikCamera tests

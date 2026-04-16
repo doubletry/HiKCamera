@@ -325,14 +325,19 @@ with HikCamera.from_ip("192.168.1.100") as cam:
 
 ### 结构化参数 API
 
-| 方法 / 方式 | 说明 |
-|---|---|
-| `cam.params.<分类>.<节点>.set(value)` | 推荐的写入方式，具备节点级类型/范围/访问权限校验 |
-| `cam.params.<分类>.<节点>.get(default=None)` | 推荐的读取方式 |
-| `cam.params.<分类>.<命令>.execute()` | 推荐的命令调用方式 |
-| `get_camera_info()` | 批量读取常用参数，再用 `ParamNode` key 访问，例如 `info[ImageFormatControl.Width]`、`info.get(AcquisitionControl.ExposureTime)` |
-| `get_optimal_packet_size()` | 查询 SDK 获取 GigE 最优包大小（仅 GigE 相机） |
-| `get_packet_size()` / `set_packet_size(size)` | 获取/设置 GigE 流传输包大小（`GevSCPSPacketSize`） |
+- `cam.params.<分类>.<节点>.set(value)`  
+  推荐的写入方式，具备节点级类型/范围/访问权限校验。
+- `cam.params.<分类>.<节点>.get(default=None)`  
+  推荐的读取方式。
+- `cam.params.<分类>.<命令>.execute()`  
+  推荐的命令调用方式。
+- `get_camera_info()`  
+  批量读取常用参数，再用 `ParamNode` key 访问，例如
+  `info[ImageFormatControl.Width]`、`info.get(AcquisitionControl.ExposureTime)`。
+- `get_optimal_packet_size()`  
+  查询 SDK 获取 GigE 最优包大小（仅 GigE 相机）。
+- `get_packet_size()` / `set_packet_size(size)`  
+  获取/设置 GigE 流传输包大小（`GevSCPSPacketSize`）。
 
 ### 常用参数
 
@@ -361,6 +366,8 @@ with HikCamera.from_ip("192.168.1.100") as cam:
 | `cam.params.UserSetControl.UserSetLoad` | `.execute()` | 从选定的用户集加载参数 |
 
 完整参数节点总表请参见
+[`docs/camera_parameter_nodes_zh.md`](docs/camera_parameter_nodes_zh.md)。
+英文版请参见
 [`docs/camera_parameter_nodes.md`](docs/camera_parameter_nodes.md)。
 
 ### 示例：读写常用参数
@@ -422,7 +429,8 @@ demos/
   exception_handling.py  # 示例：取帧期间检测相机断开连接
   reconnect.py         # 示例：断开连接后自动重连
 docs/
-  camera_parameter_nodes.md  # 完整的结构化相机参数节点参考
+  camera_parameter_nodes.md  # 英文版结构化相机参数节点参考
+  camera_parameter_nodes_zh.md  # 完整的中文版结构化相机参数节点参考
 tests/
   conftest.py          # 测试夹具和模拟 SDK 辅助工具
   test_camera.py       # HikCamera 测试

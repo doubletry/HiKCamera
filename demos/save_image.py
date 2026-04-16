@@ -25,10 +25,8 @@ import cv2
 import numpy as np
 
 from hikcamera import (
-    AcquisitionControl,
-    AnalogControl,
-    HikCamera,
     Hik,
+    HikCamera,
     SDKNotFoundError,
 )
 
