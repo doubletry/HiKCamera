@@ -457,8 +457,8 @@ def _transport_layer_search_order(transport_layers: TransportLayer) -> tuple[Tra
     ordered_layers: list[TransportLayer] = []
     for layer in (
         Hik.TransportLayer.GIGE,
-        TransportLayer.USB,
-        TransportLayer.CAMERALINK,
+        Hik.TransportLayer.USB,
+        Hik.TransportLayer.CAMERALINK,
     ):
         if transport_layers & layer:
             ordered_layers.append(layer)
