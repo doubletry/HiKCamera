@@ -32,9 +32,6 @@ from typing import TYPE_CHECKING, Any, Literal, Protocol, overload
 from .enums import Hik
 from .exceptions import ParameterReadOnlyError, ParameterValueError
 
-# Sentinel for "no value set" (distinct from ``None``).
-_UNSET: object = object()
-
 if TYPE_CHECKING:
     from .camera import BoundParamNode
 
