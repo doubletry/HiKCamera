@@ -47,9 +47,9 @@ import struct
 import threading
 from collections import OrderedDict
 from collections.abc import Callable
-from ctypes import POINTER, c_ubyte, c_uint, c_void_p
+from ctypes import c_ubyte, c_uint, c_void_p
 from enum import IntEnum, StrEnum
-from typing import Any
+from typing import Any, cast
 
 import numpy as np
 
@@ -154,13 +154,13 @@ class CameraInfoDict(dict[str, Any]):
         return key
 
     def __getitem__(self, key: object) -> Any:
-        return super().__getitem__(self._normalize_key(key))
+        return super().__getitem__(cast(str, self._normalize_key(key)))
 
     def get(self, key: object, default: Any = None) -> Any:
-        return super().get(self._normalize_key(key), default)
+        return super().get(cast(str, self._normalize_key(key)), default)
 
     def __contains__(self, key: object) -> bool:
-        return super().__contains__(self._normalize_key(key))
+        return super().__contains__(cast(str, self._normalize_key(key)))
 
 
 class BoundParamNode:
@@ -584,10 +584,10 @@ class HikCamera:
         self._is_grabbing: bool = False
         self._frame_buffer: ctypes.Array[c_ubyte] | None = None
         self._frame_buffer_size: int = 0
-        self._callback_ref: IMAGE_CALLBACK | None = None  # keep reference alive
+        self._callback_ref: Any | None = None  # keep reference alive
         self._user_callback: Callable[[np.ndarray, dict[str, Any]], None] | None = None
         self._output_format_for_callback: OutputFormat = Hik.OutputFormat.BGR8
-        self._exception_callback_ref: EXCEPTION_CALLBACK | None = None
+        self._exception_callback_ref: Any | None = None
         self._device_exception: DeviceDisconnectedError | None = None
         self._on_device_exception: Callable[[DeviceDisconnectedError], None] | None = None
         self._lock: threading.Lock = threading.Lock()
@@ -1306,6 +1306,7 @@ class HikCamera:
             raise self._device_exception
 
         self._ensure_frame_buffer()
+        assert self._frame_buffer is not None
 
         frame_info = MV_FRAME_OUT_INFO_EX()
         ret = self._sdk.MV_CC_GetOneFrameTimeout(
@@ -1348,6 +1349,7 @@ class HikCamera:
             raise self._device_exception
 
         self._ensure_frame_buffer()
+        assert self._frame_buffer is not None
 
         frame_info = MV_FRAME_OUT_INFO_EX()
         ret = self._sdk.MV_CC_GetOneFrameTimeout(
@@ -1433,8 +1435,8 @@ class HikCamera:
 
     def _internal_callback(
         self,
-        p_data: POINTER(c_ubyte),
-        p_frame_info: POINTER(MV_FRAME_OUT_INFO_EX),
+        p_data: Any,
+        p_frame_info: Any,
         p_user: c_void_p,
     ) -> None:
         """
@@ -1863,13 +1865,13 @@ class HikCamera:
         # Dispatch based on *expected_type* (schema), not the runtime type.
         # 基于 *expected_type*（模式）分派，而非运行时类型。
         if expected_type is bool:
-            self._set_bool_value(name, value)
+            self._set_bool_value(name, cast(bool, value))
         elif expected_type is int:
-            self._set_int_value(name, value)
+            self._set_int_value(name, cast(int, value))
         elif expected_type is float:
-            self._set_float_value(name, value)
+            self._set_float_value(name, cast(float, value))
         elif expected_type is str:
-            self._set_string_value(name, value)
+            self._set_string_value(name, cast(str, value))
         elif issubclass(expected_type, StrEnum):
             self._set_enum_value_by_string(name, str(value))
         elif issubclass(expected_type, IntEnum):
