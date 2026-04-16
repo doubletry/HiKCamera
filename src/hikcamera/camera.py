@@ -1828,6 +1828,8 @@ class HikCamera:
             getters = (self._get_enum_value,)
         else:
             getters = ()
+        if not getters:
+            return default
 
         for getter in getters:
             try:

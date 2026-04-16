@@ -179,10 +179,12 @@ class ParamNode:
         if not isinstance(value, expected_type):
             if isinstance(expected_type, type):
                 try:
-                    issubclass(expected_type, _ENUM_BASE_TYPES)
+                    if issubclass(expected_type, _ENUM_BASE_TYPES):
+                        type_name = expected_type.__name__
+                    else:
+                        type_name = expected_type.__name__
                 except TypeError:  # pragma: no cover - defensive
-                    pass
-                type_name = expected_type.__name__
+                    type_name = expected_type.__name__
             else:
                 type_name = str(expected_type)
             raise ParameterValueError(
