@@ -141,28 +141,26 @@ class CameraInfoDict(dict[str, Any]):
     """
 
     @staticmethod
-    def _normalize_key(key: object) -> str:
+    def _normalize_key(key: object) -> object:
         """
         Convert ParamNode keys to their GenICam string names.
         将 ParamNode key 转换为对应的 GenICam 字符串名称。
 
-        Legacy string keys are accepted unchanged.
-        旧字符串 key 会原样保留。
+        Non-ParamNode keys are returned unchanged.
+        非 ParamNode 的 key 将原样返回。
         """
         if isinstance(key, ParamNode):
             return key.name
-        if isinstance(key, str):
-            return key
-        raise TypeError("CameraInfoDict keys must be str or ParamNode")
+        return key
 
     def __getitem__(self, key: object) -> Any:
-        return super().__getitem__(self._normalize_key(key))
+        return dict.__getitem__(cast(dict[Any, Any], self), self._normalize_key(key))
 
     def get(self, key: object, default: Any = None) -> Any:
-        return super().get(self._normalize_key(key), default)
+        return dict.get(cast(dict[Any, Any], self), self._normalize_key(key), default)
 
     def __contains__(self, key: object) -> bool:
-        return super().__contains__(self._normalize_key(key))
+        return dict.__contains__(cast(dict[Any, Any], self), self._normalize_key(key))
 
 
 class BoundParamNode:
