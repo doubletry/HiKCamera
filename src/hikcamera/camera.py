@@ -305,28 +305,24 @@ class CameraParamsProxy:
         "TransportLayerControl",
         "UserSetControl",
     )
+    _CATEGORY_PROXY_TYPES: tuple[tuple[str, type[BoundCategoryProxy]], ...] = (
+        ("DeviceControl", BoundDeviceControl),
+        ("ImageFormatControl", BoundImageFormatControl),
+        ("AcquisitionControl", BoundAcquisitionControl),
+        ("AnalogControl", BoundAnalogControl),
+        ("LUTControl", BoundLUTControl),
+        ("EncoderControl", BoundEncoderControl),
+        ("FrequencyConverterControl", BoundFrequencyConverterControl),
+        ("ShadingCorrection", BoundShadingCorrection),
+        ("DigitalIOControl", BoundDigitalIOControl),
+        ("TransportLayerControl", BoundTransportLayerControl),
+        ("UserSetControl", BoundUserSetControl),
+    )
 
     def __init__(self, camera: HikCamera) -> None:
         self._camera = camera
-        object.__setattr__(self, "DeviceControl", BoundDeviceControl(camera))
-        object.__setattr__(self, "ImageFormatControl", BoundImageFormatControl(camera))
-        object.__setattr__(self, "AcquisitionControl", BoundAcquisitionControl(camera))
-        object.__setattr__(self, "AnalogControl", BoundAnalogControl(camera))
-        object.__setattr__(self, "LUTControl", BoundLUTControl(camera))
-        object.__setattr__(self, "EncoderControl", BoundEncoderControl(camera))
-        object.__setattr__(
-            self,
-            "FrequencyConverterControl",
-            BoundFrequencyConverterControl(camera),
-        )
-        object.__setattr__(self, "ShadingCorrection", BoundShadingCorrection(camera))
-        object.__setattr__(self, "DigitalIOControl", BoundDigitalIOControl(camera))
-        object.__setattr__(
-            self,
-            "TransportLayerControl",
-            BoundTransportLayerControl(camera),
-        )
-        object.__setattr__(self, "UserSetControl", BoundUserSetControl(camera))
+        for attr_name, proxy_type in self._CATEGORY_PROXY_TYPES:
+            object.__setattr__(self, attr_name, proxy_type(camera))
 
     def __setattr__(self, name: str, value: Any) -> None:
         if name == "_camera" and not hasattr(self, name):
