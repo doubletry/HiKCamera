@@ -31,13 +31,11 @@ from typing import Any
 import numpy as np
 
 from hikcamera import (
-    AccessMode,
     DeviceDisconnectedError,
+    Hik,
     HikCamera,
     HikCameraError,
-    OutputFormat,
     SDKNotFoundError,
-    TransportLayer,
 )
 
 
@@ -66,7 +64,7 @@ def main() -> None:
     try:
         if args.ip:
             print(f"Connecting to camera at IP {args.ip} …")
-            cam = HikCamera.from_ip(args.ip, TransportLayer.GIGE)
+            cam = HikCamera.from_ip(args.ip, Hik.TransportLayer.GIGE)
         elif args.sn:
             print(f"Connecting to camera with serial number {args.sn} …")
             cam = HikCamera.from_serial_number(args.sn)
@@ -113,12 +111,12 @@ def main() -> None:
     # Open and start grabbing / 打开相机并开始取帧
     # ---------------------------------------------------------------
     with cam:
-        cam.open(AccessMode.EXCLUSIVE)
+        cam.open(Hik.AccessMode.EXCLUSIVE)
         print("Camera opened.")
 
         cam.start_grabbing(
             callback=on_frame,
-            output_format=OutputFormat.BGR8,
+            output_format=Hik.OutputFormat.BGR8,
             on_exception=on_exception,
         )
         print(f"Grabbing started.  Will capture for up to {args.duration:.0f}s …")

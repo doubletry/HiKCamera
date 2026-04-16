@@ -51,9 +51,9 @@ poetry install
 ### Enumerate cameras
 
 ```python
-from hikcamera import HikCamera, TransportLayer
+from hikcamera import Hik, HikCamera
 
-cameras = HikCamera.enumerate(TransportLayer.ALL)
+cameras = HikCamera.enumerate(Hik.TransportLayer.ALL)
 for cam in cameras:
     print(cam)
 ```
@@ -82,11 +82,11 @@ unrelated SDK scans.
 
 ```python
 import cv2
-from hikcamera import AccessMode, Hik, HikCamera, OutputFormat
+from hikcamera import Hik, HikCamera
 
 cameras = HikCamera.enumerate()
 with HikCamera.from_device_info(cameras[0]) as cam:
-    cam.open(AccessMode.EXCLUSIVE)
+    cam.open(Hik.AccessMode.EXCLUSIVE)
 
     # Prefer the structured cam.params API for IDE completion and validation.
     cam.params.AcquisitionControl.ExposureTime.set(5000.0)
@@ -94,7 +94,7 @@ with HikCamera.from_device_info(cameras[0]) as cam:
     cam.params.AnalogControl.GainAuto.set(Hik.GainAuto.OFF)
 
     cam.start_grabbing()
-    frame = cam.get_frame(timeout_ms=1000, output_format=OutputFormat.BGR8)
+    frame = cam.get_frame(timeout_ms=1000, output_format=Hik.OutputFormat.BGR8)
     cam.stop_grabbing()
 
 cv2.imwrite("frame.png", frame)
@@ -108,7 +108,7 @@ imported enum types such as `Hik.GainAuto.OFF`.
 
 ```python
 import numpy as np
-from hikcamera import HikCamera, AccessMode, OutputFormat
+from hikcamera import Hik, HikCamera
 
 received_frames = []
 
@@ -117,8 +117,8 @@ def on_frame(image: np.ndarray, info: dict) -> None:
     print(f"Frame {info['frame_num']}: {image.shape}")
 
 with HikCamera.from_device_info(HikCamera.enumerate()[0]) as cam:
-    cam.open(AccessMode.EXCLUSIVE)
-    cam.start_grabbing(callback=on_frame, output_format=OutputFormat.BGR8)
+    cam.open(Hik.AccessMode.EXCLUSIVE)
+    cam.start_grabbing(callback=on_frame, output_format=Hik.OutputFormat.BGR8)
 
     import time
     time.sleep(5)   # collect frames for 5 seconds
@@ -140,8 +140,7 @@ callback automatically and provides two ways to detect disconnection:
 ```python
 import threading
 from hikcamera import (
-    HikCamera, AccessMode, OutputFormat,
-    DeviceDisconnectedError, HikCameraError,
+    DeviceDisconnectedError, Hik, HikCamera, HikCameraError,
 )
 
 disconnect_event = threading.Event()
@@ -154,10 +153,10 @@ def on_exception(exc: DeviceDisconnectedError):
     disconnect_event.set()
 
 with HikCamera.from_ip("192.168.1.100") as cam:
-    cam.open(AccessMode.EXCLUSIVE)
+    cam.open(Hik.AccessMode.EXCLUSIVE)
     cam.start_grabbing(
         callback=on_frame,
-        output_format=OutputFormat.BGR8,
+        output_format=Hik.OutputFormat.BGR8,
         on_exception=on_exception,       # ← immediate notification
     )
 
@@ -187,8 +186,7 @@ SDK handle is always destroyed — even on errors:
 ```python
 import time
 from hikcamera import (
-    HikCamera, AccessMode, OutputFormat,
-    CameraNotFoundError, CameraConnectionError, HikCameraError,
+    CameraConnectionError, CameraNotFoundError, Hik, HikCamera, HikCameraError,
 )
 
 # After disconnect detected, release resources via context manager exit,
@@ -198,7 +196,7 @@ while True:
     try:
         cam = HikCamera.from_ip("192.168.1.100")
         with cam:
-            cam.open(AccessMode.EXCLUSIVE)
+            cam.open(Hik.AccessMode.EXCLUSIVE)
             cam.start_grabbing(callback=on_frame, on_exception=on_exception)
             print("Reconnected!")
             ...  # run until next disconnect
@@ -212,12 +210,12 @@ See `demos/reconnect.py` for a complete, production-ready example.
 ### Multicast streaming
 
 ```python
-from hikcamera import HikCamera, AccessMode, StreamingMode
+from hikcamera import Hik, HikCamera
 
 with HikCamera.from_ip("192.168.1.100") as cam:
     cam.open(
-        AccessMode.MONITOR,
-        streaming_mode=StreamingMode.MULTICAST,
+        Hik.AccessMode.MONITOR,
+        streaming_mode=Hik.StreamingMode.MULTICAST,
         multicast_ip="239.0.0.1",
     )
     cam.start_grabbing()
@@ -230,22 +228,22 @@ By default, `open()` automatically detects and sets the optimal packet size
 for GigE cameras.  You can also specify a manual value:
 
 ```python
-from hikcamera import HikCamera, AccessMode, GIGE_PACKET_SIZE_DEFAULT, GIGE_PACKET_SIZE_JUMBO
+from hikcamera import GIGE_PACKET_SIZE_DEFAULT, GIGE_PACKET_SIZE_JUMBO, Hik, HikCamera
 
 # Auto-detect optimal packet size (default)
 with HikCamera.from_ip("192.168.1.100") as cam:
-    cam.open(AccessMode.EXCLUSIVE)  # optimal packet size applied automatically
+    cam.open(Hik.AccessMode.EXCLUSIVE)  # optimal packet size applied automatically
     ...
 
 # Manual packet size (e.g. GIGE_PACKET_SIZE_DEFAULT for standard MTU,
 # GIGE_PACKET_SIZE_JUMBO for jumbo frames)
 with HikCamera.from_ip("192.168.1.100") as cam:
-    cam.open(AccessMode.EXCLUSIVE, packet_size=GIGE_PACKET_SIZE_JUMBO)
+    cam.open(Hik.AccessMode.EXCLUSIVE, packet_size=GIGE_PACKET_SIZE_JUMBO)
     ...
 
 # Query or change packet size after opening
 with HikCamera.from_ip("192.168.1.100") as cam:
-    cam.open(AccessMode.EXCLUSIVE)
+    cam.open(Hik.AccessMode.EXCLUSIVE)
     print(cam.get_packet_size())       # current packet size
     print(cam.get_optimal_packet_size())  # SDK-recommended optimal size
     cam.set_packet_size(GIGE_PACKET_SIZE_DEFAULT)  # manual override
@@ -274,10 +272,10 @@ with HikCamera.from_device_info(cameras[0]) as cam:
 ### Get camera information
 
 ```python
-from hikcamera import AccessMode, AcquisitionControl, AnalogControl, DeviceControl, HikCamera, ImageFormatControl
+from hikcamera import AcquisitionControl, AnalogControl, DeviceControl, Hik, HikCamera, ImageFormatControl
 
 with HikCamera.from_ip("192.168.1.100") as cam:
-    cam.open(AccessMode.EXCLUSIVE)
+    cam.open(Hik.AccessMode.EXCLUSIVE)
 
     # Get all common camera parameters at once
     info = cam.get_camera_info()
@@ -292,10 +290,10 @@ with HikCamera.from_ip("192.168.1.100") as cam:
 ### Export / import camera configuration
 
 ```python
-from hikcamera import HikCamera, AccessMode
+from hikcamera import Hik, HikCamera
 
 with HikCamera.from_ip("192.168.1.100") as cam:
-    cam.open(AccessMode.EXCLUSIVE)
+    cam.open(Hik.AccessMode.EXCLUSIVE)
 
     # Export current configuration to a file
     cam.export_config("camera_config.xml")
@@ -307,10 +305,10 @@ with HikCamera.from_ip("192.168.1.100") as cam:
 ### Save / load device user sets
 
 ```python
-from hikcamera import AccessMode, Hik, HikCamera
+from hikcamera import Hik, HikCamera
 
 with HikCamera.from_ip("192.168.1.100") as cam:
-    cam.open(AccessMode.EXCLUSIVE)
+    cam.open(Hik.AccessMode.EXCLUSIVE)
 
     cam.params.UserSetControl.UserSetSelector.set(Hik.UserSetSelector.USER_SET_1)
     cam.params.UserSetControl.UserSetSave.execute()
@@ -416,10 +414,10 @@ below lists commonly used nodes. The recommended public API is the structured
 ### Example: reading & writing parameters
 
 ```python
-from hikcamera import AccessMode, Hik, HikCamera
+from hikcamera import Hik, HikCamera
 
 with HikCamera.from_ip("192.168.1.100") as cam:
-    cam.open(AccessMode.EXCLUSIVE)
+    cam.open(Hik.AccessMode.EXCLUSIVE)
 
     # Read all common parameters at once
     info = cam.get_camera_info()
@@ -462,7 +460,7 @@ src/
   hikcamera/
     __init__.py        # Public API
     camera.py          # HikCamera class
-    enums.py           # Enumerations (AccessMode, PixelFormat, OutputFormat, …)
+    enums.py           # Enumeration definitions used to populate the Hik namespace
     exceptions.py      # Exception hierarchy
     sdk_wrapper.py     # ctypes bindings to the MVS SDK
     utils.py           # Image conversion (raw bytes → numpy)

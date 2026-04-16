@@ -41,14 +41,12 @@ from typing import Any
 import numpy as np
 
 from hikcamera import (
-    AccessMode,
     CameraNotFoundError,
     DeviceDisconnectedError,
+    Hik,
     HikCamera,
     HikCameraError,
-    OutputFormat,
     SDKNotFoundError,
-    TransportLayer,
 )
 
 
@@ -87,7 +85,7 @@ def connect_camera(
     通过 IP 或序列号创建 HikCamera 句柄。
     """
     if ip:
-        return HikCamera.from_ip(ip, TransportLayer.GIGE)
+        return HikCamera.from_ip(ip, Hik.TransportLayer.GIGE)
     assert sn is not None
     return HikCamera.from_serial_number(sn)
 
@@ -101,10 +99,10 @@ def open_and_start(
     Open the camera and start callback-based grabbing.
     打开相机并开始回调模式取帧。
     """
-    cam.open(AccessMode.EXCLUSIVE)
+    cam.open(Hik.AccessMode.EXCLUSIVE)
     cam.start_grabbing(
         callback=on_frame,
-        output_format=OutputFormat.BGR8,
+        output_format=Hik.OutputFormat.BGR8,
         on_exception=on_exception,
     )
 

@@ -13,10 +13,10 @@ Typical usage / 典型用法
 
 .. code-block:: python
 
-    from hikcamera import AccessMode, Hik, HikCamera
+    from hikcamera import Hik, HikCamera
 
     cam = HikCamera.from_ip("192.168.1.100")
-    cam.open(AccessMode.EXCLUSIVE)
+    cam.open(Hik.AccessMode.EXCLUSIVE)
 
     # IDE auto-completion & validation before the SDK call
     cam.params.AcquisitionControl.ExposureTime.set(5000.0)

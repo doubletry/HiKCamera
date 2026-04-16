@@ -7,14 +7,14 @@ Typical usage (polling) / 典型用法（轮询模式）
 
 .. code-block:: python
 
-    from hikcamera import AccessMode, HikCamera, OutputFormat
+    from hikcamera import Hik, HikCamera
 
     cameras = HikCamera.enumerate()
     with HikCamera.from_device_info(cameras[0]) as cam:
-        cam.open(AccessMode.EXCLUSIVE)
+        cam.open(Hik.AccessMode.EXCLUSIVE)
         cam.params.AcquisitionControl.ExposureTime.set(5000.0)
         cam.start_grabbing()
-        frame = cam.get_frame(timeout_ms=1000, output_format=OutputFormat.BGR8)
+        frame = cam.get_frame(timeout_ms=1000, output_format=Hik.OutputFormat.BGR8)
         cam.stop_grabbing()
 
 Typical usage (callback) / 典型用法（回调模式）
@@ -23,15 +23,15 @@ Typical usage (callback) / 典型用法（回调模式）
 .. code-block:: python
 
     import numpy as np
-    from hikcamera import HikCamera, AccessMode, OutputFormat
+    from hikcamera import Hik, HikCamera
 
     def on_frame(image: np.ndarray, frame_info: dict) -> None:
         print(f"Got frame {frame_info['frame_num']}: {image.shape}")
 
     cameras = HikCamera.enumerate()
     with HikCamera.from_device_info(cameras[0]) as cam:
-        cam.open(AccessMode.EXCLUSIVE)
-        cam.start_grabbing(callback=on_frame, output_format=OutputFormat.BGR8)
+        cam.open(Hik.AccessMode.EXCLUSIVE)
+        cam.start_grabbing(callback=on_frame, output_format=Hik.OutputFormat.BGR8)
         import time; time.sleep(5)
         cam.stop_grabbing()
 """
@@ -55,6 +55,7 @@ import numpy as np
 
 from .enums import (
     AccessMode,
+    Hik,
     MvErrorCode,
     OutputFormat,
     StreamingMode,
@@ -455,7 +456,7 @@ def _transport_layer_search_order(transport_layers: TransportLayer) -> tuple[Tra
     """
     ordered_layers: list[TransportLayer] = []
     for layer in (
-        TransportLayer.GIGE,
+        Hik.TransportLayer.GIGE,
         TransportLayer.USB,
         TransportLayer.CAMERALINK,
     ):
@@ -585,7 +586,7 @@ class HikCamera:
         self._frame_buffer_size: int = 0
         self._callback_ref: IMAGE_CALLBACK | None = None  # keep reference alive
         self._user_callback: Callable[[np.ndarray, dict[str, Any]], None] | None = None
-        self._output_format_for_callback: OutputFormat = OutputFormat.BGR8
+        self._output_format_for_callback: OutputFormat = Hik.OutputFormat.BGR8
         self._exception_callback_ref: EXCEPTION_CALLBACK | None = None
         self._device_exception: DeviceDisconnectedError | None = None
         self._on_device_exception: Callable[[DeviceDisconnectedError], None] | None = None
@@ -699,7 +700,7 @@ class HikCamera:
     def from_ip(
         cls,
         ip: str,
-        transport_layers: TransportLayer = TransportLayer.GIGE,
+        transport_layers: TransportLayer = Hik.TransportLayer.GIGE,
     ) -> HikCamera:
         """
         Find and create a handle for the camera at the given IP address.
@@ -811,7 +812,7 @@ class HikCamera:
 
     def open(
         self,
-        access_mode: AccessMode = AccessMode.EXCLUSIVE,
+        access_mode: AccessMode = Hik.AccessMode.EXCLUSIVE,
         streaming_mode: StreamingMode = StreamingMode.UNICAST,
         multicast_ip: str | None = None,
         packet_size: int | None = None,
@@ -830,9 +831,9 @@ class HikCamera:
             单播（默认）或组播，仅限 GigE 相机。
         multicast_ip:
             Multicast group IP (required when ``streaming_mode`` is
-            :py:attr:`~hikcamera.enums.StreamingMode.MULTICAST`).
+            :py:attr:`~hikcamera.enums.Hik.StreamingMode.MULTICAST`).
             组播组 IP（当 ``streaming_mode`` 为
-            :py:attr:`~hikcamera.enums.StreamingMode.MULTICAST` 时必填）。
+            :py:attr:`~hikcamera.enums.Hik.StreamingMode.MULTICAST` 时必填）。
         packet_size:
             GigE network packet size (``GevSCPSPacketSize``) in bytes.
             GigE 网络包大小（``GevSCPSPacketSize``），单位为字节。
@@ -863,7 +864,7 @@ class HikCamera:
 
         # For multicast, configure the group IP before opening
         # 组播模式下，在打开前配置组播 IP
-        if streaming_mode == StreamingMode.MULTICAST:
+        if streaming_mode == Hik.StreamingMode.MULTICAST:
             if multicast_ip is None:
                 raise ValueError("multicast_ip must be provided for multicast streaming")
             mc_int = _ip_to_int(multicast_ip)
@@ -998,7 +999,7 @@ class HikCamera:
         """
         if self._device_info is None:
             return None
-        if self._device_info.nTLayerType != int(TransportLayer.GIGE):
+        if self._device_info.nTLayerType != int(Hik.TransportLayer.GIGE):
             return None
         device_info = DeviceInfo(self._device_info)
         if device_info.serial_number:
@@ -1108,7 +1109,7 @@ class HikCamera:
     def start_grabbing(
         self,
         callback: Callable[[np.ndarray, dict[str, Any]], None] | None = None,
-        output_format: OutputFormat = OutputFormat.BGR8,
+        output_format: OutputFormat = Hik.OutputFormat.BGR8,
         on_exception: Callable[[DeviceDisconnectedError], None] | None = None,
     ) -> None:
         """
@@ -1259,7 +1260,7 @@ class HikCamera:
     def get_frame(
         self,
         timeout_ms: int = 1000,
-        output_format: OutputFormat = OutputFormat.BGR8,
+        output_format: OutputFormat = Hik.OutputFormat.BGR8,
     ) -> np.ndarray:
         """
         Retrieve one frame (polling mode).
@@ -1323,7 +1324,7 @@ class HikCamera:
     def get_frame_ex(
         self,
         timeout_ms: int = 1000,
-        output_format: OutputFormat = OutputFormat.BGR8,
+        output_format: OutputFormat = Hik.OutputFormat.BGR8,
     ) -> tuple[np.ndarray, dict[str, Any]]:
         """
         Retrieve one frame together with its metadata.
@@ -1673,7 +1674,7 @@ class HikCamera:
 
     def save_user_set(
         self,
-        user_set: UserSetSelector = UserSetSelector.USER_SET_1,
+        user_set: UserSetSelector = Hik.UserSetSelector.USER_SET_1,
     ) -> None:
         """
         Save the current camera parameters to a user set stored on the device.
@@ -1682,8 +1683,8 @@ class HikCamera:
         Parameters / 参数
         -----------------
         user_set:
-            Structured enum value such as ``UserSetSelector.USER_SET_1``.
-            结构化枚举值，例如 ``UserSetSelector.USER_SET_1``。
+            Structured enum value such as ``Hik.UserSetSelector.USER_SET_1``.
+            结构化枚举值，例如 ``Hik.UserSetSelector.USER_SET_1``。
 
         Raises / 异常
         -------------
@@ -1703,7 +1704,7 @@ class HikCamera:
 
     def load_user_set(
         self,
-        user_set: UserSetSelector = UserSetSelector.USER_SET_1,
+        user_set: UserSetSelector = Hik.UserSetSelector.USER_SET_1,
     ) -> None:
         """
         Load camera parameters from a user set stored on the device.
@@ -1712,8 +1713,8 @@ class HikCamera:
         Parameters / 参数
         -----------------
         user_set:
-            Structured enum value such as ``UserSetSelector.USER_SET_1``.
-            结构化枚举值，例如 ``UserSetSelector.USER_SET_1``。
+            Structured enum value such as ``Hik.UserSetSelector.USER_SET_1``.
+            结构化枚举值，例如 ``Hik.UserSetSelector.USER_SET_1``。
 
         Raises / 异常
         -------------

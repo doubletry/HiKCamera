@@ -8,10 +8,8 @@ Quick start / 快速上手
 .. code-block:: python
 
     from hikcamera import (
-        AccessMode,
-        HikCamera,
         Hik,
-        OutputFormat,
+        HikCamera,
     )
 
     # Enumerate available cameras / 枚举可用相机
@@ -20,7 +18,7 @@ Quick start / 快速上手
 
     # Open the first camera exclusively / 以独占模式打开第一台相机
     with HikCamera.from_device_info(cameras[0]) as cam:
-        cam.open(AccessMode.EXCLUSIVE)
+        cam.open(Hik.AccessMode.EXCLUSIVE)
 
         # Prefer the structured ``cam.params`` API for IDE completion and
         # validation.
@@ -31,7 +29,7 @@ Quick start / 快速上手
 
         # Poll for frames / 轮询取帧
         cam.start_grabbing()
-        frame = cam.get_frame(timeout_ms=1000, output_format=OutputFormat.BGR8)
+        frame = cam.get_frame(timeout_ms=1000, output_format=Hik.OutputFormat.BGR8)
         cam.stop_grabbing()
 
 Public API / 公开接口
@@ -42,11 +40,7 @@ The following names are exported at the package level for convenience:
 - :py:class:`~hikcamera.camera.HikCamera`
 - :py:class:`~hikcamera.camera.DeviceInfo`
 - :py:func:`~hikcamera.camera.enumerate_cameras`
-- :py:class:`~hikcamera.enums.AccessMode`
-- :py:class:`~hikcamera.enums.TransportLayer`
-- :py:class:`~hikcamera.enums.StreamingMode`
-- :py:class:`~hikcamera.enums.PixelFormat`
-- :py:class:`~hikcamera.enums.OutputFormat`
+- :py:class:`~hikcamera.enums.Hik`
 - All exceptions from :py:mod:`hikcamera.exceptions`
   （:py:mod:`hikcamera.exceptions` 中的所有异常）
 """
@@ -60,52 +54,7 @@ from .camera import (
     HikCamera,
     enumerate_cameras,
 )
-from .enums import (
-    AccessMode,
-    AcquisitionMode,
-    AutoFunctionAOISelector,
-    BalanceRatioSelector,
-    BalanceWhiteAuto,
-    DeviceCharacterSet,
-    DeviceHeartbeatMode,
-    DeviceScanType,
-    DeviceStreamChannelEndianness,
-    DeviceStreamChannelType,
-    DeviceType,
-    EncoderCounterMode,
-    EncoderSelector,
-    EncoderTriggerMode,
-    ExposureAuto,
-    ExposureMode,
-    FrameSpecInfoSelector,
-    FrequencyConverterSignalAlignment,
-    GainAuto,
-    GammaSelector,
-    GevCCP,
-    GevDeviceModeCharacterSet,
-    Hik,
-    ImageCompressionMode,
-    LineMode,
-    LineSelector,
-    LUTSelector,
-    MvErrorCode,
-    OutputFormat,
-    PixelFormat,
-    PixelSize,
-    RegionDestination,
-    RegionSelector,
-    ShadingSelector,
-    StreamingMode,
-    TestPattern,
-    TestPatternGeneratorSelector,
-    TransportLayer,
-    TriggerActivation,
-    TriggerMode,
-    TriggerSelector,
-    TriggerSource,
-    UserSetDefault,
-    UserSetSelector,
-)
+from .enums import Hik
 from .exceptions import (
     CameraAlreadyOpenError,
     CameraConnectionError,
@@ -152,52 +101,7 @@ __all__ = [
     "GIGE_PACKET_SIZE_DEFAULT",
     "GIGE_PACKET_SIZE_JUMBO",
     # Enumerations / 枚举类型
-    "AccessMode",
-    "TransportLayer",
-    "StreamingMode",
-    "PixelFormat",
-    "OutputFormat",
     "Hik",
-    "MvErrorCode",
-    # Parameter value enumerations / 参数值枚举
-    "ExposureAuto",
-    "GainAuto",
-    "GammaSelector",
-    "AcquisitionMode",
-    "TriggerMode",
-    "TriggerSource",
-    "TriggerActivation",
-    "TriggerSelector",
-    "LineSelector",
-    "LineMode",
-    "BalanceWhiteAuto",
-    "UserSetSelector",
-    "UserSetDefault",
-    # New parameter value enumerations / 新增参数值枚举
-    "DeviceType",
-    "DeviceScanType",
-    "DeviceHeartbeatMode",
-    "DeviceStreamChannelType",
-    "DeviceStreamChannelEndianness",
-    "DeviceCharacterSet",
-    "RegionSelector",
-    "RegionDestination",
-    "PixelSize",
-    "ImageCompressionMode",
-    "TestPatternGeneratorSelector",
-    "TestPattern",
-    "FrameSpecInfoSelector",
-    "ExposureMode",
-    "BalanceRatioSelector",
-    "AutoFunctionAOISelector",
-    "LUTSelector",
-    "EncoderSelector",
-    "EncoderTriggerMode",
-    "EncoderCounterMode",
-    "FrequencyConverterSignalAlignment",
-    "ShadingSelector",
-    "GevCCP",
-    "GevDeviceModeCharacterSet",
     # Structured parameter groups / 结构化参数组
     "ParamNode",
     "DeviceControl",

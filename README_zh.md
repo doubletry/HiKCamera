@@ -51,9 +51,9 @@ poetry install
 ### 枚举相机
 
 ```python
-from hikcamera import HikCamera, TransportLayer
+from hikcamera import Hik, HikCamera
 
-cameras = HikCamera.enumerate(TransportLayer.ALL)
+cameras = HikCamera.enumerate(Hik.TransportLayer.ALL)
 for cam in cameras:
     print(cam)
 ```
@@ -82,11 +82,11 @@ CameraLink 的顺序优先扫描，因此常见的 GigE 场景无需等待无关
 
 ```python
 import cv2
-from hikcamera import AccessMode, Hik, HikCamera, OutputFormat
+from hikcamera import Hik, HikCamera
 
 cameras = HikCamera.enumerate()
 with HikCamera.from_device_info(cameras[0]) as cam:
-    cam.open(AccessMode.EXCLUSIVE)
+    cam.open(Hik.AccessMode.EXCLUSIVE)
 
     # 优先使用结构化 cam.params API，以获得 IDE 补全和校验。
     cam.params.AcquisitionControl.ExposureTime.set(5000.0)
@@ -94,7 +94,7 @@ with HikCamera.from_device_info(cameras[0]) as cam:
     cam.params.AnalogControl.GainAuto.set(Hik.GainAuto.OFF)
 
     cam.start_grabbing()
-    frame = cam.get_frame(timeout_ms=1000, output_format=OutputFormat.BGR8)
+    frame = cam.get_frame(timeout_ms=1000, output_format=Hik.OutputFormat.BGR8)
     cam.stop_grabbing()
 
 cv2.imwrite("frame.png", frame)
@@ -107,7 +107,7 @@ cv2.imwrite("frame.png", frame)
 
 ```python
 import numpy as np
-from hikcamera import HikCamera, AccessMode, OutputFormat
+from hikcamera import Hik, HikCamera
 
 received_frames = []
 
@@ -116,8 +116,8 @@ def on_frame(image: np.ndarray, info: dict) -> None:
     print(f"帧 {info['frame_num']}: {image.shape}")
 
 with HikCamera.from_device_info(HikCamera.enumerate()[0]) as cam:
-    cam.open(AccessMode.EXCLUSIVE)
-    cam.start_grabbing(callback=on_frame, output_format=OutputFormat.BGR8)
+    cam.open(Hik.AccessMode.EXCLUSIVE)
+    cam.start_grabbing(callback=on_frame, output_format=Hik.OutputFormat.BGR8)
 
     import time
     time.sleep(5)   # 采集 5 秒
@@ -138,8 +138,7 @@ with HikCamera.from_device_info(HikCamera.enumerate()[0]) as cam:
 ```python
 import threading
 from hikcamera import (
-    HikCamera, AccessMode, OutputFormat,
-    DeviceDisconnectedError, HikCameraError,
+    DeviceDisconnectedError, Hik, HikCamera, HikCameraError,
 )
 
 disconnect_event = threading.Event()
@@ -152,10 +151,10 @@ def on_exception(exc: DeviceDisconnectedError):
     disconnect_event.set()
 
 with HikCamera.from_ip("192.168.1.100") as cam:
-    cam.open(AccessMode.EXCLUSIVE)
+    cam.open(Hik.AccessMode.EXCLUSIVE)
     cam.start_grabbing(
         callback=on_frame,
-        output_format=OutputFormat.BGR8,
+        output_format=Hik.OutputFormat.BGR8,
         on_exception=on_exception,       # ← 即时通知
     )
 
@@ -184,8 +183,7 @@ if cam.device_exception is not None:
 ```python
 import time
 from hikcamera import (
-    HikCamera, AccessMode, OutputFormat,
-    CameraNotFoundError, CameraConnectionError, HikCameraError,
+    CameraConnectionError, CameraNotFoundError, Hik, HikCamera, HikCameraError,
 )
 
 # 检测到断开连接后，通过上下文管理器退出释放资源，
@@ -195,7 +193,7 @@ while True:
     try:
         cam = HikCamera.from_ip("192.168.1.100")
         with cam:
-            cam.open(AccessMode.EXCLUSIVE)
+            cam.open(Hik.AccessMode.EXCLUSIVE)
             cam.start_grabbing(callback=on_frame, on_exception=on_exception)
             print("重连成功！")
             ...  # 运行直到下次断开连接
@@ -209,12 +207,12 @@ while True:
 ### 组播流传输
 
 ```python
-from hikcamera import HikCamera, AccessMode, StreamingMode
+from hikcamera import Hik, HikCamera
 
 with HikCamera.from_ip("192.168.1.100") as cam:
     cam.open(
-        AccessMode.MONITOR,
-        streaming_mode=StreamingMode.MULTICAST,
+        Hik.AccessMode.MONITOR,
+        streaming_mode=Hik.StreamingMode.MULTICAST,
         multicast_ip="239.0.0.1",
     )
     cam.start_grabbing()
@@ -227,22 +225,22 @@ with HikCamera.from_ip("192.168.1.100") as cam:
 您也可以手动指定：
 
 ```python
-from hikcamera import HikCamera, AccessMode, GIGE_PACKET_SIZE_DEFAULT, GIGE_PACKET_SIZE_JUMBO
+from hikcamera import GIGE_PACKET_SIZE_DEFAULT, GIGE_PACKET_SIZE_JUMBO, Hik, HikCamera
 
 # 自动检测最优包大小（默认行为）
 with HikCamera.from_ip("192.168.1.100") as cam:
-    cam.open(AccessMode.EXCLUSIVE)  # 自动应用最优包大小
+    cam.open(Hik.AccessMode.EXCLUSIVE)  # 自动应用最优包大小
     ...
 
 # 手动指定包大小（如 GIGE_PACKET_SIZE_DEFAULT 标准 MTU，
 # GIGE_PACKET_SIZE_JUMBO 巨帧）
 with HikCamera.from_ip("192.168.1.100") as cam:
-    cam.open(AccessMode.EXCLUSIVE, packet_size=GIGE_PACKET_SIZE_JUMBO)
+    cam.open(Hik.AccessMode.EXCLUSIVE, packet_size=GIGE_PACKET_SIZE_JUMBO)
     ...
 
 # 打开后查询或修改包大小
 with HikCamera.from_ip("192.168.1.100") as cam:
-    cam.open(AccessMode.EXCLUSIVE)
+    cam.open(Hik.AccessMode.EXCLUSIVE)
     print(cam.get_packet_size())          # 当前包大小
     print(cam.get_optimal_packet_size())  # SDK 推荐的最优值
     cam.set_packet_size(GIGE_PACKET_SIZE_DEFAULT)  # 手动覆盖
@@ -271,10 +269,10 @@ with HikCamera.from_device_info(cameras[0]) as cam:
 ### 获取相机信息
 
 ```python
-from hikcamera import AccessMode, AcquisitionControl, AnalogControl, DeviceControl, HikCamera, ImageFormatControl
+from hikcamera import AcquisitionControl, AnalogControl, DeviceControl, Hik, HikCamera, ImageFormatControl
 
 with HikCamera.from_ip("192.168.1.100") as cam:
-    cam.open(AccessMode.EXCLUSIVE)
+    cam.open(Hik.AccessMode.EXCLUSIVE)
 
     # 一次获取所有常用相机参数
     info = cam.get_camera_info()
@@ -289,10 +287,10 @@ with HikCamera.from_ip("192.168.1.100") as cam:
 ### 导出 / 导入相机配置
 
 ```python
-from hikcamera import HikCamera, AccessMode
+from hikcamera import Hik, HikCamera
 
 with HikCamera.from_ip("192.168.1.100") as cam:
-    cam.open(AccessMode.EXCLUSIVE)
+    cam.open(Hik.AccessMode.EXCLUSIVE)
 
     # 导出当前配置到文件
     cam.export_config("camera_config.xml")
@@ -304,10 +302,10 @@ with HikCamera.from_ip("192.168.1.100") as cam:
 ### 保存 / 加载设备用户集
 
 ```python
-from hikcamera import AccessMode, Hik, HikCamera
+from hikcamera import Hik, HikCamera
 
 with HikCamera.from_ip("192.168.1.100") as cam:
-    cam.open(AccessMode.EXCLUSIVE)
+    cam.open(Hik.AccessMode.EXCLUSIVE)
 
     cam.params.UserSetControl.UserSetSelector.set(Hik.UserSetSelector.USER_SET_1)
     cam.params.UserSetControl.UserSetSave.execute()
@@ -411,10 +409,10 @@ with HikCamera.from_ip("192.168.1.100") as cam:
 ### 示例：读写参数
 
 ```python
-from hikcamera import AccessMode, Hik, HikCamera
+from hikcamera import Hik, HikCamera
 
 with HikCamera.from_ip("192.168.1.100") as cam:
-    cam.open(AccessMode.EXCLUSIVE)
+    cam.open(Hik.AccessMode.EXCLUSIVE)
 
     # 一次读取所有常用参数
     info = cam.get_camera_info()
@@ -457,7 +455,7 @@ src/
   hikcamera/
     __init__.py        # 公开接口
     camera.py          # HikCamera 类
-    enums.py           # 枚举类型（AccessMode、PixelFormat、OutputFormat 等）
+    enums.py           # 为 Hik 命名空间提供成员定义的枚举类型
     exceptions.py      # 异常层级
     sdk_wrapper.py     # MVS SDK 的 ctypes 绑定
     utils.py           # 图像转换（原始字节 → numpy）

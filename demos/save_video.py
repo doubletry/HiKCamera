@@ -30,13 +30,11 @@ import cv2
 import numpy as np
 
 from hikcamera import (
-    AccessMode,
     AcquisitionControl,
     AnalogControl,
     HikCamera,
-    OutputFormat,
+    Hik,
     SDKNotFoundError,
-    TransportLayer,
 )
 
 
@@ -73,7 +71,7 @@ def main() -> None:
     try:
         if args.ip:
             print(f"Connecting to camera at IP {args.ip} …")
-            cam = HikCamera.from_ip(args.ip, TransportLayer.GIGE)
+            cam = HikCamera.from_ip(args.ip, Hik.TransportLayer.GIGE)
         elif args.sn:
             print(f"Connecting to camera with serial number {args.sn} …")
             cam = HikCamera.from_serial_number(args.sn)
@@ -112,7 +110,7 @@ def main() -> None:
     # Open and start grabbing / 打开相机并开始取帧
     # ---------------------------------------------------------------
     with cam:
-        cam.open(AccessMode.EXCLUSIVE)
+        cam.open(Hik.AccessMode.EXCLUSIVE)
         print("Camera opened.")
 
         if args.exposure is not None:
@@ -131,7 +129,7 @@ def main() -> None:
         deadline = time.monotonic() + 5.0
         while first_frame is None and time.monotonic() < deadline:
             try:
-                first_frame = cam.get_frame(timeout_ms=500, output_format=OutputFormat.BGR8)
+                first_frame = cam.get_frame(timeout_ms=500, output_format=Hik.OutputFormat.BGR8)
             except Exception:  # noqa: BLE001
                 continue
 
@@ -146,7 +144,7 @@ def main() -> None:
         cam.stop_grabbing()
 
         # Restart with callback / 以回调模式重新启动
-        cam.start_grabbing(callback=on_frame, output_format=OutputFormat.BGR8)
+        cam.start_grabbing(callback=on_frame, output_format=Hik.OutputFormat.BGR8)
 
         # ---------------------------------------------------------------
         # Set up video writer / 设置视频写入器
