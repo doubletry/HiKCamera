@@ -82,7 +82,7 @@ CameraLink 的顺序优先扫描，因此常见的 GigE 场景无需等待无关
 
 ```python
 import cv2
-from hikcamera import AccessMode, HikCamera, OutputFormat, enums
+from hikcamera import AccessMode, Hik, HikCamera, OutputFormat
 
 cameras = HikCamera.enumerate()
 with HikCamera.from_device_info(cameras[0]) as cam:
@@ -91,7 +91,7 @@ with HikCamera.from_device_info(cameras[0]) as cam:
     # 优先使用结构化 cam.params API，以获得 IDE 补全和校验。
     cam.params.AcquisitionControl.ExposureTime.set(5000.0)
     cam.params.AnalogControl.Gain.set(1.0)
-    cam.params.AnalogControl.GainAuto.set(enums.GainAuto.OFF)
+    cam.params.AnalogControl.GainAuto.set(Hik.GainAuto.OFF)
 
     cam.start_grabbing()
     frame = cam.get_frame(timeout_ms=1000, output_format=OutputFormat.BGR8)
@@ -101,7 +101,7 @@ cv2.imwrite("frame.png", frame)
 ```
 
 推荐统一使用 `cam.params.<分类>.<节点>` 结构化 API，这样代码里可以直接
-看到参数节点归属，并且枚举值可自然配合单独导入的 `enums.GainAuto.OFF` 使用。
+看到参数节点归属，并且枚举值可自然配合单独导入的 `Hik.GainAuto.OFF` 使用。
 
 ### 回调模式帧捕获
 
@@ -251,13 +251,13 @@ with HikCamera.from_ip("192.168.1.100") as cam:
 ### 带错误处理的参数访问
 
 ```python
-from hikcamera import HikCamera, ParameterNotSupportedError, ParameterReadOnlyError, enums
+from hikcamera import Hik, HikCamera, ParameterNotSupportedError, ParameterReadOnlyError
 
 with HikCamera.from_device_info(cameras[0]) as cam:
     cam.open()
 
     try:
-        cam.params.AnalogControl.GainAuto.set(enums.GainAuto.OFF)
+        cam.params.AnalogControl.GainAuto.set(Hik.GainAuto.OFF)
         value = cam.params.AcquisitionControl.ExposureTime.get()
     except ParameterNotSupportedError:
         print("此相机不支持 ExposureTime 参数")
@@ -304,16 +304,16 @@ with HikCamera.from_ip("192.168.1.100") as cam:
 ### 保存 / 加载设备用户集
 
 ```python
-from hikcamera import AccessMode, HikCamera, enums
+from hikcamera import AccessMode, Hik, HikCamera
 
 with HikCamera.from_ip("192.168.1.100") as cam:
     cam.open(AccessMode.EXCLUSIVE)
 
-    cam.params.UserSetControl.UserSetSelector.set(enums.UserSetSelector.USER_SET_1)
+    cam.params.UserSetControl.UserSetSelector.set(Hik.UserSetSelector.USER_SET_1)
     cam.params.UserSetControl.UserSetSave.execute()
 
     # 稍后，从用户集 1 恢复参数
-    cam.params.UserSetControl.UserSetSelector.set(enums.UserSetSelector.USER_SET_1)
+    cam.params.UserSetControl.UserSetSelector.set(Hik.UserSetSelector.USER_SET_1)
     cam.params.UserSetControl.UserSetLoad.execute()
 ```
 
@@ -411,7 +411,7 @@ with HikCamera.from_ip("192.168.1.100") as cam:
 ### 示例：读写参数
 
 ```python
-from hikcamera import AccessMode, HikCamera, enums
+from hikcamera import AccessMode, Hik, HikCamera
 
 with HikCamera.from_ip("192.168.1.100") as cam:
     cam.open(AccessMode.EXCLUSIVE)
@@ -423,14 +423,14 @@ with HikCamera.from_ip("192.168.1.100") as cam:
     cam.params.AcquisitionControl.ExposureTime.set(5000.0)
     cam.params.AnalogControl.Gain.set(2.5)
     cam.params.AcquisitionControl.AcquisitionFrameRateEnable.set(True)
-    cam.params.AnalogControl.GainAuto.set(enums.GainAuto.OFF)
+    cam.params.AnalogControl.GainAuto.set(Hik.GainAuto.OFF)
 
     exposure = cam.params.AcquisitionControl.ExposureTime.get()
     width = cam.params.ImageFormatControl.Width.get()
 
     cam.params.AcquisitionControl.TriggerSoftware.execute()
 
-    cam.params.UserSetControl.UserSetSelector.set(enums.UserSetSelector.USER_SET_1)
+    cam.params.UserSetControl.UserSetSelector.set(Hik.UserSetSelector.USER_SET_1)
     cam.params.UserSetControl.UserSetSave.execute()
 ```
 

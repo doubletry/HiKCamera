@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+from hikcamera import Hik
 from hikcamera.enums import (
     AccessMode,
+    GainAuto,
     MvErrorCode,
     OutputFormat,
     PixelFormat,
@@ -57,3 +59,9 @@ class TestMvErrorCode:
 
     def test_not_supported(self):
         assert MvErrorCode.MV_E_SUPPORT == 0x80000001
+
+
+class TestHikNamespace:
+    def test_reexports_parameter_enums(self):
+        assert Hik.GainAuto is GainAuto
+        assert Hik.GainAuto.OFF == GainAuto.OFF

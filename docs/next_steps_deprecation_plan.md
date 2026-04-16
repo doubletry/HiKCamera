@@ -6,11 +6,11 @@ The public parameter workflow is now centered on the structured proxy API:
 
 - `cam.params.AcquisitionControl.ExposureTime.set(5000.0)`
 - `cam.params.AcquisitionControl.ExposureTime.get()`
-- `cam.params.AnalogControl.GainAuto.set(enums.GainAuto.OFF)`
+- `cam.params.AnalogControl.GainAuto.set(Hik.GainAuto.OFF)`
 - `cam.params.AcquisitionControl.TriggerSoftware.execute()`
 
-Enum values should be imported from `hikcamera.enums` (for example
-`enums.GainAuto.OFF` and `enums.UserSetSelector.USER_SET_1`) so editors can
+Enum values should be imported through the library-scoped `Hik` namespace (for
+example `Hik.GainAuto.OFF` and `Hik.UserSetSelector.USER_SET_1`) so editors can
 provide enum member completion directly from the enum type.
 
 ## Follow-up work

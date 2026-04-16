@@ -78,12 +78,16 @@ from .exceptions import (
     ParameterValueError,
 )
 from .params import (
-    ALL_CATEGORIES,
     AcquisitionControl,
     AnalogControl,
     DeviceControl,
+    DigitalIOControl,
+    EncoderControl,
+    FrequencyConverterControl,
     ImageFormatControl,
+    LUTControl,
     ParamNode,
+    ShadingCorrection,
     TransportLayerControl,
     UserSetControl,
     _build_param_schema,
@@ -158,18 +162,6 @@ class CameraInfoDict(dict[str, Any]):
         return super().__contains__(self._normalize_key(key))
 
 
-def _get_category_nodes(category: type) -> tuple[tuple[str, ParamNode], ...]:
-    """
-    Return all ``ParamNode`` members declared on a category class.
-    返回分类类上声明的全部 ``ParamNode`` 成员。
-    """
-    return tuple(
-        (attr_name, attr)
-        for attr_name, attr in vars(category).items()
-        if isinstance(attr, ParamNode)
-    )
-
-
 class BoundParamNode:
     """
     Camera-bound view of a :class:`ParamNode`.
@@ -213,28 +205,65 @@ class BoundParamNode:
 
 class BoundCategoryProxy:
     """
-    Camera-bound proxy for one parameter category.
-    单个参数分类的相机绑定代理。
-
-    Node attributes are added dynamically from the SDK-backed category class, so
-    callers use paths such as ``cam.params.AnalogControl.Gain`` or
-    ``cam.params.ImageFormatControl.Width``.
-    节点属性会根据 SDK 参数分类动态挂载，因此调用方应使用
-    ``cam.params.AnalogControl.Gain``、``cam.params.ImageFormatControl.Width``
-    这类完整路径。
+    Base class for typed camera-bound parameter categories.
+    带类型信息的相机绑定参数分类基类。
     """
 
-    def __init__(self, camera: HikCamera, category: type) -> None:
+    __slots__ = ("_camera",)
+    _camera: HikCamera
+
+    def __init__(self, camera: HikCamera) -> None:
         self._camera = camera
-        self._category = category
-        for attr_name, node in _get_category_nodes(category):
-            object.__setattr__(self, attr_name, BoundParamNode(camera, node))
 
     def __setattr__(self, name: str, value: Any) -> None:
-        if name in {"_camera", "_category"} and not hasattr(self, name):
+        if name == "_camera" and not hasattr(self, name):
             object.__setattr__(self, name, value)
             return
         raise AttributeError(f"{type(self).__name__!s} is read-only")
+
+
+class BoundDeviceControl(DeviceControl, BoundCategoryProxy):
+    __slots__ = ()
+
+
+class BoundImageFormatControl(ImageFormatControl, BoundCategoryProxy):
+    __slots__ = ()
+
+
+class BoundAcquisitionControl(AcquisitionControl, BoundCategoryProxy):
+    __slots__ = ()
+
+
+class BoundAnalogControl(AnalogControl, BoundCategoryProxy):
+    __slots__ = ()
+
+
+class BoundLUTControl(LUTControl, BoundCategoryProxy):
+    __slots__ = ()
+
+
+class BoundEncoderControl(EncoderControl, BoundCategoryProxy):
+    __slots__ = ()
+
+
+class BoundFrequencyConverterControl(FrequencyConverterControl, BoundCategoryProxy):
+    __slots__ = ()
+
+
+class BoundShadingCorrection(ShadingCorrection, BoundCategoryProxy):
+    __slots__ = ()
+
+
+class BoundDigitalIOControl(DigitalIOControl, BoundCategoryProxy):
+    __slots__ = ()
+
+
+class BoundTransportLayerControl(TransportLayerControl, BoundCategoryProxy):
+    __slots__ = ()
+
+
+class BoundUserSetControl(UserSetControl, BoundCategoryProxy):
+    __slots__ = ()
 
 
 class CameraParamsProxy:
@@ -250,10 +279,54 @@ class CameraParamsProxy:
     ``cam.params.<Category>.<Node>.get()``。
     """
 
+    DeviceControl: BoundDeviceControl
+    ImageFormatControl: BoundImageFormatControl
+    AcquisitionControl: BoundAcquisitionControl
+    AnalogControl: BoundAnalogControl
+    LUTControl: BoundLUTControl
+    EncoderControl: BoundEncoderControl
+    FrequencyConverterControl: BoundFrequencyConverterControl
+    ShadingCorrection: BoundShadingCorrection
+    DigitalIOControl: BoundDigitalIOControl
+    TransportLayerControl: BoundTransportLayerControl
+    UserSetControl: BoundUserSetControl
+
+    __slots__ = (
+        "_camera",
+        "DeviceControl",
+        "ImageFormatControl",
+        "AcquisitionControl",
+        "AnalogControl",
+        "LUTControl",
+        "EncoderControl",
+        "FrequencyConverterControl",
+        "ShadingCorrection",
+        "DigitalIOControl",
+        "TransportLayerControl",
+        "UserSetControl",
+    )
+
     def __init__(self, camera: HikCamera) -> None:
         self._camera = camera
-        for category in ALL_CATEGORIES:
-            object.__setattr__(self, category.__name__, BoundCategoryProxy(camera, category))
+        object.__setattr__(self, "DeviceControl", BoundDeviceControl(camera))
+        object.__setattr__(self, "ImageFormatControl", BoundImageFormatControl(camera))
+        object.__setattr__(self, "AcquisitionControl", BoundAcquisitionControl(camera))
+        object.__setattr__(self, "AnalogControl", BoundAnalogControl(camera))
+        object.__setattr__(self, "LUTControl", BoundLUTControl(camera))
+        object.__setattr__(self, "EncoderControl", BoundEncoderControl(camera))
+        object.__setattr__(
+            self,
+            "FrequencyConverterControl",
+            BoundFrequencyConverterControl(camera),
+        )
+        object.__setattr__(self, "ShadingCorrection", BoundShadingCorrection(camera))
+        object.__setattr__(self, "DigitalIOControl", BoundDigitalIOControl(camera))
+        object.__setattr__(
+            self,
+            "TransportLayerControl",
+            BoundTransportLayerControl(camera),
+        )
+        object.__setattr__(self, "UserSetControl", BoundUserSetControl(camera))
 
     def __setattr__(self, name: str, value: Any) -> None:
         if name == "_camera" and not hasattr(self, name):

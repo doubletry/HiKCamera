@@ -635,3 +635,62 @@ class GevDeviceModeCharacterSet(StrEnum):
     GigE Vision 设备模式字符集。
     """
     UTF8 = "UTF8"
+
+
+class Hik:
+    """
+    Library-scoped enum namespace for structured parameter values.
+    用于结构化参数值的库级枚举命名空间。
+
+    This mirrors the familiar ``Qt``-style import pattern:
+
+    .. code-block:: python
+
+        from hikcamera import Hik
+
+        cam.params.AnalogControl.GainAuto.set(Hik.GainAuto.OFF)
+    """
+
+    AccessMode = AccessMode
+    TransportLayer = TransportLayer
+    StreamingMode = StreamingMode
+    PixelFormat = PixelFormat
+    OutputFormat = OutputFormat
+    MvErrorCode = MvErrorCode
+    AcquisitionMode = AcquisitionMode
+    AutoFunctionAOISelector = AutoFunctionAOISelector
+    BalanceRatioSelector = BalanceRatioSelector
+    BalanceWhiteAuto = BalanceWhiteAuto
+    DeviceCharacterSet = DeviceCharacterSet
+    DeviceHeartbeatMode = DeviceHeartbeatMode
+    DeviceScanType = DeviceScanType
+    DeviceStreamChannelEndianness = DeviceStreamChannelEndianness
+    DeviceStreamChannelType = DeviceStreamChannelType
+    DeviceType = DeviceType
+    EncoderCounterMode = EncoderCounterMode
+    EncoderSelector = EncoderSelector
+    EncoderTriggerMode = EncoderTriggerMode
+    ExposureAuto = ExposureAuto
+    ExposureMode = ExposureMode
+    FrameSpecInfoSelector = FrameSpecInfoSelector
+    FrequencyConverterSignalAlignment = FrequencyConverterSignalAlignment
+    GainAuto = GainAuto
+    GammaSelector = GammaSelector
+    GevCCP = GevCCP
+    GevDeviceModeCharacterSet = GevDeviceModeCharacterSet
+    ImageCompressionMode = ImageCompressionMode
+    LineMode = LineMode
+    LineSelector = LineSelector
+    LUTSelector = LUTSelector
+    PixelSize = PixelSize
+    RegionDestination = RegionDestination
+    RegionSelector = RegionSelector
+    ShadingSelector = ShadingSelector
+    TestPattern = TestPattern
+    TestPatternGeneratorSelector = TestPatternGeneratorSelector
+    TriggerActivation = TriggerActivation
+    TriggerMode = TriggerMode
+    TriggerSelector = TriggerSelector
+    TriggerSource = TriggerSource
+    UserSetDefault = UserSetDefault
+    UserSetSelector = UserSetSelector

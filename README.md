@@ -82,7 +82,7 @@ unrelated SDK scans.
 
 ```python
 import cv2
-from hikcamera import AccessMode, HikCamera, OutputFormat, enums
+from hikcamera import AccessMode, Hik, HikCamera, OutputFormat
 
 cameras = HikCamera.enumerate()
 with HikCamera.from_device_info(cameras[0]) as cam:
@@ -91,7 +91,7 @@ with HikCamera.from_device_info(cameras[0]) as cam:
     # Prefer the structured cam.params API for IDE completion and validation.
     cam.params.AcquisitionControl.ExposureTime.set(5000.0)
     cam.params.AnalogControl.Gain.set(1.0)
-    cam.params.AnalogControl.GainAuto.set(enums.GainAuto.OFF)
+    cam.params.AnalogControl.GainAuto.set(Hik.GainAuto.OFF)
 
     cam.start_grabbing()
     frame = cam.get_frame(timeout_ms=1000, output_format=OutputFormat.BGR8)
@@ -102,7 +102,7 @@ cv2.imwrite("frame.png", frame)
 
 Prefer the structured `cam.params.<Category>.<Node>` API. It keeps the
 parameter node hierarchy visible in code and works naturally with separately
-imported enum types such as `enums.GainAuto.OFF`.
+imported enum types such as `Hik.GainAuto.OFF`.
 
 ### Callback frame capture
 
@@ -254,13 +254,13 @@ with HikCamera.from_ip("192.168.1.100") as cam:
 ### Parameter access with error handling
 
 ```python
-from hikcamera import HikCamera, ParameterNotSupportedError, ParameterReadOnlyError, enums
+from hikcamera import Hik, HikCamera, ParameterNotSupportedError, ParameterReadOnlyError
 
 with HikCamera.from_device_info(cameras[0]) as cam:
     cam.open()
 
     try:
-        cam.params.AnalogControl.GainAuto.set(enums.GainAuto.OFF)
+        cam.params.AnalogControl.GainAuto.set(Hik.GainAuto.OFF)
         value = cam.params.AcquisitionControl.ExposureTime.get()
     except ParameterNotSupportedError:
         print("ExposureTime not available on this camera")
@@ -307,16 +307,16 @@ with HikCamera.from_ip("192.168.1.100") as cam:
 ### Save / load device user sets
 
 ```python
-from hikcamera import AccessMode, HikCamera, enums
+from hikcamera import AccessMode, Hik, HikCamera
 
 with HikCamera.from_ip("192.168.1.100") as cam:
     cam.open(AccessMode.EXCLUSIVE)
 
-    cam.params.UserSetControl.UserSetSelector.set(enums.UserSetSelector.USER_SET_1)
+    cam.params.UserSetControl.UserSetSelector.set(Hik.UserSetSelector.USER_SET_1)
     cam.params.UserSetControl.UserSetSave.execute()
 
     # Later, restore parameters from user set 1
-    cam.params.UserSetControl.UserSetSelector.set(enums.UserSetSelector.USER_SET_1)
+    cam.params.UserSetControl.UserSetSelector.set(Hik.UserSetSelector.USER_SET_1)
     cam.params.UserSetControl.UserSetLoad.execute()
 ```
 
@@ -416,7 +416,7 @@ below lists commonly used nodes. The recommended public API is the structured
 ### Example: reading & writing parameters
 
 ```python
-from hikcamera import AccessMode, HikCamera, enums
+from hikcamera import AccessMode, Hik, HikCamera
 
 with HikCamera.from_ip("192.168.1.100") as cam:
     cam.open(AccessMode.EXCLUSIVE)
@@ -428,14 +428,14 @@ with HikCamera.from_ip("192.168.1.100") as cam:
     cam.params.AcquisitionControl.ExposureTime.set(5000.0)
     cam.params.AnalogControl.Gain.set(2.5)
     cam.params.AcquisitionControl.AcquisitionFrameRateEnable.set(True)
-    cam.params.AnalogControl.GainAuto.set(enums.GainAuto.OFF)
+    cam.params.AnalogControl.GainAuto.set(Hik.GainAuto.OFF)
 
     exposure = cam.params.AcquisitionControl.ExposureTime.get()
     width = cam.params.ImageFormatControl.Width.get()
 
     cam.params.AcquisitionControl.TriggerSoftware.execute()
 
-    cam.params.UserSetControl.UserSetSelector.set(enums.UserSetSelector.USER_SET_1)
+    cam.params.UserSetControl.UserSetSelector.set(Hik.UserSetSelector.USER_SET_1)
     cam.params.UserSetControl.UserSetSave.execute()
 ```
 
