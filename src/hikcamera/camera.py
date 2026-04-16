@@ -141,7 +141,7 @@ class CameraInfoDict(dict[str, Any]):
     """
 
     @staticmethod
-    def _normalize_key(key: object) -> str | object:
+    def _normalize_key(key: object) -> str:
         """
         Convert ParamNode keys to their GenICam string names.
         将 ParamNode key 转换为对应的 GenICam 字符串名称。
@@ -151,16 +151,16 @@ class CameraInfoDict(dict[str, Any]):
         """
         if isinstance(key, ParamNode):
             return key.name
-        return key
+        return cast(str, key)
 
     def __getitem__(self, key: object) -> Any:
-        return super().__getitem__(cast(str, self._normalize_key(key)))
+        return super().__getitem__(self._normalize_key(key))
 
     def get(self, key: object, default: Any = None) -> Any:
-        return super().get(cast(str, self._normalize_key(key)), default)
+        return super().get(self._normalize_key(key), default)
 
     def __contains__(self, key: object) -> bool:
-        return super().__contains__(cast(str, self._normalize_key(key)))
+        return super().__contains__(self._normalize_key(key))
 
 
 class BoundParamNode:
@@ -1306,7 +1306,8 @@ class HikCamera:
             raise self._device_exception
 
         self._ensure_frame_buffer()
-        assert self._frame_buffer is not None
+        if self._frame_buffer is None:  # pragma: no cover - defensive
+            raise RuntimeError("Frame buffer is not initialized")
 
         frame_info = MV_FRAME_OUT_INFO_EX()
         ret = self._sdk.MV_CC_GetOneFrameTimeout(
@@ -1349,7 +1350,8 @@ class HikCamera:
             raise self._device_exception
 
         self._ensure_frame_buffer()
-        assert self._frame_buffer is not None
+        if self._frame_buffer is None:  # pragma: no cover - defensive
+            raise RuntimeError("Frame buffer is not initialized")
 
         frame_info = MV_FRAME_OUT_INFO_EX()
         ret = self._sdk.MV_CC_GetOneFrameTimeout(
