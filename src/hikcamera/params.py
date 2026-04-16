@@ -29,7 +29,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Literal, Protocol, overload
 
-from . import enums as camera_enums
+from .enums import Hik
 from .exceptions import ParameterReadOnlyError, ParameterValueError
 
 # Sentinel for "no value set" (distinct from ``None``).
@@ -202,11 +202,11 @@ class DeviceControl:
     Device Control parameters.  设备控制参数。
     """
     DeviceType = ParamNode(
-        "DeviceType", camera_enums.DeviceType, "R",
+        "DeviceType", Hik.DeviceType, "R",
         "设备类型 / Device type",
     )
     DeviceScanType = ParamNode(
-        "DeviceScanType", camera_enums.DeviceScanType, "R",
+        "DeviceScanType", Hik.DeviceScanType, "R",
         "设备 sensor 的扫描方式 / Device sensor scan type",
     )
     DeviceVendorName = ParamNode(
@@ -258,7 +258,7 @@ class DeviceControl:
         "设备连接数量 / Device link connection count", min_value=0,
     )
     DeviceLinkHeartbeatMode = ParamNode(
-        "DeviceLinkHeartbeatMode", camera_enums.DeviceHeartbeatMode, "R/W",
+        "DeviceLinkHeartbeatMode", Hik.DeviceHeartbeatMode, "R/W",
         "是否需要心跳 / Heartbeat mode",
     )
     DeviceStreamChannelCount = ParamNode(
@@ -270,7 +270,7 @@ class DeviceControl:
         "流通道选择 / Stream channel selector", min_value=0,
     )
     DeviceStreamChannelType = ParamNode(
-        "DeviceStreamChannelType", camera_enums.DeviceStreamChannelType, "R",
+        "DeviceStreamChannelType", Hik.DeviceStreamChannelType, "R",
         "流通道类型 / Stream channel type",
     )
     DeviceStreamChannelLink = ParamNode(
@@ -278,7 +278,7 @@ class DeviceControl:
         "流通道连接数量 / Stream channel link count", min_value=0,
     )
     DeviceStreamChannelEndianness = ParamNode(
-        "DeviceStreamChannelEndianness", camera_enums.DeviceStreamChannelEndianness, "R",
+        "DeviceStreamChannelEndianness", Hik.DeviceStreamChannelEndianness, "R",
         "图像数据的字节序 / Image data byte order",
     )
     DeviceStreamChannelPacketSize = ParamNode(
@@ -291,7 +291,7 @@ class DeviceControl:
         "设备支持的事件通道数 / Event channel count", min_value=0,
     )
     DeviceCharacterSet = ParamNode(
-        "DeviceCharacterSet", camera_enums.DeviceCharacterSet, "R",
+        "DeviceCharacterSet", Hik.DeviceCharacterSet, "R",
         "设备寄存器中使用的字符集 / Character set in device registers",
     )
     DeviceReset = ParamNode(
@@ -325,11 +325,11 @@ class ImageFormatControl:
         "图像最大高度 / Maximum image height", min_value=1,
     )
     RegionSelector = ParamNode(
-        "RegionSelector", camera_enums.RegionSelector, "R/(W)",
+        "RegionSelector", Hik.RegionSelector, "R/(W)",
         "ROI 选择器 / ROI selector",
     )
     RegionDestination = ParamNode(
-        "RegionDestination", camera_enums.RegionDestination, "R/(W)",
+        "RegionDestination", Hik.RegionDestination, "R/(W)",
         "该 ROI 对应的码流 / Stream destination for region",
     )
     Width = ParamNode(
@@ -353,15 +353,15 @@ class ImageFormatControl:
         "转换扫描方向 / Reverse scan direction",
     )
     PixelFormat = ParamNode(
-        "PixelFormat", camera_enums.PixelFormat, "R/(W)",
+        "PixelFormat", Hik.PixelFormat, "R/(W)",
         "图像像素格式 / Image pixel format",
     )
     PixelSize = ParamNode(
-        "PixelSize", camera_enums.PixelSize, "R/(W)",
+        "PixelSize", Hik.PixelSize, "R/(W)",
         "一个像素包含的比特数 / Bits per pixel",
     )
     ImageCompressionMode = ParamNode(
-        "ImageCompressionMode", camera_enums.ImageCompressionMode, "R/(W)",
+        "ImageCompressionMode", Hik.ImageCompressionMode, "R/(W)",
         "图像压缩模式 / Image compression mode",
     )
     ImageCompressionQuality = ParamNode(
@@ -369,15 +369,15 @@ class ImageFormatControl:
         "图像压缩质量 / Image compression quality", min_value=50,
     )
     TestPatternGeneratorSelector = ParamNode(
-        "TestPatternGeneratorSelector", camera_enums.TestPatternGeneratorSelector, "R/(W)",
+        "TestPatternGeneratorSelector", Hik.TestPatternGeneratorSelector, "R/(W)",
         "测试图像生成器选择 / Test pattern generator selector",
     )
     TestPattern = ParamNode(
-        "TestPattern", camera_enums.TestPattern, "R/(W)",
+        "TestPattern", Hik.TestPattern, "R/(W)",
         "测试图像选择 / Test pattern selection",
     )
     FrameSpecInfoSelector = ParamNode(
-        "FrameSpecInfoSelector", camera_enums.FrameSpecInfoSelector, "R/(W)",
+        "FrameSpecInfoSelector", Hik.FrameSpecInfoSelector, "R/(W)",
         "水印信息选择 / Watermark info selector",
     )
     FrameSpecInfo = ParamNode(
@@ -407,7 +407,7 @@ class AcquisitionControl:
     Acquisition Control parameters.  采集控制参数。
     """
     AcquisitionMode = ParamNode(
-        "AcquisitionMode", camera_enums.AcquisitionMode, "R/(W)",
+        "AcquisitionMode", Hik.AcquisitionMode, "R/(W)",
         "采集模式 / Acquisition mode (single/multi/continuous)",
     )
     AcquisitionStart = ParamNode(
@@ -447,19 +447,19 @@ class AcquisitionControl:
         "帧率控制使能 / Frame rate control enable",
     )
     TriggerSelector = ParamNode(
-        "TriggerSelector", camera_enums.TriggerSelector, "R/W",
+        "TriggerSelector", Hik.TriggerSelector, "R/W",
         "触发事件选择 / Trigger event selector",
     )
     TriggerMode = ParamNode(
-        "TriggerMode", camera_enums.TriggerMode, "R/W",
+        "TriggerMode", Hik.TriggerMode, "R/W",
         "触发模式 / Trigger mode (on/off)",
     )
     TriggerSource = ParamNode(
-        "TriggerSource", camera_enums.TriggerSource, "R/W",
+        "TriggerSource", Hik.TriggerSource, "R/W",
         "触发源 / Trigger source",
     )
     TriggerActivation = ParamNode(
-        "TriggerActivation", camera_enums.TriggerActivation, "R/W",
+        "TriggerActivation", Hik.TriggerActivation, "R/W",
         "触发沿/电平 / Trigger activation edge/level",
     )
     TriggerDelay = ParamNode(
@@ -471,7 +471,7 @@ class AcquisitionControl:
         "软触发执行 / Execute software trigger",
     )
     ExposureMode = ParamNode(
-        "ExposureMode", camera_enums.ExposureMode, "R/W",
+        "ExposureMode", Hik.ExposureMode, "R/W",
         "曝光模式选择 / Exposure mode",
     )
     ExposureTime = ParamNode(
@@ -479,7 +479,7 @@ class AcquisitionControl:
         "曝光时间 / Exposure time", unit="us", min_value=0.0,
     )
     ExposureAuto = ParamNode(
-        "ExposureAuto", camera_enums.ExposureAuto, "R/W",
+        "ExposureAuto", Hik.ExposureAuto, "R/W",
         "自动曝光 / Auto exposure",
     )
     AutoExposureTimeLowerLimit = ParamNode(
@@ -509,7 +509,7 @@ class AnalogControl:
         "增益值 / Gain", unit="dB", min_value=0.0,
     )
     GainAuto = ParamNode(
-        "GainAuto", camera_enums.GainAuto, "R/W",
+        "GainAuto", Hik.GainAuto, "R/W",
         "自动增益 / Auto gain",
     )
     AutoGainLowerLimit = ParamNode(
@@ -545,11 +545,11 @@ class AnalogControl:
         "黑电平调节使能 / Black level enable",
     )
     BalanceWhiteAuto = ParamNode(
-        "BalanceWhiteAuto", camera_enums.BalanceWhiteAuto, "R/W",
+        "BalanceWhiteAuto", Hik.BalanceWhiteAuto, "R/W",
         "自动白平衡 / Auto white balance",
     )
     BalanceRatioSelector = ParamNode(
-        "BalanceRatioSelector", camera_enums.BalanceRatioSelector, "R",
+        "BalanceRatioSelector", Hik.BalanceRatioSelector, "R",
         "白平衡比例选择 / White balance ratio selector",
     )
     BalanceRatio = ParamNode(
@@ -561,7 +561,7 @@ class AnalogControl:
         "伽马调节 / Gamma correction", min_value=0.0,
     )
     GammaSelector = ParamNode(
-        "GammaSelector", camera_enums.GammaSelector, "R/W",
+        "GammaSelector", Hik.GammaSelector, "R/W",
         "Gamma 选择 / Gamma selector",
     )
     GammaEnable = ParamNode(
@@ -585,7 +585,7 @@ class AnalogControl:
         "饱和度使能 / Saturation enable",
     )
     AutoFunctionAOISelector = ParamNode(
-        "AutoFunctionAOISelector", camera_enums.AutoFunctionAOISelector, "R/W",
+        "AutoFunctionAOISelector", Hik.AutoFunctionAOISelector, "R/W",
         "自动 AOI 选择 / Auto function AOI selector",
     )
     AutoFunctionAOIWidth = ParamNode(
@@ -615,7 +615,7 @@ class LUTControl:
     LUT Control parameters.  LUT 控制参数。
     """
     LUTSelector = ParamNode(
-        "LUTSelector", camera_enums.LUTSelector, "R/W",
+        "LUTSelector", Hik.LUTSelector, "R/W",
         "LUT 通道选择 / LUT channel selector",
     )
     LUTEnable = ParamNode(
@@ -637,23 +637,23 @@ class EncoderControl:
     Encoder Control parameters.  编码器控制参数。
     """
     EncoderSelector = ParamNode(
-        "EncoderSelector", camera_enums.EncoderSelector, "R/W",
+        "EncoderSelector", Hik.EncoderSelector, "R/W",
         "编码器选择 / Encoder selector",
     )
     EncoderSourceA = ParamNode(
-        "EncoderSourceA", camera_enums.LineSelector, "R/W",
+        "EncoderSourceA", Hik.LineSelector, "R/W",
         "编码器 A 源选择 / Encoder source A",
     )
     EncoderSourceB = ParamNode(
-        "EncoderSourceB", camera_enums.LineSelector, "R/W",
+        "EncoderSourceB", Hik.LineSelector, "R/W",
         "编码器 B 源选择 / Encoder source B",
     )
     EncoderTriggerMode = ParamNode(
-        "EncoderTriggerMode", camera_enums.EncoderTriggerMode, "R/W",
+        "EncoderTriggerMode", Hik.EncoderTriggerMode, "R/W",
         "编码器触发模式 / Encoder trigger mode",
     )
     EncoderCounterMode = ParamNode(
-        "EncoderCounterMode", camera_enums.EncoderCounterMode, "R/W",
+        "EncoderCounterMode", Hik.EncoderCounterMode, "R/W",
         "编码器计数模式 / Encoder counter mode",
     )
     EncoderCounter = ParamNode(
@@ -687,11 +687,11 @@ class FrequencyConverterControl:
     Frequency Converter Control parameters.  分频器控制参数。
     """
     InputSource = ParamNode(
-        "InputSource", camera_enums.LineSelector, "R/W",
+        "InputSource", Hik.LineSelector, "R/W",
         "分频器输入源 / Frequency converter input source",
     )
     SignalAlignment = ParamNode(
-        "SignalAlignment", camera_enums.FrequencyConverterSignalAlignment, "R/W",
+        "SignalAlignment", Hik.FrequencyConverterSignalAlignment, "R/W",
         "分频器信号方向 / Signal alignment edge",
     )
     PreDivider = ParamNode(
@@ -713,7 +713,7 @@ class ShadingCorrection:
     Shading Correction parameters.  明暗场校正参数。
     """
     ShadingSelector = ParamNode(
-        "ShadingSelector", camera_enums.ShadingSelector, "R/W",
+        "ShadingSelector", Hik.ShadingSelector, "R/W",
         "明暗场校正选择 / Shading correction selector",
     )
     # NOTE: The SDK documentation (V4.7.0) marks this command node as "R/(W)".
@@ -737,11 +737,11 @@ class DigitalIOControl:
     Digital IO Control parameters.  数字 IO 控制参数。
     """
     LineSelector = ParamNode(
-        "LineSelector", camera_enums.LineSelector, "R/W",
+        "LineSelector", Hik.LineSelector, "R/W",
         "I/O 选择 / I/O line selector",
     )
     LineMode = ParamNode(
-        "LineMode", camera_enums.LineMode, "R/(W)",
+        "LineMode", Hik.LineMode, "R/(W)",
         "I/O 模式 / I/O line mode",
     )
     LineStatus = ParamNode(
@@ -779,7 +779,7 @@ class TransportLayerControl:
         "大端模式 / Big-endian mode",
     )
     GevDeviceModeCharacterSet = ParamNode(
-        "GevDeviceModeCharacterSet", camera_enums.GevDeviceModeCharacterSet, "R",
+        "GevDeviceModeCharacterSet", Hik.GevDeviceModeCharacterSet, "R",
         "字符集 / Character set",
     )
     GevInterfaceSelector = ParamNode(
@@ -879,7 +879,7 @@ class TransportLayerControl:
         "时间戳值 / Timestamp value",
     )
     GevCCP = ParamNode(
-        "GevCCP", camera_enums.GevCCP, "R/W",
+        "GevCCP", Hik.GevCCP, "R/W",
         "App 端的控制权限 / Control channel privilege",
     )
     GevStreamChannelSelector = ParamNode(
@@ -938,7 +938,7 @@ class UserSetControl:
         "当前用户参数 / Current user set", min_value=0,
     )
     UserSetSelector = ParamNode(
-        "UserSetSelector", camera_enums.UserSetSelector, "R/W",
+        "UserSetSelector", Hik.UserSetSelector, "R/W",
         "设置载入的参数 / User set selector",
     )
     UserSetLoad = ParamNode(
@@ -950,7 +950,7 @@ class UserSetControl:
         "保存 / Save user set",
     )
     UserSetDefault = ParamNode(
-        "UserSetDefault", camera_enums.UserSetDefault, "R/W",
+        "UserSetDefault", Hik.UserSetDefault, "R/W",
         "默认用户集 / Default user set loaded at boot",
     )
 

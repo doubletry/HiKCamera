@@ -650,7 +650,6 @@ class Hik:
 
         cam.params.AnalogControl.GainAuto.set(Hik.GainAuto.OFF)
     """
-
     AccessMode = AccessMode
     TransportLayer = TransportLayer
     StreamingMode = StreamingMode

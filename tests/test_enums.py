@@ -65,3 +65,6 @@ class TestHikNamespace:
     def test_reexports_parameter_enums(self):
         assert Hik.GainAuto is GainAuto
         assert Hik.GainAuto.OFF == GainAuto.OFF
+
+    def test_reexports_other_parameter_enums(self):
+        assert Hik.UserSetSelector.__name__ == "UserSetSelector"

@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import pytest
 
+from hikcamera import Hik
 from hikcamera.enums import (
     GainAuto,
     PixelFormat,
@@ -147,6 +148,7 @@ class TestParamNodeTypeValidation:
 
     def test_enum_paramnode_exposes_data_type_attribute(self):
         assert AnalogControl.GainAuto.data_type is GainAuto
+        assert AnalogControl.GainAuto.data_type is Hik.GainAuto
         assert UserSetControl.UserSetSelector.data_type.__name__ == "UserSetSelector"
 
     def test_enum_paramnode_does_not_expose_enum_members(self):
