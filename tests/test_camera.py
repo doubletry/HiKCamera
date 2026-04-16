@@ -702,6 +702,11 @@ class TestParameters:
         with pytest.raises(ParameterValueError, match="expects bool"):
             cam.params.AnalogControl.GammaEnable.set("true")
 
+    def test_set_bool_rejects_int(self, mock_sdk):
+        cam = make_camera_with_sdk(mock_sdk)
+        with pytest.raises(ParameterValueError, match="expects bool"):
+            cam.params.AnalogControl.GammaEnable.set(1)
+
     def test_set_string_rejects_int(self, mock_sdk):
         cam = make_camera_with_sdk(mock_sdk)
         with pytest.raises(ParameterValueError, match="expects str"):

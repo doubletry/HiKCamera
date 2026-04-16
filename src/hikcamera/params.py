@@ -177,14 +177,14 @@ class ParamNode:
 
         # 5. Type check / 类型检查
         if not isinstance(value, expected_type):
-            if isinstance(expected_type, type) and issubclass(expected_type, _ENUM_BASE_TYPES):
+            if isinstance(expected_type, type):
+                try:
+                    issubclass(expected_type, _ENUM_BASE_TYPES)
+                except TypeError:  # pragma: no cover - defensive
+                    pass
                 type_name = expected_type.__name__
             else:
-                type_name = (
-                    expected_type.__name__
-                    if isinstance(expected_type, type)
-                    else str(expected_type)
-                )
+                type_name = str(expected_type)
             raise ParameterValueError(
                 f"Parameter {self.name!r} expects {type_name}, "
                 f"got {type(value).__name__}: {value!r}"

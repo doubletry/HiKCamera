@@ -231,7 +231,7 @@ class BoundCategoryProxy:
             object.__setattr__(self, attr_name, BoundParamNode(camera, node))
 
     def __setattr__(self, name: str, value: Any) -> None:
-        if name in {"_camera", "_category"}:
+        if name in {"_camera", "_category"} and not hasattr(self, name):
             object.__setattr__(self, name, value)
             return
         raise AttributeError(f"{type(self).__name__!s} is read-only")
@@ -256,7 +256,7 @@ class CameraParamsProxy:
             object.__setattr__(self, category.__name__, BoundCategoryProxy(camera, category))
 
     def __setattr__(self, name: str, value: Any) -> None:
-        if name == "_camera":
+        if name == "_camera" and not hasattr(self, name):
             object.__setattr__(self, name, value)
             return
         raise AttributeError(f"{type(self).__name__!s} is read-only")
