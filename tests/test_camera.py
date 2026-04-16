@@ -15,6 +15,7 @@ import hikcamera.camera as camera_module
 from hikcamera.camera import (
     GIGE_PACKET_SIZE_DEFAULT,
     GIGE_PACKET_SIZE_JUMBO,
+    CameraInfoDict,
     DeviceInfo,
     HikCamera,
     _frame_info_to_dict,
@@ -29,6 +30,7 @@ from hikcamera.enums import (
     PixelFormat,
     StreamingMode,
     TriggerMode,
+    UserSetSelector,
 )
 from hikcamera.exceptions import (
     CameraAlreadyOpenError,
@@ -42,6 +44,12 @@ from hikcamera.exceptions import (
     ParameterNotSupportedError,
     ParameterReadOnlyError,
     ParameterValueError,
+)
+from hikcamera.params import (
+    AcquisitionControl,
+    AnalogControl,
+    DeviceControl,
+    ImageFormatControl,
 )
 from hikcamera.sdk_wrapper import (
     MV_CC_DEVICE_INFO,
@@ -71,6 +79,7 @@ def make_camera_with_sdk(mock_sdk, open_it: bool = True) -> HikCamera:
     cam._device_exception = None
     cam._on_device_exception = None
     cam._lock = threading.Lock()
+    cam._params_proxy = None
     if open_it:
         cam._is_open = True
     return cam
@@ -545,7 +554,7 @@ class TestGetFrame:
 # ---------------------------------------------------------------------------
 
 class TestParameters:
-    def test_get_int_parameter(self, mock_sdk):
+    def test_bound_get_int_node(self, mock_sdk):
         cam = make_camera_with_sdk(mock_sdk)
 
         def side_effect(handle, name, p_val):
@@ -553,14 +562,14 @@ class TestParameters:
             return MvErrorCode.MV_OK
 
         mock_sdk.MV_CC_GetIntValueEx.side_effect = side_effect
-        assert cam.get_int_parameter("Width") == 1920
+        assert cam.params.ImageFormatControl.Width.get() == 1920
 
-    def test_set_int_parameter(self, mock_sdk):
+    def test_bound_set_int_node(self, mock_sdk):
         cam = make_camera_with_sdk(mock_sdk)
-        cam.set_int_parameter("Width", 1920)
+        cam.params.ImageFormatControl.Width.set(1920)
         mock_sdk.MV_CC_SetIntValueEx.assert_called_once()
 
-    def test_get_float_parameter(self, mock_sdk):
+    def test_bound_get_float_node(self, mock_sdk):
         cam = make_camera_with_sdk(mock_sdk)
 
         def side_effect(handle, name, p_val):
@@ -568,14 +577,14 @@ class TestParameters:
             return MvErrorCode.MV_OK
 
         mock_sdk.MV_CC_GetFloatValue.side_effect = side_effect
-        assert cam.get_float_parameter("ExposureTime") == pytest.approx(5000.0)
+        assert cam.params.AcquisitionControl.ExposureTime.get() == pytest.approx(5000.0)
 
-    def test_set_float_parameter(self, mock_sdk):
+    def test_bound_set_float_node(self, mock_sdk):
         cam = make_camera_with_sdk(mock_sdk)
-        cam.set_float_parameter("ExposureTime", 5000.0)
+        cam.params.AcquisitionControl.ExposureTime.set(5000.0)
         mock_sdk.MV_CC_SetFloatValue.assert_called_once()
 
-    def test_get_bool_parameter(self, mock_sdk):
+    def test_bound_get_bool_node(self, mock_sdk):
         cam = make_camera_with_sdk(mock_sdk)
 
         def side_effect(handle, name, p_val):
@@ -583,14 +592,14 @@ class TestParameters:
             return MvErrorCode.MV_OK
 
         mock_sdk.MV_CC_GetBoolValue.side_effect = side_effect
-        assert cam.get_bool_parameter("AcquisitionFrameRateEnable") is True
+        assert cam.params.AcquisitionControl.AcquisitionFrameRateEnable.get() is True
 
-    def test_set_bool_parameter(self, mock_sdk):
+    def test_bound_set_bool_node(self, mock_sdk):
         cam = make_camera_with_sdk(mock_sdk)
-        cam.set_bool_parameter("AcquisitionFrameRateEnable", True)
+        cam.params.AcquisitionControl.AcquisitionFrameRateEnable.set(True)
         mock_sdk.MV_CC_SetBoolValue.assert_called_once()
 
-    def test_get_enum_parameter(self, mock_sdk):
+    def test_bound_get_enum_node(self, mock_sdk):
         cam = make_camera_with_sdk(mock_sdk)
 
         def side_effect(handle, name, p_val):
@@ -598,19 +607,19 @@ class TestParameters:
             return MvErrorCode.MV_OK
 
         mock_sdk.MV_CC_GetEnumValue.side_effect = side_effect
-        assert cam.get_enum_parameter("PixelFormat") == 0x01080001
+        assert cam.params.ImageFormatControl.PixelFormat.get() == 0x01080001
 
-    def test_set_enum_parameter(self, mock_sdk):
+    def test_bound_set_pixel_format_enum(self, mock_sdk):
         cam = make_camera_with_sdk(mock_sdk)
-        cam.set_enum_parameter("PixelFormat", 0x01080001)
+        cam.params.ImageFormatControl.PixelFormat.set(PixelFormat.MONO8)
         mock_sdk.MV_CC_SetEnumValue.assert_called_once()
 
-    def test_set_enum_by_string(self, mock_sdk):
+    def test_bound_set_gain_auto_enum(self, mock_sdk):
         cam = make_camera_with_sdk(mock_sdk)
-        cam.set_enum_parameter_by_string("PixelFormat", "Mono8")
+        cam.params.AnalogControl.GainAuto.set(GainAuto.OFF)
         mock_sdk.MV_CC_SetEnumValueByString.assert_called_once()
 
-    def test_get_string_parameter(self, mock_sdk):
+    def test_bound_get_string_node(self, mock_sdk):
         cam = make_camera_with_sdk(mock_sdk)
 
         def side_effect(handle, name, p_val):
@@ -618,142 +627,110 @@ class TestParameters:
             return MvErrorCode.MV_OK
 
         mock_sdk.MV_CC_GetStringValue.side_effect = side_effect
-        assert cam.get_string_parameter("AcquisitionMode") == "Continuous"
+        assert cam.params.DeviceControl.DeviceModelName.get() == "Continuous"
 
-    def test_execute_command(self, mock_sdk):
+    def test_execute_structured_command_node(self, mock_sdk):
         cam = make_camera_with_sdk(mock_sdk)
-        cam.execute_command("TriggerSoftware")
+        cam.params.AcquisitionControl.TriggerSoftware.execute()
         mock_sdk.MV_CC_SetCommandValue.assert_called_once()
+
+    def test_non_command_execute_raises(self, mock_sdk):
+        cam = make_camera_with_sdk(mock_sdk)
+        with pytest.raises(ParameterValueError, match="not a command node"):
+            cam.params.AnalogControl.Gain.execute()
+
+    def test_command_node_set_raises(self, mock_sdk):
+        cam = make_camera_with_sdk(mock_sdk)
+        with pytest.raises(ParameterValueError, match="use cam\\.params"):
+            cam.params.AcquisitionControl.TriggerSoftware.set(None)
+
+    def test_command_node_get_returns_default(self, mock_sdk):
+        cam = make_camera_with_sdk(mock_sdk)
+        assert cam.params.AcquisitionControl.TriggerSoftware.get(default="noop") == "noop"
 
     # Error handling
 
     def test_not_supported_raises_parameter_not_supported(self, mock_sdk):
         cam = make_camera_with_sdk(mock_sdk)
         mock_sdk.MV_CC_GetIntValueEx.return_value = MvErrorCode.MV_E_SUPPORT
-        with pytest.raises(ParameterNotSupportedError):
-            cam.get_int_parameter("SomeFeature")
+        result = cam.params.ImageFormatControl.Width.get(default="fallback")
+        assert result == "fallback"
 
     def test_read_only_raises_parameter_read_only(self, mock_sdk):
         cam = make_camera_with_sdk(mock_sdk)
         mock_sdk.MV_CC_SetIntValueEx.return_value = MvErrorCode.MV_E_GC_ACCESS
         with pytest.raises(ParameterReadOnlyError):
-            cam.set_int_parameter("DeviceLinkSpeed", 999)
+            cam.params.ImageFormatControl.Width.set(999)
 
     def test_not_open_raises_camera_not_open(self, mock_sdk):
         cam = make_camera_with_sdk(mock_sdk, open_it=False)
         with pytest.raises(CameraNotOpenError):
-            cam.get_int_parameter("Width")
+            cam.params.ImageFormatControl.Width.get()
 
-    def test_set_parameter_auto_dispatch_int(self, mock_sdk):
-        cam = make_camera_with_sdk(mock_sdk)
-        cam.set_parameter("Width", 1280)
-        mock_sdk.MV_CC_SetIntValueEx.assert_called()
-
-    def test_set_parameter_auto_dispatch_float(self, mock_sdk):
-        cam = make_camera_with_sdk(mock_sdk)
-        cam.set_parameter("ExposureTime", 5000.0)
-        mock_sdk.MV_CC_SetFloatValue.assert_called()
-
-    def test_set_parameter_auto_dispatch_bool(self, mock_sdk):
-        cam = make_camera_with_sdk(mock_sdk)
-        cam.set_parameter("AcquisitionFrameRateEnable", True)
-        mock_sdk.MV_CC_SetBoolValue.assert_called()
-
-    def test_set_parameter_auto_dispatch_enum(self, mock_sdk):
-        cam = make_camera_with_sdk(mock_sdk)
-        cam.set_parameter("GainAuto", GainAuto.OFF)
-        mock_sdk.MV_CC_SetEnumValueByString.assert_called()
-
-    def test_set_parameter_string_for_non_enum_goes_to_string_setter(self, mock_sdk):
-        cam = make_camera_with_sdk(mock_sdk)
-        cam.set_parameter("DeviceUserID", "MyCam")
-        mock_sdk.MV_CC_SetStringValue.assert_called()
-
-    def test_set_parameter_silently_ignores_not_supported(self, mock_sdk):
-        cam = make_camera_with_sdk(mock_sdk)
-        mock_sdk.MV_CC_SetIntValueEx.return_value = MvErrorCode.MV_E_SUPPORT
-        # Should NOT raise
-        cam.set_parameter("UnknownFeature", 42)
-
-    def test_set_parameter_enum_rejects_raw_string(self, mock_sdk):
-        """Raw string 'Off' is not GainAuto enum; should be rejected."""
+    def test_set_enum_rejects_raw_string(self, mock_sdk):
         cam = make_camera_with_sdk(mock_sdk)
         with pytest.raises(ParameterValueError, match="expects GainAuto"):
-            cam.set_parameter("GainAuto", "Off")
+            cam.params.AnalogControl.GainAuto.set("Off")
 
-    def test_set_parameter_enum_rejects_wrong_enum_type(self, mock_sdk):
-        """TriggerMode.OFF passed to GainAuto should be rejected."""
+    def test_set_enum_rejects_wrong_enum_type(self, mock_sdk):
         cam = make_camera_with_sdk(mock_sdk)
         with pytest.raises(ParameterValueError, match="expects GainAuto"):
-            cam.set_parameter("GainAuto", TriggerMode.OFF)
+            cam.params.AnalogControl.GainAuto.set(TriggerMode.OFF)
 
-    def test_set_parameter_enum_rejects_float(self, mock_sdk):
+    def test_set_enum_rejects_float(self, mock_sdk):
         cam = make_camera_with_sdk(mock_sdk)
         with pytest.raises(ParameterValueError, match="expects GainAuto"):
-            cam.set_parameter("GainAuto", 3.14)
+            cam.params.AnalogControl.GainAuto.set(3.14)
 
-    def test_set_parameter_schema_int_rejects_str(self, mock_sdk):
+    def test_set_int_rejects_str(self, mock_sdk):
         cam = make_camera_with_sdk(mock_sdk)
         with pytest.raises(ParameterValueError, match="expects int"):
-            cam.set_parameter("Width", "not_a_number")
+            cam.params.ImageFormatControl.Width.set("not_a_number")
 
-    def test_set_parameter_schema_float_rejects_str(self, mock_sdk):
+    def test_set_float_rejects_str(self, mock_sdk):
         cam = make_camera_with_sdk(mock_sdk)
         with pytest.raises(ParameterValueError, match="expects float"):
-            cam.set_parameter("ExposureTime", "fast")
+            cam.params.AcquisitionControl.ExposureTime.set("fast")
 
-    def test_set_parameter_schema_float_accepts_int(self, mock_sdk):
+    def test_set_float_accepts_int(self, mock_sdk):
         cam = make_camera_with_sdk(mock_sdk)
-        cam.set_parameter("ExposureTime", 5000)
+        cam.params.AcquisitionControl.ExposureTime.set(5000)
         mock_sdk.MV_CC_SetFloatValue.assert_called()
 
-    def test_set_parameter_schema_bool_rejects_str(self, mock_sdk):
+    def test_set_bool_rejects_str(self, mock_sdk):
         cam = make_camera_with_sdk(mock_sdk)
         with pytest.raises(ParameterValueError, match="expects bool"):
-            cam.set_parameter("GammaEnable", "true")
+            cam.params.AnalogControl.GammaEnable.set("true")
 
-    def test_set_parameter_schema_string_rejects_int(self, mock_sdk):
+    def test_set_bool_rejects_int(self, mock_sdk):
+        cam = make_camera_with_sdk(mock_sdk)
+        with pytest.raises(ParameterValueError, match="expects bool"):
+            cam.params.AnalogControl.GammaEnable.set(1)
+
+    def test_set_string_rejects_int(self, mock_sdk):
         cam = make_camera_with_sdk(mock_sdk)
         with pytest.raises(ParameterValueError, match="expects str"):
-            cam.set_parameter("DeviceUserID", 42)
+            cam.params.DeviceControl.DeviceUserID.set(42)
 
-    def test_set_parameter_pixel_format_accepts_enum_member(self, mock_sdk):
-        """PixelFormat is IntEnum; a member should dispatch to set_enum_parameter."""
+    def test_set_pixel_format_accepts_enum_member(self, mock_sdk):
         cam = make_camera_with_sdk(mock_sdk)
-        cam.set_parameter("PixelFormat", PixelFormat.MONO8)
+        cam.params.ImageFormatControl.PixelFormat.set(PixelFormat.MONO8)
         mock_sdk.MV_CC_SetEnumValue.assert_called()
 
-    def test_set_parameter_pixel_format_rejects_raw_int(self, mock_sdk):
-        """A plain int is not a PixelFormat member; should be rejected."""
+    def test_set_pixel_format_rejects_raw_int(self, mock_sdk):
         cam = make_camera_with_sdk(mock_sdk)
         with pytest.raises(ParameterValueError, match="expects PixelFormat"):
-            cam.set_parameter("PixelFormat", 0x01080001)
+            cam.params.ImageFormatControl.PixelFormat.set(0x01080001)
 
-    def test_set_parameter_unknown_param_falls_back_to_python_type(self, mock_sdk):
-        """Params not in _PARAMETER_SCHEMA fall back to Python-type dispatch."""
-        cam = make_camera_with_sdk(mock_sdk)
-        cam.set_parameter("SomeVendorSpecificParam", "hello")
-        mock_sdk.MV_CC_SetStringValue.assert_called()
-
-    def test_set_parameter_int_rejects_bool(self, mock_sdk):
-        """bool is subclass of int, but schema int should reject bool."""
+    def test_set_int_rejects_bool(self, mock_sdk):
         cam = make_camera_with_sdk(mock_sdk)
         with pytest.raises(ParameterValueError, match="expects int"):
-            cam.set_parameter("Width", True)
+            cam.params.ImageFormatControl.Width.set(True)
 
-    def test_set_parameter_float_rejects_bool(self, mock_sdk):
-        """bool is subclass of int, but schema float should reject bool."""
+    def test_set_float_rejects_bool(self, mock_sdk):
         cam = make_camera_with_sdk(mock_sdk)
         with pytest.raises(ParameterValueError, match="expects float"):
-            cam.set_parameter("ExposureTime", False)
-
-    def test_get_parameter_returns_default_on_not_supported(self, mock_sdk):
-        cam = make_camera_with_sdk(mock_sdk)
-        mock_sdk.MV_CC_GetIntValueEx.return_value = MvErrorCode.MV_E_SUPPORT
-        mock_sdk.MV_CC_GetFloatValue.return_value = MvErrorCode.MV_E_SUPPORT
-        mock_sdk.MV_CC_GetStringValue.return_value = MvErrorCode.MV_E_SUPPORT
-        result = cam.get_parameter("NoSuchFeature", default="fallback")
-        assert result == "fallback"
+            cam.params.AcquisitionControl.ExposureTime.set(False)
 
 
 # ---------------------------------------------------------------------------
@@ -997,7 +974,7 @@ class TestConfigExportImport:
 class TestUserSet:
     def test_save_user_set(self, mock_sdk):
         cam = make_camera_with_sdk(mock_sdk)
-        cam.save_user_set("UserSet1")
+        cam.save_user_set(UserSetSelector.USER_SET_1)
         mock_sdk.MV_CC_SetEnumValueByString.assert_called_once()
         mock_sdk.MV_CC_SetCommandValue.assert_called_once()
 
@@ -1018,11 +995,11 @@ class TestUserSet:
         cam = make_camera_with_sdk(mock_sdk)
         mock_sdk.MV_CC_SetEnumValueByString.return_value = MvErrorCode.MV_E_SUPPORT
         with pytest.raises(ParameterNotSupportedError):
-            cam.save_user_set("UserSet1")
+            cam.save_user_set(UserSetSelector.USER_SET_1)
 
     def test_load_user_set(self, mock_sdk):
         cam = make_camera_with_sdk(mock_sdk)
-        cam.load_user_set("UserSet2")
+        cam.load_user_set(UserSetSelector.USER_SET_2)
         call_args = mock_sdk.MV_CC_SetEnumValueByString.call_args
         assert call_args[0][2] == b"UserSet2"
         mock_sdk.MV_CC_SetCommandValue.assert_called_once()
@@ -1112,6 +1089,7 @@ class TestCameraInfo:
         self._setup_param_responses(mock_sdk)
         info = cam.get_camera_info()
         assert isinstance(info, dict)
+        assert isinstance(info, CameraInfoDict)
 
     def test_get_camera_info_contains_image_dimensions(self, mock_sdk):
         cam = make_camera_with_sdk(mock_sdk)
@@ -1168,3 +1146,26 @@ class TestCameraInfo:
         info = cam.get_camera_info()
         assert info["AcquisitionFrameRateEnable"] is True
         assert info["GammaEnable"] is False
+
+    def test_get_camera_info_supports_paramnode_getitem(self, mock_sdk):
+        cam = make_camera_with_sdk(mock_sdk)
+        self._setup_param_responses(mock_sdk)
+        info = cam.get_camera_info()
+        assert info[ImageFormatControl.Width] == 1920
+        assert info[AcquisitionControl.ExposureTime] == pytest.approx(5000.0)
+        assert info[AnalogControl.Gain] == pytest.approx(1.5)
+
+    def test_get_camera_info_supports_paramnode_get_and_contains(self, mock_sdk):
+        cam = make_camera_with_sdk(mock_sdk)
+        self._setup_param_responses(mock_sdk)
+        info = cam.get_camera_info()
+        assert info.get(ImageFormatControl.Height) == 1080
+        assert AcquisitionControl.AcquisitionFrameRate in info
+        assert AnalogControl.GainAuto in info
+
+    def test_get_camera_info_missing_paramnode_key_raises_keyerror(self, mock_sdk):
+        cam = make_camera_with_sdk(mock_sdk)
+        self._setup_param_responses(mock_sdk)
+        info = cam.get_camera_info()
+        with pytest.raises(KeyError):
+            _ = info[DeviceControl.DeviceUserID]

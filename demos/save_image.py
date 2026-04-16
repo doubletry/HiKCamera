@@ -25,11 +25,9 @@ import cv2
 import numpy as np
 
 from hikcamera import (
-    AccessMode,
+    Hik,
     HikCamera,
-    OutputFormat,
     SDKNotFoundError,
-    TransportLayer,
 )
 
 
@@ -46,7 +44,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--format",
         default="BGR8",
-        choices=[f.name for f in OutputFormat],
+        choices=[f.name for f in Hik.OutputFormat],
         help="Output pixel format (default: BGR8)",
     )
     parser.add_argument("--timeout", type=int, default=3000, help="Frame timeout in ms")
@@ -57,7 +55,7 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = parse_args()
-    output_format = OutputFormat[args.format]
+    output_format = Hik.OutputFormat[args.format]
 
     # ---------------------------------------------------------------
     # Locate camera / 定位相机
@@ -65,7 +63,7 @@ def main() -> None:
     try:
         if args.ip:
             print(f"Connecting to camera at IP {args.ip} …")
-            cam = HikCamera.from_ip(args.ip, TransportLayer.GIGE)
+            cam = HikCamera.from_ip(args.ip, Hik.TransportLayer.GIGE)
         elif args.sn:
             print(f"Connecting to camera with serial number {args.sn} …")
             cam = HikCamera.from_serial_number(args.sn)
@@ -88,15 +86,15 @@ def main() -> None:
     # Open, configure, capture / 打开、配置、采集
     # ---------------------------------------------------------------
     with cam:
-        cam.open(AccessMode.EXCLUSIVE)
+        cam.open(Hik.AccessMode.EXCLUSIVE)
         print("Camera opened.")
 
         if args.exposure is not None:
-            cam.set_parameter("ExposureTime", args.exposure)
+            cam.params.AcquisitionControl.ExposureTime.set(args.exposure)
             print(f"ExposureTime set to {args.exposure} µs")
 
         if args.gain is not None:
-            cam.set_parameter("Gain", args.gain)
+            cam.params.AnalogControl.Gain.set(args.gain)
             print(f"Gain set to {args.gain}")
 
         cam.start_grabbing()
@@ -113,12 +111,12 @@ def main() -> None:
     output_path = Path(args.output)
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
-    if output_format in (OutputFormat.MONO8, OutputFormat.MONO16):
+    if output_format in (Hik.OutputFormat.MONO8, Hik.OutputFormat.MONO16):
         cv2.imwrite(str(output_path), image)
-    elif output_format in (OutputFormat.RGB8, OutputFormat.RGBA8):
+    elif output_format in (Hik.OutputFormat.RGB8, Hik.OutputFormat.RGBA8):
         # OpenCV expects BGR; convert before saving
         # OpenCV 需要 BGR 格式；保存前进行转换
-        if output_format == OutputFormat.RGB8:
+        if output_format == Hik.OutputFormat.RGB8:
             save_img = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
         else:
             save_img = cv2.cvtColor(image, cv2.COLOR_RGBA2BGRA)

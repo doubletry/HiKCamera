@@ -26,30 +26,21 @@ class TestPublicAPI:
         from hikcamera import enumerate_cameras
         assert callable(enumerate_cameras)
 
-    def test_access_mode_enum(self):
-        from hikcamera import AccessMode
-        assert hasattr(AccessMode, "EXCLUSIVE")
-        assert hasattr(AccessMode, "MONITOR")
+    def test_hik_namespace_is_public_enum_entrypoint(self):
+        from hikcamera import Hik
+        assert hasattr(Hik, "AccessMode")
+        assert hasattr(Hik, "TransportLayer")
+        assert hasattr(Hik, "StreamingMode")
+        assert hasattr(Hik, "PixelFormat")
+        assert hasattr(Hik, "OutputFormat")
 
-    def test_transport_layer_enum(self):
-        from hikcamera import TransportLayer
-        assert hasattr(TransportLayer, "GIGE")
-        assert hasattr(TransportLayer, "USB")
-
-    def test_streaming_mode_enum(self):
-        from hikcamera import StreamingMode
-        assert hasattr(StreamingMode, "UNICAST")
-        assert hasattr(StreamingMode, "MULTICAST")
-
-    def test_pixel_format_enum(self):
-        from hikcamera import PixelFormat
-        assert hasattr(PixelFormat, "MONO8")
-        assert hasattr(PixelFormat, "BGR8_PACKED")
-
-    def test_output_format_enum(self):
-        from hikcamera import OutputFormat
-        assert hasattr(OutputFormat, "BGR8")
-        assert hasattr(OutputFormat, "MONO8")
+    def test_individual_enums_are_not_exported_from_package_root(self):
+        import hikcamera
+        assert not hasattr(hikcamera, "AccessMode")
+        assert not hasattr(hikcamera, "TransportLayer")
+        assert not hasattr(hikcamera, "StreamingMode")
+        assert not hasattr(hikcamera, "PixelFormat")
+        assert not hasattr(hikcamera, "OutputFormat")
 
     def test_exceptions_exported(self):
         import hikcamera

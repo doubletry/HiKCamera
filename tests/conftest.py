@@ -197,6 +197,7 @@ def camera_with_mock_sdk(mock_sdk):
     cam._device_exception = None
     cam._on_device_exception = None
     cam._lock = threading.Lock()
+    cam._params_proxy = None
 
     # Simulate CreateHandle setting a non-null handle
     def _create_handle(p_handle, p_dev_info):

@@ -7,14 +7,14 @@ Typical usage (polling) / 典型用法（轮询模式）
 
 .. code-block:: python
 
-    from hikcamera import HikCamera, AccessMode, OutputFormat
+    from hikcamera import Hik, HikCamera
 
     cameras = HikCamera.enumerate()
     with HikCamera.from_device_info(cameras[0]) as cam:
-        cam.open(AccessMode.EXCLUSIVE)
-        cam.set_parameter("ExposureTime", 5000.0)
+        cam.open(Hik.AccessMode.EXCLUSIVE)
+        cam.params.AcquisitionControl.ExposureTime.set(5000.0)
         cam.start_grabbing()
-        frame = cam.get_frame(timeout_ms=1000, output_format=OutputFormat.BGR8)
+        frame = cam.get_frame(timeout_ms=1000, output_format=Hik.OutputFormat.BGR8)
         cam.stop_grabbing()
 
 Typical usage (callback) / 典型用法（回调模式）
@@ -23,15 +23,15 @@ Typical usage (callback) / 典型用法（回调模式）
 .. code-block:: python
 
     import numpy as np
-    from hikcamera import HikCamera, AccessMode, OutputFormat
+    from hikcamera import Hik, HikCamera
 
     def on_frame(image: np.ndarray, frame_info: dict) -> None:
         print(f"Got frame {frame_info['frame_num']}: {image.shape}")
 
     cameras = HikCamera.enumerate()
     with HikCamera.from_device_info(cameras[0]) as cam:
-        cam.open(AccessMode.EXCLUSIVE)
-        cam.start_grabbing(callback=on_frame, output_format=OutputFormat.BGR8)
+        cam.open(Hik.AccessMode.EXCLUSIVE)
+        cam.start_grabbing(callback=on_frame, output_format=Hik.OutputFormat.BGR8)
         import time; time.sleep(5)
         cam.stop_grabbing()
 """
@@ -47,31 +47,19 @@ import struct
 import threading
 from collections import OrderedDict
 from collections.abc import Callable
-from ctypes import POINTER, c_ubyte, c_uint, c_void_p
+from ctypes import c_ubyte, c_uint, c_void_p
 from enum import IntEnum, StrEnum
-from typing import Any
+from typing import Any, cast
 
 import numpy as np
 
 from .enums import (
     AccessMode,
-    AcquisitionMode,
-    BalanceWhiteAuto,
-    ExposureAuto,
-    GainAuto,
-    GammaSelector,
-    LineMode,
-    LineSelector,
+    Hik,
     MvErrorCode,
     OutputFormat,
-    PixelFormat,
     StreamingMode,
     TransportLayer,
-    TriggerActivation,
-    TriggerMode,
-    TriggerSelector,
-    TriggerSource,
-    UserSetDefault,
     UserSetSelector,
 )
 from .exceptions import (
@@ -89,6 +77,21 @@ from .exceptions import (
     ParameterNotSupportedError,
     ParameterReadOnlyError,
     ParameterValueError,
+)
+from .params import (
+    AcquisitionControl,
+    AnalogControl,
+    DeviceControl,
+    DigitalIOControl,
+    EncoderControl,
+    FrequencyConverterControl,
+    ImageFormatControl,
+    LUTControl,
+    ParamNode,
+    ShadingCorrection,
+    TransportLayerControl,
+    UserSetControl,
+    _build_param_schema,
 )
 from .sdk_wrapper import (
     EXCEPTION_CALLBACK,
@@ -109,6 +112,224 @@ logger = logging.getLogger(__name__)
 
 _MAX_GIGE_PACKET_SIZE_CACHE_ENTRIES: int = 64
 _GIGE_PACKET_SIZE_CACHE: OrderedDict[str, int] = OrderedDict()
+
+
+class CameraInfoDict(dict[str, Any]):
+    """
+    Dictionary returned by :meth:`HikCamera.get_camera_info`.
+    :meth:`HikCamera.get_camera_info` 返回的字典类型。
+
+    This is a module-level compatibility helper for the public
+    :meth:`HikCamera.get_camera_info` API rather than a standalone data model.
+    It is not re-exported at the package level, and exists so the returned
+    mapping keeps standard ``dict`` behavior while accepting both legacy string
+    keys and :class:`~hikcamera.params.ParamNode` lookups during the migration
+    period. If legacy string-key access is deprecated in a future release, this
+    helper is expected to remain as a thin mapping wrapper around the public
+    ``get_camera_info()`` result, with lookup behavior narrowed toward the
+    supported access patterns of that release.
+    这是公开 API :meth:`HikCamera.get_camera_info` 在模块层面的兼容辅助类型，
+    而不是独立的数据模型。它不会在包级别重新导出，其作用是在迁移期间保持标准
+    ``dict`` 行为的同时，兼容旧字符串 key 和
+    :class:`~hikcamera.params.ParamNode` 取值方式。
+
+    Values are stored under legacy string node names for backward
+    compatibility, but lookups also accept :class:`~hikcamera.params.ParamNode`
+    instances.
+    值仍以旧的字符串节点名存储以保持向后兼容，但取值时也支持
+    :class:`~hikcamera.params.ParamNode` 实例。
+    """
+
+    @staticmethod
+    def _normalize_key(key: object) -> object:
+        """
+        Convert ParamNode keys to their GenICam string names.
+        将 ParamNode key 转换为对应的 GenICam 字符串名称。
+
+        Non-ParamNode keys are returned unchanged.
+        非 ParamNode 的 key 将原样返回。
+        """
+        if isinstance(key, ParamNode):
+            return key.name
+        return key
+
+    def __getitem__(self, key: object) -> Any:
+        return dict.__getitem__(cast(dict[Any, Any], self), self._normalize_key(key))
+
+    def get(self, key: object, default: Any = None) -> Any:
+        return dict.get(cast(dict[Any, Any], self), self._normalize_key(key), default)
+
+    def __contains__(self, key: object) -> bool:
+        return dict.__contains__(cast(dict[Any, Any], self), self._normalize_key(key))
+
+
+class BoundParamNode:
+    """
+    Camera-bound view of a :class:`ParamNode`.
+    绑定到相机实例的 :class:`ParamNode` 视图。
+
+    Public operations / 公开操作
+    ---------------------------
+    - ``get(default=None)``: read the node value
+    - ``set(value)``: validate and write a value
+    - ``execute()``: run a command node
+
+    Typical usage / 典型用法::
+
+        cam.params.AcquisitionControl.ExposureTime.set(5000.0)
+        cam.params.AcquisitionControl.ExposureTime.get()
+        cam.params.AcquisitionControl.TriggerSoftware.execute()
+    """
+
+    __slots__ = ("_camera", "_node")
+
+    def __init__(self, camera: HikCamera, node: ParamNode) -> None:
+        self._camera = camera
+        self._node = node
+
+    @property
+    def node(self) -> ParamNode:
+        return self._node
+
+    def get(self, default: Any = None) -> Any:
+        return self._camera._get_param_node_value(self._node, default)
+
+    def set(self, value: Any) -> None:
+        self._camera._set_param_node_value(self._node, value)
+
+    def execute(self) -> None:
+        self._camera._execute_param_node(self._node)
+
+    def __repr__(self) -> str:
+        return f"{type(self).__name__}({self._node.name!r})"
+
+
+class BoundCategoryProxy:
+    """
+    Base class for typed camera-bound parameter categories.
+    带类型信息的相机绑定参数分类基类。
+    """
+
+    __slots__ = ("_camera",)
+    _camera: HikCamera
+
+    def __init__(self, camera: HikCamera) -> None:
+        self._camera = camera
+
+    def __setattr__(self, name: str, value: Any) -> None:
+        if name == "_camera" and not hasattr(self, name):
+            object.__setattr__(self, name, value)
+            return
+        raise AttributeError(f"{type(self).__name__!s} is read-only")
+
+
+class BoundDeviceControl(DeviceControl, BoundCategoryProxy):
+    __slots__ = ()
+
+
+class BoundImageFormatControl(ImageFormatControl, BoundCategoryProxy):
+    __slots__ = ()
+
+
+class BoundAcquisitionControl(AcquisitionControl, BoundCategoryProxy):
+    __slots__ = ()
+
+
+class BoundAnalogControl(AnalogControl, BoundCategoryProxy):
+    __slots__ = ()
+
+
+class BoundLUTControl(LUTControl, BoundCategoryProxy):
+    __slots__ = ()
+
+
+class BoundEncoderControl(EncoderControl, BoundCategoryProxy):
+    __slots__ = ()
+
+
+class BoundFrequencyConverterControl(FrequencyConverterControl, BoundCategoryProxy):
+    __slots__ = ()
+
+
+class BoundShadingCorrection(ShadingCorrection, BoundCategoryProxy):
+    __slots__ = ()
+
+
+class BoundDigitalIOControl(DigitalIOControl, BoundCategoryProxy):
+    __slots__ = ()
+
+
+class BoundTransportLayerControl(TransportLayerControl, BoundCategoryProxy):
+    __slots__ = ()
+
+
+class BoundUserSetControl(UserSetControl, BoundCategoryProxy):
+    __slots__ = ()
+
+
+class CameraParamsProxy:
+    """
+    Root proxy exposed as ``cam.params``.
+    通过 ``cam.params`` 暴露的根代理对象。
+
+    Access follows the full hierarchy
+    ``cam.params.<Category>.<Node>.set(value)`` /
+    ``cam.params.<Category>.<Node>.get()``.
+    访问形式为完整层级
+    ``cam.params.<Category>.<Node>.set(value)`` /
+    ``cam.params.<Category>.<Node>.get()``。
+    """
+
+    DeviceControl: BoundDeviceControl
+    ImageFormatControl: BoundImageFormatControl
+    AcquisitionControl: BoundAcquisitionControl
+    AnalogControl: BoundAnalogControl
+    LUTControl: BoundLUTControl
+    EncoderControl: BoundEncoderControl
+    FrequencyConverterControl: BoundFrequencyConverterControl
+    ShadingCorrection: BoundShadingCorrection
+    DigitalIOControl: BoundDigitalIOControl
+    TransportLayerControl: BoundTransportLayerControl
+    UserSetControl: BoundUserSetControl
+
+    __slots__ = (
+        "_camera",
+        "DeviceControl",
+        "ImageFormatControl",
+        "AcquisitionControl",
+        "AnalogControl",
+        "LUTControl",
+        "EncoderControl",
+        "FrequencyConverterControl",
+        "ShadingCorrection",
+        "DigitalIOControl",
+        "TransportLayerControl",
+        "UserSetControl",
+    )
+    _CATEGORY_PROXY_TYPES: tuple[tuple[str, type[BoundCategoryProxy]], ...] = (
+        ("DeviceControl", BoundDeviceControl),
+        ("ImageFormatControl", BoundImageFormatControl),
+        ("AcquisitionControl", BoundAcquisitionControl),
+        ("AnalogControl", BoundAnalogControl),
+        ("LUTControl", BoundLUTControl),
+        ("EncoderControl", BoundEncoderControl),
+        ("FrequencyConverterControl", BoundFrequencyConverterControl),
+        ("ShadingCorrection", BoundShadingCorrection),
+        ("DigitalIOControl", BoundDigitalIOControl),
+        ("TransportLayerControl", BoundTransportLayerControl),
+        ("UserSetControl", BoundUserSetControl),
+    )
+
+    def __init__(self, camera: HikCamera) -> None:
+        self._camera = camera
+        for attr_name, proxy_type in self._CATEGORY_PROXY_TYPES:
+            object.__setattr__(self, attr_name, proxy_type(camera))
+
+    def __setattr__(self, name: str, value: Any) -> None:
+        if name == "_camera" and not hasattr(self, name):
+            object.__setattr__(self, name, value)
+            return
+        raise AttributeError(f"{type(self).__name__!s} is read-only")
 
 
 def _cache_gige_packet_size(cache_key: str, packet_size: int) -> None:
@@ -156,72 +377,13 @@ _DEFAULT_FRAME_BUFFER_SIZE: int = 10 * 1024 * 1024
 # SDK 设备断开连接异常消息类型。
 _MV_EXCEPTION_DEV_DISCONNECT: int = 0x00008001
 
-# GenICam parameter schema used by :py:meth:`set_parameter` for automatic
-# type dispatch and value validation.  Each entry maps a GenICam node name to
-# its expected Python type.  For enum parameters the value is the concrete
-# ``StrEnum`` or ``IntEnum`` subclass; ``isinstance(value, expected_type)`` is
-# used for validation.  Parameters not listed here fall back to Python-type
-# dispatch.
-# GenICam 参数模式，供 :py:meth:`set_parameter` 用于自动类型分派与值校验。
-# 每个条目将 GenICam 节点名称映射到其期望的 Python 类型。枚举参数的值为具体
-# 的 ``StrEnum`` 或 ``IntEnum`` 子类；使用 ``isinstance(value, expected_type)``
-# 进行校验。此处未列出的参数按 Python 类型回退分派。
-_PARAMETER_SCHEMA: dict[str, type] = {
-    # Image format / 图像格式
-    "Width": int,
-    "Height": int,
-    "OffsetX": int,
-    "OffsetY": int,
-
-    # Exposure & gain / 曝光与增益
-    "ExposureTime": float,
-    "ExposureAuto": ExposureAuto,
-    "Gain": float,
-    "GainAuto": GainAuto,
-    "Gamma": float,
-    "GammaEnable": bool,
-    "GammaSelector": GammaSelector,
-
-    # Frame rate / 帧率
-    "AcquisitionFrameRate": float,
-    "AcquisitionFrameRateEnable": bool,
-
-    # Acquisition / 采集
-    "AcquisitionMode": AcquisitionMode,
-
-    # Trigger / 触发
-    "TriggerMode": TriggerMode,
-    "TriggerSource": TriggerSource,
-    "TriggerActivation": TriggerActivation,
-    "TriggerSelector": TriggerSelector,
-
-    # I/O / 输入输出
-    "LineSelector": LineSelector,
-    "LineMode": LineMode,
-
-    # White balance / 白平衡
-    "BalanceWhiteAuto": BalanceWhiteAuto,
-
-    # User set / 用户集
-    "UserSetSelector": UserSetSelector,
-    "UserSetDefault": UserSetDefault,
-
-    # Device info (string) / 设备信息（字符串）
-    "DeviceUserID": str,
-
-    # GigE network / GigE 网络
-    "GevSCPSPacketSize": int,
-
-    # Pixel format / 像素格式
-    "PixelFormat": PixelFormat,
-
-    # Binning / 合并
-    "BinningHorizontal": int,
-    "BinningVertical": int,
-    "DecimationHorizontal": int,
-    "DecimationVertical": int,
-}
-
+# GenICam parameter schema auto-built from :mod:`hikcamera.params` definitions.
+# This replaces the old hard-coded dict with a single source of truth derived
+# from :class:`ParamNode` metadata across all category namespace classes.
+# GenICam 参数模式，从 :mod:`hikcamera.params` 定义自动构建。
+# 此映射取代旧的硬编码字典，作为由所有分类命名空间类中
+# :class:`ParamNode` 元数据派生的唯一真实来源。
+_PARAMETER_SCHEMA: dict[str, type] = _build_param_schema()
 # ---------------------------------------------------------------------------
 # Helpers / 辅助函数
 # ---------------------------------------------------------------------------
@@ -294,9 +456,9 @@ def _transport_layer_search_order(transport_layers: TransportLayer) -> tuple[Tra
     """
     ordered_layers: list[TransportLayer] = []
     for layer in (
-        TransportLayer.GIGE,
-        TransportLayer.USB,
-        TransportLayer.CAMERALINK,
+        Hik.TransportLayer.GIGE,
+        Hik.TransportLayer.USB,
+        Hik.TransportLayer.CAMERALINK,
     ):
         if transport_layers & layer:
             ordered_layers.append(layer)
@@ -422,13 +584,24 @@ class HikCamera:
         self._is_grabbing: bool = False
         self._frame_buffer: ctypes.Array[c_ubyte] | None = None
         self._frame_buffer_size: int = 0
-        self._callback_ref: IMAGE_CALLBACK | None = None  # keep reference alive
+        self._callback_ref: Any | None = None  # keep reference alive
         self._user_callback: Callable[[np.ndarray, dict[str, Any]], None] | None = None
-        self._output_format_for_callback: OutputFormat = OutputFormat.BGR8
-        self._exception_callback_ref: EXCEPTION_CALLBACK | None = None
+        self._output_format_for_callback: OutputFormat = Hik.OutputFormat.BGR8
+        self._exception_callback_ref: Any | None = None
         self._device_exception: DeviceDisconnectedError | None = None
         self._on_device_exception: Callable[[DeviceDisconnectedError], None] | None = None
         self._lock: threading.Lock = threading.Lock()
+        self._params_proxy: CameraParamsProxy | None = None
+
+    @property
+    def params(self) -> CameraParamsProxy:
+        """
+        Structured parameter access root.
+        结构化参数访问入口。
+        """
+        if self._params_proxy is None:
+            self._params_proxy = CameraParamsProxy(self)
+        return self._params_proxy
 
     @classmethod
     def enumerate(
@@ -527,7 +700,7 @@ class HikCamera:
     def from_ip(
         cls,
         ip: str,
-        transport_layers: TransportLayer = TransportLayer.GIGE,
+        transport_layers: TransportLayer = Hik.TransportLayer.GIGE,
     ) -> HikCamera:
         """
         Find and create a handle for the camera at the given IP address.
@@ -639,7 +812,7 @@ class HikCamera:
 
     def open(
         self,
-        access_mode: AccessMode = AccessMode.EXCLUSIVE,
+        access_mode: AccessMode = Hik.AccessMode.EXCLUSIVE,
         streaming_mode: StreamingMode = StreamingMode.UNICAST,
         multicast_ip: str | None = None,
         packet_size: int | None = None,
@@ -658,9 +831,9 @@ class HikCamera:
             单播（默认）或组播，仅限 GigE 相机。
         multicast_ip:
             Multicast group IP (required when ``streaming_mode`` is
-            :py:attr:`~hikcamera.enums.StreamingMode.MULTICAST`).
+            :py:attr:`~hikcamera.enums.Hik.StreamingMode.MULTICAST`).
             组播组 IP（当 ``streaming_mode`` 为
-            :py:attr:`~hikcamera.enums.StreamingMode.MULTICAST` 时必填）。
+            :py:attr:`~hikcamera.enums.Hik.StreamingMode.MULTICAST` 时必填）。
         packet_size:
             GigE network packet size (``GevSCPSPacketSize``) in bytes.
             GigE 网络包大小（``GevSCPSPacketSize``），单位为字节。
@@ -691,7 +864,7 @@ class HikCamera:
 
         # For multicast, configure the group IP before opening
         # 组播模式下，在打开前配置组播 IP
-        if streaming_mode == StreamingMode.MULTICAST:
+        if streaming_mode == Hik.StreamingMode.MULTICAST:
             if multicast_ip is None:
                 raise ValueError("multicast_ip must be provided for multicast streaming")
             mc_int = _ip_to_int(multicast_ip)
@@ -826,7 +999,7 @@ class HikCamera:
         """
         if self._device_info is None:
             return None
-        if self._device_info.nTLayerType != int(TransportLayer.GIGE):
+        if self._device_info.nTLayerType != int(Hik.TransportLayer.GIGE):
             return None
         device_info = DeviceInfo(self._device_info)
         if device_info.serial_number:
@@ -906,7 +1079,7 @@ class HikCamera:
         ParameterError
             When the SDK call fails. / 当 SDK 调用失败时抛出。
         """
-        self.set_int_parameter("GevSCPSPacketSize", size)
+        self.params.TransportLayerControl.GevSCPSPacketSize.set(size)
         logger.debug("GevSCPSPacketSize set to %d", size)
 
     def get_packet_size(self) -> int:
@@ -927,7 +1100,7 @@ class HikCamera:
             When the camera does not support this parameter (non-GigE).
             当相机不支持此参数时（非 GigE 相机）抛出。
         """
-        return self.get_int_parameter("GevSCPSPacketSize")
+        return self.params.TransportLayerControl.GevSCPSPacketSize.get()
 
     # ------------------------------------------------------------------
     # Grabbing / 取帧
@@ -936,7 +1109,7 @@ class HikCamera:
     def start_grabbing(
         self,
         callback: Callable[[np.ndarray, dict[str, Any]], None] | None = None,
-        output_format: OutputFormat = OutputFormat.BGR8,
+        output_format: OutputFormat = Hik.OutputFormat.BGR8,
         on_exception: Callable[[DeviceDisconnectedError], None] | None = None,
     ) -> None:
         """
@@ -1087,7 +1260,7 @@ class HikCamera:
     def get_frame(
         self,
         timeout_ms: int = 1000,
-        output_format: OutputFormat = OutputFormat.BGR8,
+        output_format: OutputFormat = Hik.OutputFormat.BGR8,
     ) -> np.ndarray:
         """
         Retrieve one frame (polling mode).
@@ -1133,6 +1306,8 @@ class HikCamera:
             raise self._device_exception
 
         self._ensure_frame_buffer()
+        if self._frame_buffer is None:  # pragma: no cover - defensive
+            raise RuntimeError("Failed to initialize frame buffer")
 
         frame_info = MV_FRAME_OUT_INFO_EX()
         ret = self._sdk.MV_CC_GetOneFrameTimeout(
@@ -1151,7 +1326,7 @@ class HikCamera:
     def get_frame_ex(
         self,
         timeout_ms: int = 1000,
-        output_format: OutputFormat = OutputFormat.BGR8,
+        output_format: OutputFormat = Hik.OutputFormat.BGR8,
     ) -> tuple[np.ndarray, dict[str, Any]]:
         """
         Retrieve one frame together with its metadata.
@@ -1175,6 +1350,8 @@ class HikCamera:
             raise self._device_exception
 
         self._ensure_frame_buffer()
+        if self._frame_buffer is None:  # pragma: no cover - defensive
+            raise RuntimeError("Failed to initialize frame buffer")
 
         frame_info = MV_FRAME_OUT_INFO_EX()
         ret = self._sdk.MV_CC_GetOneFrameTimeout(
@@ -1260,8 +1437,8 @@ class HikCamera:
 
     def _internal_callback(
         self,
-        p_data: POINTER(c_ubyte),
-        p_frame_info: POINTER(MV_FRAME_OUT_INFO_EX),
+        p_data: Any,
+        p_frame_info: Any,
         p_user: c_void_p,
     ) -> None:
         """
@@ -1294,30 +1471,8 @@ class HikCamera:
     # Parameter access / 参数访问
     # ------------------------------------------------------------------
 
-    def get_int_parameter(self, name: str) -> int:
-        """
-        Get an integer camera parameter by name.
-        按名称获取整型相机参数。
-
-        Parameters / 参数
-        -----------------
-        name:
-            GenICam parameter name (e.g. ``"Width"``, ``"Height"``).
-            GenICam 参数名称（如 ``"Width"``、``"Height"``）。
-
-        Returns / 返回
-        --------------
-        int
-
-        Raises / 异常
-        -------------
-        ParameterNotSupportedError
-            When the parameter does not exist on this camera model.
-            当参数在此相机型号上不存在时抛出。
-        ParameterError
-            When another SDK error occurs.
-            当发生其他 SDK 错误时抛出。
-        """
+    def _get_int_value(self, name: str) -> int:
+        """Read an integer GenICam node. / 读取整型 GenICam 节点。"""
         self._assert_open()
         val = MVCC_INTVALUE_EX()
         name_bytes = name.encode("utf-8")
@@ -1325,22 +1480,8 @@ class HikCamera:
         _check(ret, f"MV_CC_GetIntValueEx({name!r})")
         return int(val.nCurValue)
 
-    def set_int_parameter(self, name: str, value: int) -> None:
-        """
-        Set an integer camera parameter.
-        设置整型相机参数。
-
-        Raises / 异常
-        -------------
-        ParameterNotSupportedError
-            When the parameter does not exist.
-            当参数不存在时抛出。
-        ParameterReadOnlyError
-            When the parameter is read-only.
-            当参数为只读时抛出。
-        ParameterError
-            On other SDK errors. / 其他 SDK 错误时抛出。
-        """
+    def _set_int_value(self, name: str, value: int) -> None:
+        """Write an integer GenICam node. / 写入整型 GenICam 节点。"""
         self._assert_open()
         name_bytes = name.encode("utf-8")
         ret = self._sdk.MV_CC_SetIntValueEx(self._handle, name_bytes, int(value))
@@ -1351,11 +1492,8 @@ class HikCamera:
             )
         _check(ret, f"MV_CC_SetIntValueEx({name!r})")
 
-    def get_float_parameter(self, name: str) -> float:
-        """
-        Get a float camera parameter by name.
-        按名称获取浮点型相机参数。
-        """
+    def _get_float_value(self, name: str) -> float:
+        """Read a float GenICam node. / 读取浮点型 GenICam 节点。"""
         self._assert_open()
         val = MVCC_FLOATVALUE()
         name_bytes = name.encode("utf-8")
@@ -1363,11 +1501,8 @@ class HikCamera:
         _check(ret, f"MV_CC_GetFloatValue({name!r})")
         return float(val.fCurValue)
 
-    def set_float_parameter(self, name: str, value: float) -> None:
-        """
-        Set a float camera parameter.
-        设置浮点型相机参数。
-        """
+    def _set_float_value(self, name: str, value: float) -> None:
+        """Write a float GenICam node. / 写入浮点型 GenICam 节点。"""
         self._assert_open()
         name_bytes = name.encode("utf-8")
         ret = self._sdk.MV_CC_SetFloatValue(self._handle, name_bytes, float(value))
@@ -1378,11 +1513,8 @@ class HikCamera:
             )
         _check(ret, f"MV_CC_SetFloatValue({name!r})")
 
-    def get_bool_parameter(self, name: str) -> bool:
-        """
-        Get a boolean camera parameter.
-        获取布尔型相机参数。
-        """
+    def _get_bool_value(self, name: str) -> bool:
+        """Read a boolean GenICam node. / 读取布尔型 GenICam 节点。"""
         self._assert_open()
         val = c_uint(0)
         name_bytes = name.encode("utf-8")
@@ -1390,11 +1522,8 @@ class HikCamera:
         _check(ret, f"MV_CC_GetBoolValue({name!r})")
         return bool(val.value)
 
-    def set_bool_parameter(self, name: str, value: bool) -> None:
-        """
-        Set a boolean camera parameter.
-        设置布尔型相机参数。
-        """
+    def _set_bool_value(self, name: str, value: bool) -> None:
+        """Write a boolean GenICam node. / 写入布尔型 GenICam 节点。"""
         self._assert_open()
         name_bytes = name.encode("utf-8")
         ret = self._sdk.MV_CC_SetBoolValue(self._handle, name_bytes, int(bool(value)))
@@ -1405,11 +1534,8 @@ class HikCamera:
             )
         _check(ret, f"MV_CC_SetBoolValue({name!r})")
 
-    def get_enum_parameter(self, name: str) -> int:
-        """
-        Get an enum camera parameter (as raw integer value).
-        获取枚举型相机参数（返回原始整数值）。
-        """
+    def _get_enum_value(self, name: str) -> int:
+        """Read an enum GenICam node as its raw SDK integer value."""
         self._assert_open()
         val = MVCC_ENUMVALUE()
         name_bytes = name.encode("utf-8")
@@ -1417,11 +1543,8 @@ class HikCamera:
         _check(ret, f"MV_CC_GetEnumValue({name!r})")
         return int(val.nCurValue)
 
-    def set_enum_parameter(self, name: str, value: int) -> None:
-        """
-        Set an enum camera parameter by integer value.
-        按整数值设置枚举型相机参数。
-        """
+    def _set_enum_value(self, name: str, value: int) -> None:
+        """Write an enum GenICam node by integer value."""
         self._assert_open()
         name_bytes = name.encode("utf-8")
         ret = self._sdk.MV_CC_SetEnumValue(self._handle, name_bytes, int(value))
@@ -1432,11 +1555,8 @@ class HikCamera:
             )
         _check(ret, f"MV_CC_SetEnumValue({name!r})")
 
-    def set_enum_parameter_by_string(self, name: str, string_value: str) -> None:
-        """
-        Set an enum camera parameter by string (symbolic name).
-        按字符串（符号名称）设置枚举型相机参数。
-        """
+    def _set_enum_value_by_string(self, name: str, string_value: str) -> None:
+        """Write an enum GenICam node by symbolic string value."""
         self._assert_open()
         name_bytes = name.encode("utf-8")
         val_bytes = string_value.encode("utf-8")
@@ -1448,11 +1568,8 @@ class HikCamera:
             )
         _check(ret, f"MV_CC_SetEnumValueByString({name!r}={string_value!r})")
 
-    def get_string_parameter(self, name: str) -> str:
-        """
-        Get a string camera parameter.
-        获取字符串型相机参数。
-        """
+    def _get_string_value(self, name: str) -> str:
+        """Read a string GenICam node. / 读取字符串 GenICam 节点。"""
         self._assert_open()
         val = MVCC_STRINGVALUE()
         name_bytes = name.encode("utf-8")
@@ -1460,11 +1577,8 @@ class HikCamera:
         _check(ret, f"MV_CC_GetStringValue({name!r})")
         return val.chCurValue.decode("utf-8", errors="replace").strip("\x00")
 
-    def set_string_parameter(self, name: str, value: str) -> None:
-        """
-        Set a string camera parameter.
-        设置字符串型相机参数。
-        """
+    def _set_string_value(self, name: str, value: str) -> None:
+        """Write a string GenICam node. / 写入字符串 GenICam 节点。"""
         self._assert_open()
         name_bytes = name.encode("utf-8")
         val_bytes = value.encode("utf-8")
@@ -1476,15 +1590,14 @@ class HikCamera:
             )
         _check(ret, f"MV_CC_SetStringValue({name!r})")
 
-    def execute_command(self, name: str) -> None:
-        """
-        Execute a GenICam command node (e.g. ``"TriggerSoftware"``).
-        执行 GenICam 命令节点（如 ``"TriggerSoftware"``）。
-        """
+    def _execute_param_node(self, node: ParamNode) -> None:
+        """Execute a command-type ``ParamNode``. / 执行命令型 ``ParamNode``。"""
+        if node.data_type != "command":
+            raise ParameterValueError(f"Parameter {node.name!r} is not a command node")
         self._assert_open()
-        name_bytes = name.encode("utf-8")
+        name_bytes = node.name.encode("utf-8")
         ret = self._sdk.MV_CC_SetCommandValue(self._handle, name_bytes)
-        _check(ret, f"MV_CC_SetCommandValue({name!r})")
+        _check(ret, f"MV_CC_SetCommandValue({node.name!r})")
 
     # ------------------------------------------------------------------
     # Configuration file import / export
@@ -1563,7 +1676,10 @@ class HikCamera:
     # User set save / load / 用户集保存 / 加载
     # ------------------------------------------------------------------
 
-    def save_user_set(self, user_set: str = "UserSet1") -> None:
+    def save_user_set(
+        self,
+        user_set: UserSetSelector = Hik.UserSetSelector.USER_SET_1,
+    ) -> None:
         """
         Save the current camera parameters to a user set stored on the device.
         将当前相机参数保存至设备上的用户集。
@@ -1571,11 +1687,8 @@ class HikCamera:
         Parameters / 参数
         -----------------
         user_set:
-            Name of the user set (e.g. ``"UserSet1"``, ``"UserSet2"``,
-            ``"UserSet3"``).  The available sets depend on the camera
-            model.
-            用户集名称（如 ``"UserSet1"``、``"UserSet2"``、``"UserSet3"``）。
-            可用的用户集取决于相机型号。
+            Structured enum value such as ``Hik.UserSetSelector.USER_SET_1``.
+            结构化枚举值，例如 ``Hik.UserSetSelector.USER_SET_1``。
 
         Raises / 异常
         -------------
@@ -1588,11 +1701,15 @@ class HikCamera:
             When the SDK call fails. / 当 SDK 调用失败时抛出。
         """
         self._assert_open()
-        self.set_enum_parameter_by_string("UserSetSelector", user_set)
-        self.execute_command("UserSetSave")
-        logger.info("Camera parameters saved to user set %r", user_set)
+        validated_selector = UserSetControl.UserSetSelector.validate(user_set)
+        self.params.UserSetControl.UserSetSelector.set(validated_selector)
+        self.params.UserSetControl.UserSetSave.execute()
+        logger.info("Camera parameters saved to user set %r", str(validated_selector))
 
-    def load_user_set(self, user_set: str = "UserSet1") -> None:
+    def load_user_set(
+        self,
+        user_set: UserSetSelector = Hik.UserSetSelector.USER_SET_1,
+    ) -> None:
         """
         Load camera parameters from a user set stored on the device.
         从设备上存储的用户集加载相机参数。
@@ -1600,8 +1717,8 @@ class HikCamera:
         Parameters / 参数
         -----------------
         user_set:
-            Name of the user set to load.
-            要加载的用户集名称。
+            Structured enum value such as ``Hik.UserSetSelector.USER_SET_1``.
+            结构化枚举值，例如 ``Hik.UserSetSelector.USER_SET_1``。
 
         Raises / 异常
         -------------
@@ -1614,9 +1731,10 @@ class HikCamera:
             When the SDK call fails. / 当 SDK 调用失败时抛出。
         """
         self._assert_open()
-        self.set_enum_parameter_by_string("UserSetSelector", user_set)
-        self.execute_command("UserSetLoad")
-        logger.info("Camera parameters loaded from user set %r", user_set)
+        validated_selector = UserSetControl.UserSetSelector.validate(user_set)
+        self.params.UserSetControl.UserSetSelector.set(validated_selector)
+        self.params.UserSetControl.UserSetLoad.execute()
+        logger.info("Camera parameters loaded from user set %r", str(validated_selector))
 
     # ------------------------------------------------------------------
     # Camera information / 相机信息
@@ -1640,14 +1758,18 @@ class HikCamera:
         Returns / 返回
         --------------
         dict[str, Any]
-            A dictionary with available parameter values.  Typical keys
-            include ``"Width"``, ``"Height"``, ``"PixelFormat"``,
-            ``"ExposureTime"``, ``"Gain"``, ``"AcquisitionFrameRate"``,
-            ``"PayloadSize"``, ``"DeviceModelName"``, etc.
-            包含可用参数值的字典。典型键包括 ``"Width"``、``"Height"``、
-            ``"PixelFormat"``、``"ExposureTime"``、``"Gain"``、
-            ``"AcquisitionFrameRate"``、``"PayloadSize"``、
-            ``"DeviceModelName"`` 等。
+            A dictionary-like object with available parameter values.
+            Stored keys remain the legacy string names (for backward
+            compatibility), but lookups also accept ``ParamNode`` objects such
+            as ``ImageFormatControl.Width`` and ``AcquisitionControl.ExposureTime``.
+            String-key access remains supported for now, but new code should
+            prefer ``ParamNode`` lookups and string-key access may be gradually
+            deprecated in a future release.
+            包含可用参数值的类字典对象。实际存储的键仍是旧的字符串名称
+            （保持向后兼容），但取值时也支持 ``ParamNode``，例如
+            ``ImageFormatControl.Width``、``AcquisitionControl.ExposureTime``。
+            目前仍兼容字符串 key，但新代码应优先使用 ``ParamNode`` 访问；
+            后续版本中字符串 key 访问可能会逐步废弃。
 
         Raises / 异常
         -------------
@@ -1655,138 +1777,54 @@ class HikCamera:
             When the camera is not open. / 当相机未打开时抛出。
         """
         self._assert_open()
-        info: dict[str, Any] = {}
+        info: CameraInfoDict = CameraInfoDict()
+        missing = object()
 
-        # Integer parameters / 整型参数
-        for name in (
-            "Width",
-            "Height",
-            "OffsetX",
-            "OffsetY",
-            "PayloadSize",
-            "WidthMax",
-            "HeightMax",
+        for node in (
+            ImageFormatControl.Width,
+            ImageFormatControl.Height,
+            ImageFormatControl.OffsetX,
+            ImageFormatControl.OffsetY,
+            TransportLayerControl.PayloadSize,
+            ImageFormatControl.WidthMax,
+            ImageFormatControl.HeightMax,
+            AcquisitionControl.ExposureTime,
+            AnalogControl.Gain,
+            AcquisitionControl.AcquisitionFrameRate,
+            AcquisitionControl.ResultingFrameRate,
+            AnalogControl.Gamma,
+            AcquisitionControl.AcquisitionFrameRateEnable,
+            AnalogControl.GammaEnable,
+            ImageFormatControl.PixelFormat,
+            AcquisitionControl.ExposureAuto,
+            AnalogControl.GainAuto,
+            AnalogControl.BalanceWhiteAuto,
+            AcquisitionControl.TriggerMode,
+            AcquisitionControl.TriggerSource,
+            DeviceControl.DeviceModelName,
+            DeviceControl.DeviceSerialNumber,
+            DeviceControl.DeviceFirmwareVersion,
+            DeviceControl.DeviceUserID,
         ):
-            try:
-                info[name] = self.get_int_parameter(name)
-            except (ParameterNotSupportedError, ParameterError):
-                pass
-
-        # Float parameters / 浮点参数
-        for name in (
-            "ExposureTime",
-            "Gain",
-            "AcquisitionFrameRate",
-            "ResultingFrameRate",
-            "Gamma",
-        ):
-            try:
-                info[name] = self.get_float_parameter(name)
-            except (ParameterNotSupportedError, ParameterError):
-                pass
-
-        # Bool parameters / 布尔参数
-        for name in (
-            "AcquisitionFrameRateEnable",
-            "GammaEnable",
-        ):
-            try:
-                info[name] = self.get_bool_parameter(name)
-            except (ParameterNotSupportedError, ParameterError):
-                pass
-
-        # Enum parameters (returned as raw integer values)
-        # 枚举参数（返回原始整数值）
-        for name in (
-            "PixelFormat",
-            "ExposureAuto",
-            "GainAuto",
-            "BalanceWhiteAuto",
-            "TriggerMode",
-            "TriggerSource",
-        ):
-            try:
-                info[name] = self.get_enum_parameter(name)
-            except (ParameterNotSupportedError, ParameterError):
-                pass
-
-        # String parameters / 字符串参数
-        for name in (
-            "DeviceModelName",
-            "DeviceSerialNumber",
-            "DeviceFirmwareVersion",
-            "DeviceUserID",
-        ):
-            try:
-                info[name] = self.get_string_parameter(name)
-            except (ParameterNotSupportedError, ParameterError):
-                pass
+            value = self._get_param_node_value(node, default=missing)
+            if value is not missing:
+                info[node.name] = value
 
         return info
 
-    def set_parameter(self, name: str, value: int | float | bool | str) -> None:
-        """
-        Set a camera parameter with automatic type dispatch and validation.
-        自动类型分派并校验设置相机参数。
+    def _set_param_node_value(self, node: ParamNode, value: Any) -> None:
+        """Validate and write a structured parameter node."""
+        if node.data_type == "command":
+            raise ParameterValueError(
+                f"Parameter {node.name!r} is a command node; "
+                "use cam.params.<Category>.<Command>.execute() instead"
+            )
+        name = node.name
+        value = node.validate(value)
+        expected_type = _PARAMETER_SCHEMA[name]
+        self._write_value_for_node_type(name, value, expected_type)
 
-        If *name* appears in :data:`_PARAMETER_SCHEMA`, the value is validated
-        via ``isinstance(value, expected_type)`` **before** any SDK call is
-        made.  For enum parameters the expected type is the corresponding
-        ``StrEnum`` / ``IntEnum`` subclass (e.g. :py:class:`GainAuto`), so
-        only values of that exact enum type are accepted.  For parameters not
-        in the schema, dispatch falls back to Python type:
-        bool → integer → float → string.
-        Silently absorbs :py:exc:`ParameterNotSupportedError` when the
-        parameter is absent on this camera model (logs a debug message).
-
-        如果 *name* 存在于 :data:`_PARAMETER_SCHEMA`，则在调用 SDK 之前，先通过
-        ``isinstance(value, expected_type)`` 进行校验。枚举参数的期望类型为对应
-        的 ``StrEnum`` / ``IntEnum`` 子类（如 :py:class:`GainAuto`），因此只接受
-        该枚举类型的值。不在模式中的参数按 Python 类型回退分派：
-        bool → 整型 → 浮点 → 字符串。
-        当参数在此相机型号上不存在时，静默吸收
-        :py:exc:`ParameterNotSupportedError`（输出调试日志）。
-
-        Parameters / 参数
-        -----------------
-        name:
-            GenICam node name. / GenICam 节点名称。
-        value:
-            New value.  For schema-registered parameters, the value must be an
-            instance of the declared type (e.g. ``GainAuto.OFF`` for
-            ``"GainAuto"``).  For unknown parameters the method dispatches by
-            Python type.
-            新值。对于已注册模式的参数，值必须是声明类型的实例（如 ``"GainAuto"``
-            需传入 ``GainAuto.OFF``）。对于未知参数，按 Python 类型分派。
-
-        Raises / 异常
-        -------------
-        ParameterValueError
-            When the value does not match the expected type for a known
-            parameter.
-            当值与已知参数的期望类型不匹配时抛出。
-        ParameterReadOnlyError
-            When the parameter is read-only. / 当参数为只读时抛出。
-        ParameterError
-            When the underlying SDK call fails for an unrelated reason.
-            当底层 SDK 调用因其他原因失败时抛出。
-        """
-        expected_type = _PARAMETER_SCHEMA.get(name)
-        try:
-            if expected_type is not None:
-                self._set_parameter_by_schema(name, value, expected_type)
-            elif isinstance(value, bool):
-                self.set_bool_parameter(name, value)
-            elif isinstance(value, int):
-                self.set_int_parameter(name, value)
-            elif isinstance(value, float):
-                self.set_float_parameter(name, value)
-            else:
-                self.set_string_parameter(name, str(value))
-        except ParameterNotSupportedError:
-            logger.debug("Parameter %r not supported on this camera; skipping", name)
-
-    def _set_parameter_by_schema(
+    def _write_value_for_node_type(
         self,
         name: str,
         value: int | float | bool | str,
@@ -1829,50 +1867,50 @@ class HikCamera:
         # Dispatch based on *expected_type* (schema), not the runtime type.
         # 基于 *expected_type*（模式）分派，而非运行时类型。
         if expected_type is bool:
-            self.set_bool_parameter(name, value)
+            self._set_bool_value(name, cast(bool, value))
         elif expected_type is int:
-            self.set_int_parameter(name, value)
+            self._set_int_value(name, cast(int, value))
         elif expected_type is float:
-            self.set_float_parameter(name, value)
+            self._set_float_value(name, cast(float, value))
         elif expected_type is str:
-            self.set_string_parameter(name, value)
+            self._set_string_value(name, cast(str, value))
         elif issubclass(expected_type, StrEnum):
-            self.set_enum_parameter_by_string(name, str(value))
+            self._set_enum_value_by_string(name, str(value))
         elif issubclass(expected_type, IntEnum):
-            self.set_enum_parameter(name, int(value))
+            self._set_enum_value(name, int(value))
         else:  # pragma: no cover – defensive
             raise ParameterValueError(
                 f"Unsupported schema type {expected_type.__name__} for parameter {name!r}"
             )
 
-    def get_parameter(self, name: str, default: Any = None) -> Any:
-        """
-        Get a camera parameter with automatic type dispatch.
-        自动类型分派获取相机参数。
+    def _get_param_node_value(self, node: ParamNode, default: Any = None) -> Any:
+        """Read a structured parameter node and return *default* if unsupported."""
+        if node.data_type == "command":
+            return default
+        name = node.name
+        expected_type = _PARAMETER_SCHEMA[name]
+        getters: tuple[Callable[[str], Any], ...]
+        if expected_type is bool:
+            getters = (self._get_bool_value,)
+        elif expected_type is int:
+            getters = (self._get_int_value,)
+        elif expected_type is float:
+            getters = (self._get_float_value,)
+        elif expected_type is str:
+            getters = (self._get_string_value,)
+        elif issubclass(expected_type, (StrEnum, IntEnum)):
+            getters = (self._get_enum_value,)
+        else:
+            getters = ()
+        if not getters:
+            # Defensive fallback for unexpected schema types.
+            # 对意外的参数模式类型使用防御性回退。
+            return default
 
-        Tries integer → float → string in order.  Returns *default* when
-        the parameter is absent on this camera model.
-        按 整型 → 浮点 → 字符串 的顺序尝试。当参数在此相机型号上不存在时
-        返回 *default*。
-
-        Parameters / 参数
-        -----------------
-        name:
-            GenICam node name. / GenICam 节点名称。
-        default:
-            Value returned when the parameter is not supported.
-            当参数不受支持时返回的值。
-        """
-        for getter in (
-            self.get_int_parameter,
-            self.get_float_parameter,
-            self.get_string_parameter,
-        ):
+        for getter in getters:
             try:
                 return getter(name)
-            except ParameterNotSupportedError:
-                continue
-            except ParameterError:
+            except (ParameterNotSupportedError, ParameterError):
                 continue
         return default
 
@@ -1968,10 +2006,7 @@ class HikCamera:
         Allocate (or reallocate) the frame buffer based on PayloadSize.
         根据 PayloadSize 分配（或重新分配）帧缓冲区。
         """
-        try:
-            payload_size = self.get_int_parameter("PayloadSize")
-        except ParameterError:
-            payload_size = 0
+        payload_size = self.params.TransportLayerControl.PayloadSize.get(default=0)
 
         # Use a reasonable fallback if PayloadSize is unavailable
         # 如果 PayloadSize 不可用，使用合理的回退值

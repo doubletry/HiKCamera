@@ -14,7 +14,7 @@ A Python 3.12 library for Hikvision industrial cameras (MVS SDK).
 | **Flexible connection** | Connect by IP address or serial number; serial lookup prioritizes faster layer-specific SDK scans |
 | **Multiple access modes** | Exclusive, Control, Monitor, Exclusive-With-Switch, Multicast, Unicast |
 | **GigE packet size** | Auto-detect optimal packet size on open; manual override supported |
-| **Parameter access** | Get/set integer, float, bool, enum, string GenICam parameters with full exception handling (missing parameters are handled gracefully) |
+| **Parameter access** | Structured `cam.params.<Category>.<Node>` access with IDE completion, type/range/access validation, and explicit node grouping |
 | **Camera information** | `get_camera_info()` retrieves common parameters (image size, frame rate, exposure, gain, pixel format, device model, etc.) in a single call |
 | **Configuration management** | Export/import camera configuration files; save/load device user sets |
 | **Frame capture – polling** | `start_grabbing()` + `get_frame()` |
@@ -51,9 +51,9 @@ poetry install
 ### Enumerate cameras
 
 ```python
-from hikcamera import HikCamera, TransportLayer
+from hikcamera import Hik, HikCamera
 
-cameras = HikCamera.enumerate(TransportLayer.ALL)
+cameras = HikCamera.enumerate(Hik.TransportLayer.ALL)
 for cam in cameras:
     print(cam)
 ```
@@ -82,28 +82,33 @@ unrelated SDK scans.
 
 ```python
 import cv2
-from hikcamera import HikCamera, AccessMode, OutputFormat
+from hikcamera import Hik, HikCamera
 
 cameras = HikCamera.enumerate()
 with HikCamera.from_device_info(cameras[0]) as cam:
-    cam.open(AccessMode.EXCLUSIVE)
+    cam.open(Hik.AccessMode.EXCLUSIVE)
 
-    # Adjust parameters (silently ignores unsupported ones)
-    cam.set_parameter("ExposureTime", 5000.0)
-    cam.set_parameter("Gain", 1.0)
+    # Prefer the structured cam.params API for IDE completion and validation.
+    cam.params.AcquisitionControl.ExposureTime.set(5000.0)
+    cam.params.AnalogControl.Gain.set(1.0)
+    cam.params.AnalogControl.GainAuto.set(Hik.GainAuto.OFF)
 
     cam.start_grabbing()
-    frame = cam.get_frame(timeout_ms=1000, output_format=OutputFormat.BGR8)
+    frame = cam.get_frame(timeout_ms=1000, output_format=Hik.OutputFormat.BGR8)
     cam.stop_grabbing()
 
 cv2.imwrite("frame.png", frame)
 ```
 
+Prefer the structured `cam.params.<Category>.<Node>` API. It keeps the
+parameter node hierarchy visible in code and works naturally with separately
+imported enum types such as `Hik.GainAuto.OFF`.
+
 ### Callback frame capture
 
 ```python
 import numpy as np
-from hikcamera import HikCamera, AccessMode, OutputFormat
+from hikcamera import Hik, HikCamera
 
 received_frames = []
 
@@ -112,8 +117,8 @@ def on_frame(image: np.ndarray, info: dict) -> None:
     print(f"Frame {info['frame_num']}: {image.shape}")
 
 with HikCamera.from_device_info(HikCamera.enumerate()[0]) as cam:
-    cam.open(AccessMode.EXCLUSIVE)
-    cam.start_grabbing(callback=on_frame, output_format=OutputFormat.BGR8)
+    cam.open(Hik.AccessMode.EXCLUSIVE)
+    cam.start_grabbing(callback=on_frame, output_format=Hik.OutputFormat.BGR8)
 
     import time
     time.sleep(5)   # collect frames for 5 seconds
@@ -135,8 +140,7 @@ callback automatically and provides two ways to detect disconnection:
 ```python
 import threading
 from hikcamera import (
-    HikCamera, AccessMode, OutputFormat,
-    DeviceDisconnectedError, HikCameraError,
+    DeviceDisconnectedError, Hik, HikCamera, HikCameraError,
 )
 
 disconnect_event = threading.Event()
@@ -149,10 +153,10 @@ def on_exception(exc: DeviceDisconnectedError):
     disconnect_event.set()
 
 with HikCamera.from_ip("192.168.1.100") as cam:
-    cam.open(AccessMode.EXCLUSIVE)
+    cam.open(Hik.AccessMode.EXCLUSIVE)
     cam.start_grabbing(
         callback=on_frame,
-        output_format=OutputFormat.BGR8,
+        output_format=Hik.OutputFormat.BGR8,
         on_exception=on_exception,       # ← immediate notification
     )
 
@@ -182,8 +186,7 @@ SDK handle is always destroyed — even on errors:
 ```python
 import time
 from hikcamera import (
-    HikCamera, AccessMode, OutputFormat,
-    CameraNotFoundError, CameraConnectionError, HikCameraError,
+    CameraConnectionError, CameraNotFoundError, Hik, HikCamera, HikCameraError,
 )
 
 # After disconnect detected, release resources via context manager exit,
@@ -193,7 +196,7 @@ while True:
     try:
         cam = HikCamera.from_ip("192.168.1.100")
         with cam:
-            cam.open(AccessMode.EXCLUSIVE)
+            cam.open(Hik.AccessMode.EXCLUSIVE)
             cam.start_grabbing(callback=on_frame, on_exception=on_exception)
             print("Reconnected!")
             ...  # run until next disconnect
@@ -207,12 +210,12 @@ See `demos/reconnect.py` for a complete, production-ready example.
 ### Multicast streaming
 
 ```python
-from hikcamera import HikCamera, AccessMode, StreamingMode
+from hikcamera import Hik, HikCamera
 
 with HikCamera.from_ip("192.168.1.100") as cam:
     cam.open(
-        AccessMode.MONITOR,
-        streaming_mode=StreamingMode.MULTICAST,
+        Hik.AccessMode.MONITOR,
+        streaming_mode=Hik.StreamingMode.MULTICAST,
         multicast_ip="239.0.0.1",
     )
     cam.start_grabbing()
@@ -225,22 +228,22 @@ By default, `open()` automatically detects and sets the optimal packet size
 for GigE cameras.  You can also specify a manual value:
 
 ```python
-from hikcamera import HikCamera, AccessMode, GIGE_PACKET_SIZE_DEFAULT, GIGE_PACKET_SIZE_JUMBO
+from hikcamera import GIGE_PACKET_SIZE_DEFAULT, GIGE_PACKET_SIZE_JUMBO, Hik, HikCamera
 
 # Auto-detect optimal packet size (default)
 with HikCamera.from_ip("192.168.1.100") as cam:
-    cam.open(AccessMode.EXCLUSIVE)  # optimal packet size applied automatically
+    cam.open(Hik.AccessMode.EXCLUSIVE)  # optimal packet size applied automatically
     ...
 
 # Manual packet size (e.g. GIGE_PACKET_SIZE_DEFAULT for standard MTU,
 # GIGE_PACKET_SIZE_JUMBO for jumbo frames)
 with HikCamera.from_ip("192.168.1.100") as cam:
-    cam.open(AccessMode.EXCLUSIVE, packet_size=GIGE_PACKET_SIZE_JUMBO)
+    cam.open(Hik.AccessMode.EXCLUSIVE, packet_size=GIGE_PACKET_SIZE_JUMBO)
     ...
 
 # Query or change packet size after opening
 with HikCamera.from_ip("192.168.1.100") as cam:
-    cam.open(AccessMode.EXCLUSIVE)
+    cam.open(Hik.AccessMode.EXCLUSIVE)
     print(cam.get_packet_size())       # current packet size
     print(cam.get_optimal_packet_size())  # SDK-recommended optimal size
     cam.set_packet_size(GIGE_PACKET_SIZE_DEFAULT)  # manual override
@@ -249,22 +252,19 @@ with HikCamera.from_ip("192.168.1.100") as cam:
 ### Parameter access with error handling
 
 ```python
-from hikcamera import HikCamera, ParameterNotSupportedError, ParameterReadOnlyError, GainAuto
+from hikcamera import Hik, HikCamera, ParameterNotSupportedError, ParameterReadOnlyError
 
 with HikCamera.from_device_info(cameras[0]) as cam:
     cam.open()
 
-    # Safe: silently ignores parameters not present on this model
-    cam.set_parameter("GainAuto", GainAuto.OFF)
-
-    # Or handle explicitly
     try:
-        value = cam.get_float_parameter("ExposureTime")
+        cam.params.AnalogControl.GainAuto.set(Hik.GainAuto.OFF)
+        value = cam.params.AcquisitionControl.ExposureTime.get()
     except ParameterNotSupportedError:
         print("ExposureTime not available on this camera")
 
     try:
-        cam.set_int_parameter("Width", 1920)
+        cam.params.ImageFormatControl.Width.set(1920)
     except ParameterReadOnlyError:
         print("Width is read-only while grabbing")
 ```
@@ -272,28 +272,28 @@ with HikCamera.from_device_info(cameras[0]) as cam:
 ### Get camera information
 
 ```python
-from hikcamera import HikCamera, AccessMode
+from hikcamera import AcquisitionControl, AnalogControl, DeviceControl, Hik, HikCamera, ImageFormatControl
 
 with HikCamera.from_ip("192.168.1.100") as cam:
-    cam.open(AccessMode.EXCLUSIVE)
+    cam.open(Hik.AccessMode.EXCLUSIVE)
 
     # Get all common camera parameters at once
     info = cam.get_camera_info()
-    print(f"Resolution: {info.get('Width')}x{info.get('Height')}")
-    print(f"Exposure: {info.get('ExposureTime')} µs")
-    print(f"Gain: {info.get('Gain')}")
-    print(f"Frame rate: {info.get('AcquisitionFrameRate')} fps")
-    print(f"Pixel format: {info.get('PixelFormat')}")
-    print(f"Model: {info.get('DeviceModelName')}")
+    print(f"Resolution: {info.get(ImageFormatControl.Width)}x{info.get(ImageFormatControl.Height)}")
+    print(f"Exposure: {info.get(AcquisitionControl.ExposureTime)} µs")
+    print(f"Gain: {info.get(AnalogControl.Gain)}")
+    print(f"Frame rate: {info.get(AcquisitionControl.AcquisitionFrameRate)} fps")
+    print(f"Pixel format: {info.get(ImageFormatControl.PixelFormat)}")
+    print(f"Model: {info.get(DeviceControl.DeviceModelName)}")
 ```
 
 ### Export / import camera configuration
 
 ```python
-from hikcamera import HikCamera, AccessMode
+from hikcamera import Hik, HikCamera
 
 with HikCamera.from_ip("192.168.1.100") as cam:
-    cam.open(AccessMode.EXCLUSIVE)
+    cam.open(Hik.AccessMode.EXCLUSIVE)
 
     # Export current configuration to a file
     cam.export_config("camera_config.xml")
@@ -305,144 +305,100 @@ with HikCamera.from_ip("192.168.1.100") as cam:
 ### Save / load device user sets
 
 ```python
-from hikcamera import HikCamera, AccessMode
+from hikcamera import Hik, HikCamera
 
 with HikCamera.from_ip("192.168.1.100") as cam:
-    cam.open(AccessMode.EXCLUSIVE)
+    cam.open(Hik.AccessMode.EXCLUSIVE)
 
-    # Save current parameters to user set 1
-    cam.save_user_set("UserSet1")
+    cam.params.UserSetControl.UserSetSelector.set(Hik.UserSetSelector.USER_SET_1)
+    cam.params.UserSetControl.UserSetSave.execute()
 
     # Later, restore parameters from user set 1
-    cam.load_user_set("UserSet1")
+    cam.params.UserSetControl.UserSetSelector.set(Hik.UserSetSelector.USER_SET_1)
+    cam.params.UserSetControl.UserSetLoad.execute()
 ```
 
 ## Adjustable Parameters
 
-The camera exposes **GenICam** standard parameters via the MVS SDK.  The table
-below lists the commonly used parameters that `get_camera_info()` collects
-automatically, but you can access **any** GenICam node by name through the
-typed getter/setter methods.
+The camera exposes **GenICam** standard parameters via the MVS SDK. The table
+below lists a few common nodes. The recommended public API is the structured
+`cam.params.<Category>.<Node>` path.
 
-> **Note:** Not every camera model supports every parameter.  Unsupported
-> parameters raise `ParameterNotSupportedError` (or are silently skipped by
-> `set_parameter()` / `get_parameter()`).
+> **Note:** Not every camera model supports every parameter. Unsupported
+> parameters raise `ParameterNotSupportedError` when read or written through the
+> structured API.
 
-### Parameter access methods
+### Structured parameter API
 
-| Method | Description |
-|---|---|
-| `set_parameter(name, value)` | Auto-dispatch with `isinstance` validation; enum params require typed enum values (e.g. `GainAuto.OFF`); silently skips unsupported parameters |
-| `get_parameter(name, default=None)` | Auto-tries int → float → string; returns *default* if unsupported |
-| `get_int_parameter(name)` / `set_int_parameter(name, value)` | Integer parameter access |
-| `get_float_parameter(name)` / `set_float_parameter(name, value)` | Float parameter access |
-| `get_bool_parameter(name)` / `set_bool_parameter(name, value)` | Boolean parameter access |
-| `get_enum_parameter(name)` / `set_enum_parameter(name, value)` | Enum parameter access (integer value) |
-| `set_enum_parameter_by_string(name, string_value)` | Enum parameter set by symbolic name (e.g. `"Off"`, `"Continuous"`) |
-| `get_string_parameter(name)` / `set_string_parameter(name, value)` | String parameter access |
-| `execute_command(name)` | Execute a command node (e.g. `"TriggerSoftware"`) |
-| `get_camera_info()` | Retrieve all common parameters listed below in a single call |
-| `get_optimal_packet_size()` | Query SDK for the optimal GigE packet size (GigE only) |
-| `get_packet_size()` / `set_packet_size(size)` | Get/set GigE streaming packet size (`GevSCPSPacketSize`) |
+- `cam.params.<Category>.<Node>.set(value)`  
+  Recommended write path with node-level type/range/access validation.
+- `cam.params.<Category>.<Node>.get(default=None)`  
+  Recommended read path for structured nodes.
+- `cam.params.<Category>.<Command>.execute()`  
+  Recommended command invocation for command nodes.
+- `get_camera_info()`  
+  Batch-read common parameters, then access them with `ParamNode` keys such as
+  `info[ImageFormatControl.Width]` or `info.get(AcquisitionControl.ExposureTime)`.
+- `get_optimal_packet_size()`  
+  Query SDK for the optimal GigE packet size (GigE only).
+- `get_packet_size()` / `set_packet_size(size)`  
+  Get/set GigE streaming packet size (`GevSCPSPacketSize`).
 
 ### Common parameters
 
-#### Image format
+| Structured path | Type | Description |
+|---|---|---|
+| `cam.params.ImageFormatControl.Width` | `int` | ROI width |
+| `cam.params.ImageFormatControl.Height` | `int` | ROI height |
+| `cam.params.ImageFormatControl.PixelFormat` | `Hik.PixelFormat` | Pixel format |
+| `cam.params.AcquisitionControl.ExposureTime` | `float` | Exposure time in µs |
+| `cam.params.AcquisitionControl.ExposureAuto` | `Hik.ExposureAuto` | Auto-exposure mode |
+| `cam.params.AnalogControl.Gain` | `float` | Gain value |
+| `cam.params.AnalogControl.GainAuto` | `Hik.GainAuto` | Auto-gain mode |
+| `cam.params.AcquisitionControl.AcquisitionFrameRate` | `float` | Target frame rate |
+| `cam.params.AcquisitionControl.TriggerMode` | `Hik.TriggerMode` | Trigger enable / disable |
+| `cam.params.AcquisitionControl.TriggerSource` | `Hik.TriggerSource` | Trigger source |
+| `cam.params.DeviceControl.DeviceUserID` | `str` | User-defined camera name |
+| `cam.params.TransportLayerControl.GevSCPSPacketSize` | `int` | GigE packet size |
 
-| Parameter | Type | R/W | Description |
-|---|---|---|---|
-| `Width` | int | R/W ¹ | Image width in pixels |
-| `Height` | int | R/W ¹ | Image height in pixels |
-| `OffsetX` | int | R/W | Horizontal offset (ROI origin) |
-| `OffsetY` | int | R/W | Vertical offset (ROI origin) |
-| `PixelFormat` | enum | R/W | Pixel format (raw `int`; wrap with `PixelFormat(val)` to get the enum) |
-| `WidthMax` | int | R | Maximum allowed width |
-| `HeightMax` | int | R | Maximum allowed height |
-| `PayloadSize` | int | R | Image payload size in bytes |
+### Common command nodes
 
-> ¹ May become read-only while grabbing, depending on camera model.
+| Structured path | Call style | Description |
+|---|---|---|
+| `cam.params.AcquisitionControl.TriggerSoftware` | `.execute()` | Fire a software trigger |
+| `cam.params.UserSetControl.UserSetSelector` | `.set(Hik.UserSetSelector.USER_SET_1)` | Select the device user set |
+| `cam.params.UserSetControl.UserSetSave` | `.execute()` | Save current parameters to the selected user set |
+| `cam.params.UserSetControl.UserSetLoad` | `.execute()` | Load parameters from the selected user set |
 
-#### Exposure & gain
+For the complete parameter node tables, see
+[`docs/camera_parameter_nodes.md`](docs/camera_parameter_nodes.md). For the
+Chinese version, see
+[`docs/camera_parameter_nodes_zh.md`](docs/camera_parameter_nodes_zh.md).
 
-| Parameter | Type | R/W | Description |
-|---|---|---|---|
-| `ExposureTime` | float | R/W | Exposure time in µs |
-| `ExposureAuto` | enum | R/W | Auto-exposure mode (`Off` / `Once` / `Continuous`) |
-| `Gain` | float | R/W | Gain value in dB |
-| `GainAuto` | enum | R/W | Auto-gain mode (`Off` / `Once` / `Continuous`) |
-| `Gamma` | float | R/W | Gamma correction value |
-| `GammaEnable` | bool | R/W | Enable / disable gamma correction |
-
-#### Frame rate
-
-| Parameter | Type | R/W | Description |
-|---|---|---|---|
-| `AcquisitionFrameRate` | float | R/W | Target acquisition frame rate (fps) |
-| `AcquisitionFrameRateEnable` | bool | R/W | Enable / disable frame rate limiting |
-| `ResultingFrameRate` | float | R | Actual resulting frame rate (fps) |
-
-#### Trigger
-
-| Parameter | Type | R/W | Description |
-|---|---|---|---|
-| `TriggerMode` | enum | R/W | Trigger mode (`On` / `Off`) |
-| `TriggerSource` | enum | R/W | Trigger source (e.g. `Software`, `Line0`) |
-
-#### White balance
-
-| Parameter | Type | R/W | Description |
-|---|---|---|---|
-| `BalanceWhiteAuto` | enum | R/W | Auto white-balance mode (`Off` / `Once` / `Continuous`) |
-
-#### Device info (read-only)
-
-| Parameter | Type | R/W | Description |
-|---|---|---|---|
-| `DeviceModelName` | string | R | Camera model name |
-| `DeviceSerialNumber` | string | R | Serial number |
-| `DeviceFirmwareVersion` | string | R | Firmware version |
-| `DeviceUserID` | string | R/W | User-defined camera identifier |
-
-#### GigE network (GigE cameras only)
-
-| Parameter | Type | R/W | Description |
-|---|---|---|---|
-| `GevSCPSPacketSize` | int | R/W | GigE streaming packet size in bytes (auto-configured on `open()`) |
-
-#### Common commands
-
-These nodes are executed via `execute_command()`:
-
-| Command | Description |
-|---|---|
-| `TriggerSoftware` | Fire a software trigger |
-| `UserSetSave` | Save current parameters to the selected user set |
-| `UserSetLoad` | Load parameters from the selected user set |
-
-### Example: reading & writing parameters
+### Example: reading & writing common parameters
 
 ```python
-from hikcamera import HikCamera, AccessMode, GainAuto
+from hikcamera import Hik, HikCamera
 
 with HikCamera.from_ip("192.168.1.100") as cam:
-    cam.open(AccessMode.EXCLUSIVE)
+    cam.open(Hik.AccessMode.EXCLUSIVE)
 
     # Read all common parameters at once
     info = cam.get_camera_info()
     print(info)
 
-    # High-level convenience (auto type dispatch)
-    cam.set_parameter("ExposureTime", 5000.0)
-    cam.set_parameter("Gain", 2.5)
-    cam.set_parameter("AcquisitionFrameRateEnable", True)
-    cam.set_parameter("GainAuto", GainAuto.OFF)    # typed enum
+    cam.params.AcquisitionControl.ExposureTime.set(5000.0)
+    cam.params.AnalogControl.Gain.set(2.5)
+    cam.params.AcquisitionControl.AcquisitionFrameRateEnable.set(True)
+    cam.params.AnalogControl.GainAuto.set(Hik.GainAuto.OFF)
 
-    # Typed access (gives full error info)
-    exposure = cam.get_float_parameter("ExposureTime")
-    width = cam.get_int_parameter("Width")
+    exposure = cam.params.AcquisitionControl.ExposureTime.get()
+    width = cam.params.ImageFormatControl.Width.get()
 
-    # Execute a command
-    cam.execute_command("TriggerSoftware")
+    cam.params.AcquisitionControl.TriggerSoftware.execute()
+
+    cam.params.UserSetControl.UserSetSelector.set(Hik.UserSetSelector.USER_SET_1)
+    cam.params.UserSetControl.UserSetSave.execute()
 ```
 
 ## Demos
@@ -468,7 +424,7 @@ src/
   hikcamera/
     __init__.py        # Public API
     camera.py          # HikCamera class
-    enums.py           # Enumerations (AccessMode, PixelFormat, OutputFormat, …)
+    enums.py           # Enumeration definitions used to populate the Hik namespace
     exceptions.py      # Exception hierarchy
     sdk_wrapper.py     # ctypes bindings to the MVS SDK
     utils.py           # Image conversion (raw bytes → numpy)
@@ -477,6 +433,9 @@ demos/
   save_video.py        # Demo: capture frames and save as video
   exception_handling.py  # Demo: detect camera disconnection during grabbing
   reconnect.py         # Demo: automatic reconnection after disconnect
+docs/
+  camera_parameter_nodes.md  # Full structured camera parameter node reference
+  camera_parameter_nodes_zh.md  # 中文版结构化相机参数节点参考
 tests/
   conftest.py          # Fixtures and mock SDK helpers
   test_camera.py       # HikCamera tests

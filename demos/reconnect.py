@@ -41,14 +41,12 @@ from typing import Any
 import numpy as np
 
 from hikcamera import (
-    AccessMode,
     CameraNotFoundError,
     DeviceDisconnectedError,
+    Hik,
     HikCamera,
     HikCameraError,
-    OutputFormat,
     SDKNotFoundError,
-    TransportLayer,
 )
 
 
@@ -87,7 +85,7 @@ def connect_camera(
     通过 IP 或序列号创建 HikCamera 句柄。
     """
     if ip:
-        return HikCamera.from_ip(ip, TransportLayer.GIGE)
+        return HikCamera.from_ip(ip, Hik.TransportLayer.GIGE)
     assert sn is not None
     return HikCamera.from_serial_number(sn)
 
@@ -101,12 +99,43 @@ def open_and_start(
     Open the camera and start callback-based grabbing.
     打开相机并开始回调模式取帧。
     """
-    cam.open(AccessMode.EXCLUSIVE)
+    cam.open(Hik.AccessMode.EXCLUSIVE)
     cam.start_grabbing(
         callback=on_frame,
-        output_format=OutputFormat.BGR8,
+        output_format=Hik.OutputFormat.BGR8,
         on_exception=on_exception,
     )
+
+
+def next_retry_attempt_label(
+    retry_failures: int,
+    max_retries: int,
+) -> str:
+    """
+    Return the label shown before the next reconnect attempt.
+    返回下一次重连尝试前展示的标签。
+    """
+    if max_retries == 0:
+        return "unlimited"
+    return str(retry_failures + 1)
+
+
+def record_retry_failure(
+    retry_failures: int,
+    max_retries: int,
+) -> tuple[int, bool]:
+    """
+    Record one failed reconnect attempt.
+    记录一次失败的重连尝试。
+
+    Returns the updated failure count and whether the retry budget is exceeded.
+    返回更新后的失败次数，以及是否已超出重试上限。
+    """
+    if max_retries == 0:
+        return retry_failures, False
+
+    retry_failures += 1
+    return retry_failures, retry_failures > max_retries
 
 
 # ---------------------------------------------------------------------------
@@ -119,6 +148,7 @@ def main() -> None:
     # Shared state between threads / 线程间共享状态
     disconnect_event = threading.Event()
     frame_count = 0
+    has_connected_once = False
 
     def on_frame(image: np.ndarray, frame_info: dict[str, Any]) -> None:
         nonlocal frame_count
@@ -131,7 +161,7 @@ def main() -> None:
         disconnect_event.set()
 
     identifier = args.ip or args.sn
-    retries = 0
+    retry_failures = 0
 
     try:
         while True:
@@ -144,15 +174,17 @@ def main() -> None:
             try:
                 cam = connect_camera(args.ip, args.sn)
             except (SDKNotFoundError, CameraNotFoundError) as exc:
-                if retries == 0:
+                if not has_connected_once:
                     print(f"Cannot connect: {exc}")
                     sys.exit(1)
                 print(f"  Reconnect failed: {exc}")
-                if args.max_retries > 0:
-                    retries += 1
-                    if retries > args.max_retries:
-                        print(f"Max retries ({args.max_retries}) exceeded.  Exiting.")
-                        break
+                retry_failures, exceeded = record_retry_failure(
+                    retry_failures,
+                    args.max_retries,
+                )
+                if exceeded:
+                    print(f"Max retries ({args.max_retries}) exceeded.  Exiting.")
+                    break
                 time.sleep(args.retry_interval)
                 continue
 
@@ -160,29 +192,35 @@ def main() -> None:
                 try:
                     open_and_start(cam, on_frame, on_exception)
                 except HikCameraError as exc:
-                    if retries == 0:
+                    if not has_connected_once:
                         print(f"Failed to open/start camera: {exc}")
                         sys.exit(1)
                     print(f"  Reconnect failed: {exc}")
-                    if args.max_retries > 0:
-                        retries += 1
-                        if retries > args.max_retries:
-                            print(f"Max retries ({args.max_retries}) exceeded.  Exiting.")
-                            break
+                    retry_failures, exceeded = record_retry_failure(
+                        retry_failures,
+                        args.max_retries,
+                    )
+                    if exceeded:
+                        print(f"Max retries ({args.max_retries}) exceeded.  Exiting.")
+                        break
                     time.sleep(args.retry_interval)
                     continue
                     # cam.__exit__ destroys the handle automatically
                     # cam.__exit__ 会自动销毁句柄
 
-                if retries == 0:
+                if not has_connected_once:
                     print(f"Camera {identifier} connected.  Capturing frames …")
                     print("Press Ctrl+C to exit.  Unplug the cable to test reconnection.\n")
                 else:
                     print(f"✓  Camera {identifier} reconnected.  Resuming capture …\n")
 
+                has_connected_once = True
+                retry_failures = 0
+
                 # Wait for disconnect or Ctrl+C
                 # 等待断开连接或 Ctrl+C
-                disconnect_event.wait()
+                while not disconnect_event.wait(timeout=0.5):
+                    pass
 
                 print(f"\nCamera {identifier} lost.  Cleaning up …")
                 # The context manager (__exit__) will stop grabbing, close the
@@ -193,17 +231,9 @@ def main() -> None:
             # Outside the context manager: handle is fully released.
             # 上下文管理器外部：句柄已完全释放。
             disconnect_event.clear()
-
-            # Check retry limit / 检查重试次数限制
-            if args.max_retries > 0:
-                retries += 1
-                if retries > args.max_retries:
-                    print(f"Max retries ({args.max_retries}) exceeded.  Exiting.")
-                    break
-
             print(
                 f"Attempting to reconnect (interval={args.retry_interval}s, "
-                f"attempt={retries if args.max_retries > 0 else 'unlimited'}) …"
+                f"attempt={next_retry_attempt_label(retry_failures, args.max_retries)}) …"
             )
             time.sleep(args.retry_interval)
 
