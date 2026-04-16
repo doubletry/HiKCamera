@@ -321,7 +321,7 @@ with HikCamera.from_ip("192.168.1.100") as cam:
 ## Adjustable Parameters
 
 The camera exposes **GenICam** standard parameters via the MVS SDK. The table
-below lists commonly used nodes. The recommended public API is the structured
+below lists a few common nodes. The recommended public API is the structured
 `cam.params.<Category>.<Node>` path.
 
 > **Note:** Not every camera model supports every parameter. Unsupported
@@ -341,77 +341,34 @@ below lists commonly used nodes. The recommended public API is the structured
 
 ### Common parameters
 
-#### Image format
-
-| ParamNode member | Type | R/W | Description |
-|---|---|---|---|
-| `ImageFormatControl.Width` | int | R/W ¹ | Image width in pixels |
-| `ImageFormatControl.Height` | int | R/W ¹ | Image height in pixels |
-| `ImageFormatControl.OffsetX` | int | R/W | Horizontal offset (ROI origin) |
-| `ImageFormatControl.OffsetY` | int | R/W | Vertical offset (ROI origin) |
-| `ImageFormatControl.PixelFormat` | enum | R/W | Pixel format (raw `int`; wrap with `PixelFormat(val)` to get the enum) |
-| `ImageFormatControl.WidthMax` | int | R | Maximum allowed width |
-| `ImageFormatControl.HeightMax` | int | R | Maximum allowed height |
-| `TransportLayerControl.PayloadSize` | int | R | Image payload size in bytes |
-
-> ¹ May become read-only while grabbing, depending on camera model.
-
-#### Exposure & gain
-
-| ParamNode member | Type | R/W | Description |
-|---|---|---|---|
-| `AcquisitionControl.ExposureTime` | float | R/W | Exposure time in µs |
-| `AcquisitionControl.ExposureAuto` | enum | R/W | Auto-exposure mode (`Off` / `Once` / `Continuous`) |
-| `AnalogControl.Gain` | float | R/W | Gain value in dB |
-| `AnalogControl.GainAuto` | enum | R/W | Auto-gain mode (`Off` / `Once` / `Continuous`) |
-| `AnalogControl.Gamma` | float | R/W | Gamma correction value |
-| `AnalogControl.GammaEnable` | bool | R/W | Enable / disable gamma correction |
-
-#### Frame rate
-
-| ParamNode member | Type | R/W | Description |
-|---|---|---|---|
-| `AcquisitionControl.AcquisitionFrameRate` | float | R/W | Target acquisition frame rate (fps) |
-| `AcquisitionControl.AcquisitionFrameRateEnable` | bool | R/W | Enable / disable frame rate limiting |
-| `AcquisitionControl.ResultingFrameRate` | float | R | Actual resulting frame rate (fps) |
-
-#### Trigger
-
-| ParamNode member | Type | R/W | Description |
-|---|---|---|---|
-| `AcquisitionControl.TriggerMode` | enum | R/W | Trigger mode (`On` / `Off`) |
-| `AcquisitionControl.TriggerSource` | enum | R/W | Trigger source (e.g. `Software`, `Line0`) |
-
-#### White balance
-
-| ParamNode member | Type | R/W | Description |
-|---|---|---|---|
-| `AnalogControl.BalanceWhiteAuto` | enum | R/W | Auto white-balance mode (`Off` / `Once` / `Continuous`) |
-
-#### Device info (read-only)
-
-| ParamNode member | Type | R/W | Description |
-|---|---|---|---|
-| `DeviceControl.DeviceModelName` | string | R | Camera model name |
-| `DeviceControl.DeviceSerialNumber` | string | R | Serial number |
-| `DeviceControl.DeviceFirmwareVersion` | string | R | Firmware version |
-| `DeviceControl.DeviceUserID` | string | R/W | User-defined camera identifier |
-
-#### GigE network (GigE cameras only)
-
-| ParamNode member | Type | R/W | Description |
-|---|---|---|---|
-| `TransportLayerControl.GevSCPSPacketSize` | int | R/W | GigE streaming packet size in bytes (auto-configured on `open()`) |
-
-#### Common commands
-
-| ParamNode member | Structured call | Description |
+| Structured path | Type | Description |
 |---|---|---|
-| `AcquisitionControl.TriggerSoftware` | `cam.params.AcquisitionControl.TriggerSoftware.execute()` | Fire a software trigger |
-| `UserSetControl.UserSetSave` | `cam.params.UserSetControl.UserSetSave.execute()` | Save current parameters to the selected user set |
-| `UserSetControl.UserSetLoad` | `cam.params.UserSetControl.UserSetLoad.execute()` | Load parameters from the selected user set |
+| `cam.params.ImageFormatControl.Width` | `int` | ROI width |
+| `cam.params.ImageFormatControl.Height` | `int` | ROI height |
+| `cam.params.ImageFormatControl.PixelFormat` | `Hik.PixelFormat` | Pixel format |
+| `cam.params.AcquisitionControl.ExposureTime` | `float` | Exposure time in µs |
+| `cam.params.AcquisitionControl.ExposureAuto` | `Hik.ExposureAuto` | Auto-exposure mode |
+| `cam.params.AnalogControl.Gain` | `float` | Gain value |
+| `cam.params.AnalogControl.GainAuto` | `Hik.GainAuto` | Auto-gain mode |
+| `cam.params.AcquisitionControl.AcquisitionFrameRate` | `float` | Target frame rate |
+| `cam.params.AcquisitionControl.TriggerMode` | `Hik.TriggerMode` | Trigger enable / disable |
+| `cam.params.AcquisitionControl.TriggerSource` | `Hik.TriggerSource` | Trigger source |
+| `cam.params.DeviceControl.DeviceUserID` | `str` | User-defined camera name |
+| `cam.params.TransportLayerControl.GevSCPSPacketSize` | `int` | GigE packet size |
 
-### Example: reading & writing parameters
+### Common command nodes
+
+| Structured path | Call style | Description |
+|---|---|---|
+| `cam.params.AcquisitionControl.TriggerSoftware` | `.execute()` | Fire a software trigger |
+| `cam.params.UserSetControl.UserSetSelector` | `.set(Hik.UserSetSelector.USER_SET_1)` | Select the device user set |
+| `cam.params.UserSetControl.UserSetSave` | `.execute()` | Save current parameters to the selected user set |
+| `cam.params.UserSetControl.UserSetLoad` | `.execute()` | Load parameters from the selected user set |
+
+For the complete parameter node tables, see
+[`docs/camera_parameter_nodes.md`](docs/camera_parameter_nodes.md).
+
+### Example: reading & writing common parameters
 
 ```python
 from hikcamera import Hik, HikCamera
@@ -469,6 +426,8 @@ demos/
   save_video.py        # Demo: capture frames and save as video
   exception_handling.py  # Demo: detect camera disconnection during grabbing
   reconnect.py         # Demo: automatic reconnection after disconnect
+docs/
+  camera_parameter_nodes.md  # Full structured camera parameter node reference
 tests/
   conftest.py          # Fixtures and mock SDK helpers
   test_camera.py       # HikCamera tests

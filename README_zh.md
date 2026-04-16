@@ -317,7 +317,7 @@ with HikCamera.from_ip("192.168.1.100") as cam:
 
 ## 可调参数
 
-相机通过 MVS SDK 暴露 **GenICam** 标准参数。下表列出了常用节点；推荐统一
+相机通过 MVS SDK 暴露 **GenICam** 标准参数。下表只列出少量常用节点；推荐统一
 使用结构化 `cam.params.<分类>.<节点>` 访问路径。
 
 > **注意：** 并非每个型号的相机都支持所有参数。通过结构化 API 读写时，如
@@ -336,77 +336,34 @@ with HikCamera.from_ip("192.168.1.100") as cam:
 
 ### 常用参数
 
-#### 图像格式
-
-| ParamNode 成员 | 类型 | 读写 | 说明 |
-|---|---|---|---|
-| `ImageFormatControl.Width` | int | R/W ¹ | 图像宽度（像素） |
-| `ImageFormatControl.Height` | int | R/W ¹ | 图像高度（像素） |
-| `ImageFormatControl.OffsetX` | int | R/W | 水平偏移（ROI 起点） |
-| `ImageFormatControl.OffsetY` | int | R/W | 垂直偏移（ROI 起点） |
-| `ImageFormatControl.PixelFormat` | enum | R/W | 像素格式（返回原始 `int`；可通过 `PixelFormat(val)` 转换为枚举） |
-| `ImageFormatControl.WidthMax` | int | R | 最大允许宽度 |
-| `ImageFormatControl.HeightMax` | int | R | 最大允许高度 |
-| `TransportLayerControl.PayloadSize` | int | R | 图像数据负载大小（字节） |
-
-> ¹ 取帧期间可能变为只读，取决于相机型号。
-
-#### 曝光与增益
-
-| ParamNode 成员 | 类型 | 读写 | 说明 |
-|---|---|---|---|
-| `AcquisitionControl.ExposureTime` | float | R/W | 曝光时间（µs） |
-| `AcquisitionControl.ExposureAuto` | enum | R/W | 自动曝光模式（`Off` / `Once` / `Continuous`） |
-| `AnalogControl.Gain` | float | R/W | 增益值（dB） |
-| `AnalogControl.GainAuto` | enum | R/W | 自动增益模式（`Off` / `Once` / `Continuous`） |
-| `AnalogControl.Gamma` | float | R/W | Gamma 校正值 |
-| `AnalogControl.GammaEnable` | bool | R/W | 启用 / 禁用 Gamma 校正 |
-
-#### 帧率
-
-| ParamNode 成员 | 类型 | 读写 | 说明 |
-|---|---|---|---|
-| `AcquisitionControl.AcquisitionFrameRate` | float | R/W | 目标采集帧率（fps） |
-| `AcquisitionControl.AcquisitionFrameRateEnable` | bool | R/W | 启用 / 禁用帧率限制 |
-| `AcquisitionControl.ResultingFrameRate` | float | R | 实际帧率（fps） |
-
-#### 触发
-
-| ParamNode 成员 | 类型 | 读写 | 说明 |
-|---|---|---|---|
-| `AcquisitionControl.TriggerMode` | enum | R/W | 触发模式（`On` / `Off`） |
-| `AcquisitionControl.TriggerSource` | enum | R/W | 触发源（如 `Software`、`Line0`） |
-
-#### 白平衡
-
-| ParamNode 成员 | 类型 | 读写 | 说明 |
-|---|---|---|---|
-| `AnalogControl.BalanceWhiteAuto` | enum | R/W | 自动白平衡模式（`Off` / `Once` / `Continuous`） |
-
-#### 设备信息（只读）
-
-| ParamNode 成员 | 类型 | 读写 | 说明 |
-|---|---|---|---|
-| `DeviceControl.DeviceModelName` | string | R | 相机型号名称 |
-| `DeviceControl.DeviceSerialNumber` | string | R | 序列号 |
-| `DeviceControl.DeviceFirmwareVersion` | string | R | 固件版本 |
-| `DeviceControl.DeviceUserID` | string | R/W | 用户自定义相机标识 |
-
-#### GigE 网络（仅 GigE 相机）
-
-| ParamNode 成员 | 类型 | 读写 | 说明 |
-|---|---|---|---|
-| `TransportLayerControl.GevSCPSPacketSize` | int | R/W | GigE 流传输包大小（字节），`open()` 时自动配置 |
-
-#### 常用命令
-
-| ParamNode 成员 | 结构化调用方式 | 说明 |
+| 结构化路径 | 类型 | 说明 |
 |---|---|---|
-| `AcquisitionControl.TriggerSoftware` | `cam.params.AcquisitionControl.TriggerSoftware.execute()` | 发送软触发 |
-| `UserSetControl.UserSetSave` | `cam.params.UserSetControl.UserSetSave.execute()` | 将当前参数保存到选定的用户集 |
-| `UserSetControl.UserSetLoad` | `cam.params.UserSetControl.UserSetLoad.execute()` | 从选定的用户集加载参数 |
+| `cam.params.ImageFormatControl.Width` | `int` | ROI 宽度 |
+| `cam.params.ImageFormatControl.Height` | `int` | ROI 高度 |
+| `cam.params.ImageFormatControl.PixelFormat` | `Hik.PixelFormat` | 像素格式 |
+| `cam.params.AcquisitionControl.ExposureTime` | `float` | 曝光时间（µs） |
+| `cam.params.AcquisitionControl.ExposureAuto` | `Hik.ExposureAuto` | 自动曝光模式 |
+| `cam.params.AnalogControl.Gain` | `float` | 增益值 |
+| `cam.params.AnalogControl.GainAuto` | `Hik.GainAuto` | 自动增益模式 |
+| `cam.params.AcquisitionControl.AcquisitionFrameRate` | `float` | 目标帧率 |
+| `cam.params.AcquisitionControl.TriggerMode` | `Hik.TriggerMode` | 触发开关 |
+| `cam.params.AcquisitionControl.TriggerSource` | `Hik.TriggerSource` | 触发源 |
+| `cam.params.DeviceControl.DeviceUserID` | `str` | 用户自定义相机名称 |
+| `cam.params.TransportLayerControl.GevSCPSPacketSize` | `int` | GigE 包大小 |
 
-### 示例：读写参数
+### 常用命令节点
+
+| 结构化路径 | 调用方式 | 说明 |
+|---|---|---|
+| `cam.params.AcquisitionControl.TriggerSoftware` | `.execute()` | 发送软触发 |
+| `cam.params.UserSetControl.UserSetSelector` | `.set(Hik.UserSetSelector.USER_SET_1)` | 选择设备用户集 |
+| `cam.params.UserSetControl.UserSetSave` | `.execute()` | 将当前参数保存到选定的用户集 |
+| `cam.params.UserSetControl.UserSetLoad` | `.execute()` | 从选定的用户集加载参数 |
+
+完整参数节点总表请参见
+[`docs/camera_parameter_nodes.md`](docs/camera_parameter_nodes.md)。
+
+### 示例：读写常用参数
 
 ```python
 from hikcamera import Hik, HikCamera
@@ -464,6 +421,8 @@ demos/
   save_video.py        # 示例：捕获帧并保存为视频
   exception_handling.py  # 示例：取帧期间检测相机断开连接
   reconnect.py         # 示例：断开连接后自动重连
+docs/
+  camera_parameter_nodes.md  # 完整的结构化相机参数节点参考
 tests/
   conftest.py          # 测试夹具和模拟 SDK 辅助工具
   test_camera.py       # HikCamera 测试
