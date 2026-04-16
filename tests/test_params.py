@@ -150,7 +150,7 @@ class TestParamNodeTypeValidation:
         assert UserSetControl.UserSetSelector.data_type.__name__ == "UserSetSelector"
 
     def test_enum_paramnode_does_not_expose_enum_members(self):
-        with pytest.raises(AttributeError):
+        with pytest.raises(AttributeError, match="has no attribute 'OFF'"):
             _ = AnalogControl.GainAuto.OFF
 
     def test_enum_rejects_raw_string(self):

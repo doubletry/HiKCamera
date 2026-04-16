@@ -174,6 +174,18 @@ class BoundParamNode:
     """
     Camera-bound view of a :class:`ParamNode`.
     绑定到相机实例的 :class:`ParamNode` 视图。
+
+    Public operations / 公开操作
+    ---------------------------
+    - ``get(default=None)``: read the node value
+    - ``set(value)``: validate and write a value
+    - ``execute()``: run a command node
+
+    Typical usage / 典型用法::
+
+        cam.params.AcquisitionControl.ExposureTime.set(5000.0)
+        cam.params.AcquisitionControl.ExposureTime.get()
+        cam.params.AcquisitionControl.TriggerSoftware.execute()
     """
 
     __slots__ = ("_camera", "_node")
@@ -203,6 +215,13 @@ class BoundCategoryProxy:
     """
     Camera-bound proxy for one parameter category.
     单个参数分类的相机绑定代理。
+
+    Node attributes are added dynamically from the SDK-backed category class, so
+    callers use paths such as ``cam.params.AnalogControl.Gain`` or
+    ``cam.params.ImageFormatControl.Width``.
+    节点属性会根据 SDK 参数分类动态挂载，因此调用方应使用
+    ``cam.params.AnalogControl.Gain``、``cam.params.ImageFormatControl.Width``
+    这类完整路径。
     """
 
     def __init__(self, camera: HikCamera, category: type) -> None:
@@ -222,6 +241,13 @@ class CameraParamsProxy:
     """
     Root proxy exposed as ``cam.params``.
     通过 ``cam.params`` 暴露的根代理对象。
+
+    Access follows the full hierarchy
+    ``cam.params.<Category>.<Node>.set(value)`` /
+    ``cam.params.<Category>.<Node>.get()``.
+    访问形式为完整层级
+    ``cam.params.<Category>.<Node>.set(value)`` /
+    ``cam.params.<Category>.<Node>.get()``。
     """
 
     def __init__(self, camera: HikCamera) -> None:
@@ -1716,7 +1742,8 @@ class HikCamera:
         """Validate and write a structured parameter node."""
         if node.data_type == "command":
             raise ParameterValueError(
-                f"Parameter {node.name!r} is a command node; use execute() instead"
+                f"Parameter {node.name!r} is a command node; "
+                "use cam.params.<Category>.<Command>.execute() instead"
             )
         name = node.name
         value = node.validate(value)

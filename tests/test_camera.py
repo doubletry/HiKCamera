@@ -639,6 +639,15 @@ class TestParameters:
         with pytest.raises(ParameterValueError, match="not a command node"):
             cam.params.AnalogControl.Gain.execute()
 
+    def test_command_node_set_raises(self, mock_sdk):
+        cam = make_camera_with_sdk(mock_sdk)
+        with pytest.raises(ParameterValueError, match="use cam\\.params"):
+            cam.params.AcquisitionControl.TriggerSoftware.set(None)
+
+    def test_command_node_get_returns_default(self, mock_sdk):
+        cam = make_camera_with_sdk(mock_sdk)
+        assert cam.params.AcquisitionControl.TriggerSoftware.get(default="noop") == "noop"
+
     # Error handling
 
     def test_not_supported_raises_parameter_not_supported(self, mock_sdk):
