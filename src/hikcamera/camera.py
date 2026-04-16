@@ -831,9 +831,9 @@ class HikCamera:
             单播（默认）或组播，仅限 GigE 相机。
         multicast_ip:
             Multicast group IP (required when ``streaming_mode`` is
-            :py:attr:`~hikcamera.enums.Hik.StreamingMode.MULTICAST`).
+            :py:attr:`~Hik.StreamingMode.MULTICAST`).
             组播组 IP（当 ``streaming_mode`` 为
-            :py:attr:`~hikcamera.enums.Hik.StreamingMode.MULTICAST` 时必填）。
+            :py:attr:`~Hik.StreamingMode.MULTICAST` 时必填）。
         packet_size:
             GigE network packet size (``GevSCPSPacketSize``) in bytes.
             GigE 网络包大小（``GevSCPSPacketSize``），单位为字节。
