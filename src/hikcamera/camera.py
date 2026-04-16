@@ -158,7 +158,7 @@ class CameraInfoDict(dict[str, Any]):
         return super().__contains__(self._normalize_key(key))
 
 
-def _iter_category_nodes(category: type) -> tuple[tuple[str, ParamNode], ...]:
+def _get_category_nodes(category: type) -> tuple[tuple[str, ParamNode], ...]:
     """
     Return all ``ParamNode`` members declared on a category class.
     返回分类类上声明的全部 ``ParamNode`` 成员。
@@ -208,7 +208,7 @@ class BoundCategoryProxy:
     def __init__(self, camera: HikCamera, category: type) -> None:
         self._camera = camera
         self._category = category
-        for attr_name, node in _iter_category_nodes(category):
+        for attr_name, node in _get_category_nodes(category):
             object.__setattr__(self, attr_name, BoundParamNode(camera, node))
 
     def __setattr__(self, name: str, value: Any) -> None:
@@ -503,7 +503,7 @@ class HikCamera:
         Structured parameter access root.
         结构化参数访问入口。
         """
-        params_proxy = self.__dict__.get("_params_proxy")
+        params_proxy = getattr(self, "_params_proxy", None)
         if params_proxy is None:
             params_proxy = CameraParamsProxy(self)
             self._params_proxy = params_proxy
@@ -1501,15 +1501,6 @@ class HikCamera:
         ret = self._sdk.MV_CC_SetCommandValue(self._handle, name_bytes)
         _check(ret, f"MV_CC_SetCommandValue({node.name!r})")
 
-    @staticmethod
-    def _resolve_user_set_selector(user_set: UserSetSelector) -> UserSetSelector:
-        """
-        Normalize a user-set helper argument to ``UserSetSelector``.
-        将用户集辅助方法参数标准化为 ``UserSetSelector``。
-        """
-        selector = user_set if isinstance(user_set, UserSetSelector) else UserSetSelector(user_set)
-        return UserSetControl.UserSetSelector.validate(selector)
-
     # ------------------------------------------------------------------
     # Configuration file import / export
     # 配置文件导入 / 导出
@@ -1612,7 +1603,7 @@ class HikCamera:
             When the SDK call fails. / 当 SDK 调用失败时抛出。
         """
         self._assert_open()
-        validated_selector = self._resolve_user_set_selector(user_set)
+        validated_selector = UserSetControl.UserSetSelector.validate(user_set)
         self.params.UserSetControl.UserSetSelector.set(validated_selector)
         self.params.UserSetControl.UserSetSave.execute()
         logger.info("Camera parameters saved to user set %r", str(validated_selector))
@@ -1642,7 +1633,7 @@ class HikCamera:
             When the SDK call fails. / 当 SDK 调用失败时抛出。
         """
         self._assert_open()
-        validated_selector = self._resolve_user_set_selector(user_set)
+        validated_selector = UserSetControl.UserSetSelector.validate(user_set)
         self.params.UserSetControl.UserSetSelector.set(validated_selector)
         self.params.UserSetControl.UserSetLoad.execute()
         logger.info("Camera parameters loaded from user set %r", str(validated_selector))

@@ -608,12 +608,12 @@ class TestParameters:
         mock_sdk.MV_CC_GetEnumValue.side_effect = side_effect
         assert cam.params.ImageFormatControl.PixelFormat.get() == 0x01080001
 
-    def test_bound_set_int_enum_parameter(self, mock_sdk):
+    def test_bound_set_pixel_format_enum(self, mock_sdk):
         cam = make_camera_with_sdk(mock_sdk)
         cam.params.ImageFormatControl.PixelFormat.set(PixelFormat.MONO8)
         mock_sdk.MV_CC_SetEnumValue.assert_called_once()
 
-    def test_bound_set_string_enum_parameter(self, mock_sdk):
+    def test_bound_set_gain_auto_enum(self, mock_sdk):
         cam = make_camera_with_sdk(mock_sdk)
         cam.params.AnalogControl.GainAuto.set(GainAuto.OFF)
         mock_sdk.MV_CC_SetEnumValueByString.assert_called_once()

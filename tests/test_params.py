@@ -145,7 +145,7 @@ class TestParamNodeTypeValidation:
         node = ParamNode("GainAuto", GainAuto, "R/W", "Auto gain")
         assert node.validate(GainAuto.OFF) == GainAuto.OFF
 
-    def test_enum_paramnode_keeps_enum_type_metadata(self):
+    def test_enum_paramnode_exposes_data_type_attribute(self):
         assert AnalogControl.GainAuto.data_type is GainAuto
         assert UserSetControl.UserSetSelector.data_type.__name__ == "UserSetSelector"
 
