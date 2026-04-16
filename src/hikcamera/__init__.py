@@ -9,10 +9,9 @@ Quick start / 快速上手
 
     from hikcamera import (
         AccessMode,
-        AcquisitionControl,
-        AnalogControl,
         HikCamera,
         OutputFormat,
+        enums,
     )
 
     # Enumerate available cameras / 枚举可用相机
@@ -23,13 +22,12 @@ Quick start / 快速上手
     with HikCamera.from_device_info(cameras[0]) as cam:
         cam.open(AccessMode.EXCLUSIVE)
 
-        # Prefer ParamNode-based configuration for IDE completion and
-        # validation. Legacy string names remain compatible for now, but will
-        # be gradually deprecated.
-        # 优先使用 ParamNode 配置方式以获得 IDE 补全和校验。旧字符串参数名
-        # 当前仍兼容，但后续会逐步废弃。
-        cam.set_parameter(AcquisitionControl.ExposureTime, 5000.0)
-        cam.set_parameter(AnalogControl.Gain, 1.0)
+        # Prefer the structured ``cam.params`` API for IDE completion and
+        # validation.
+        # 优先使用结构化 ``cam.params`` API，以获得 IDE 补全和校验。
+        cam.params.AcquisitionControl.ExposureTime.set(5000.0)
+        cam.params.AnalogControl.Gain.set(1.0)
+        cam.params.AnalogControl.GainAuto.set(enums.GainAuto.OFF)
 
         # Poll for frames / 轮询取帧
         cam.start_grabbing()
@@ -55,6 +53,7 @@ The following names are exported at the package level for convenience:
 
 from __future__ import annotations
 
+from . import enums
 from .camera import (
     GIGE_PACKET_SIZE_DEFAULT,
     GIGE_PACKET_SIZE_JUMBO,
@@ -158,6 +157,7 @@ __all__ = [
     "StreamingMode",
     "PixelFormat",
     "OutputFormat",
+    "enums",
     "MvErrorCode",
     # Parameter value enumerations / 参数值枚举
     "ExposureAuto",

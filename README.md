@@ -14,7 +14,7 @@ A Python 3.12 library for Hikvision industrial cameras (MVS SDK).
 | **Flexible connection** | Connect by IP address or serial number; serial lookup prioritizes faster layer-specific SDK scans |
 | **Multiple access modes** | Exclusive, Control, Monitor, Exclusive-With-Switch, Multicast, Unicast |
 | **GigE packet size** | Auto-detect optimal packet size on open; manual override supported |
-| **Parameter access** | Prefer structured `ParamNode` groups for get/set operations with IDE completion, type/range/access validation; legacy string names remain compatible for now |
+| **Parameter access** | Structured `cam.params.<Category>.<Node>` access with IDE completion, type/range/access validation, and explicit node grouping |
 | **Camera information** | `get_camera_info()` retrieves common parameters (image size, frame rate, exposure, gain, pixel format, device model, etc.) in a single call |
 | **Configuration management** | Export/import camera configuration files; save/load device user sets |
 | **Frame capture – polling** | `start_grabbing()` + `get_frame()` |
@@ -82,23 +82,16 @@ unrelated SDK scans.
 
 ```python
 import cv2
-from hikcamera import (
-    AccessMode,
-    AcquisitionControl,
-    AnalogControl,
-    HikCamera,
-    OutputFormat,
-)
+from hikcamera import AccessMode, HikCamera, OutputFormat, enums
 
 cameras = HikCamera.enumerate()
 with HikCamera.from_device_info(cameras[0]) as cam:
     cam.open(AccessMode.EXCLUSIVE)
 
-    # Prefer structured ParamNode parameters for IDE completion and validation.
-    # String names are still supported for backward compatibility, but will be
-    # gradually deprecated in future releases.
-    cam.set_parameter(AcquisitionControl.ExposureTime, 5000.0)
-    cam.set_parameter(AnalogControl.Gain, 1.0)
+    # Prefer the structured cam.params API for IDE completion and validation.
+    cam.params.AcquisitionControl.ExposureTime.set(5000.0)
+    cam.params.AnalogControl.Gain.set(1.0)
+    cam.params.AnalogControl.GainAuto.set(enums.GainAuto.OFF)
 
     cam.start_grabbing()
     frame = cam.get_frame(timeout_ms=1000, output_format=OutputFormat.BGR8)
@@ -107,11 +100,9 @@ with HikCamera.from_device_info(cameras[0]) as cam:
 cv2.imwrite("frame.png", frame)
 ```
 
-Prefer `ParamNode`-based access such as `AcquisitionControl.ExposureTime` and
-`AnalogControl.Gain`. Legacy string-based calls like
-`cam.set_parameter("ExposureTime", 5000.0)` remain compatible for now, but new
-code should migrate to the structured API because string-based parameter names
-will be gradually deprecated.
+Prefer the structured `cam.params.<Category>.<Node>` API. It keeps the
+parameter node hierarchy visible in code and works naturally with separately
+imported enum types such as `enums.GainAuto.OFF`.
 
 ### Callback frame capture
 
@@ -263,44 +254,21 @@ with HikCamera.from_ip("192.168.1.100") as cam:
 ### Parameter access with error handling
 
 ```python
-from hikcamera import (
-    AnalogControl,
-    HikCamera,
-    ParameterNotSupportedError,
-    ParameterReadOnlyError,
-    AcquisitionControl,
-    ImageFormatControl,
-)
+from hikcamera import HikCamera, ParameterNotSupportedError, ParameterReadOnlyError, enums
 
 with HikCamera.from_device_info(cameras[0]) as cam:
     cam.open()
 
-    # Preferred: ParamNode-based access
-    cam.set_parameter(AnalogControl.GainAuto, AnalogControl.GainAuto.OFF)
-
-    # ParamNode-based read access
     try:
-        value = cam.get_parameter(AcquisitionControl.ExposureTime)
+        cam.params.AnalogControl.GainAuto.set(enums.GainAuto.OFF)
+        value = cam.params.AcquisitionControl.ExposureTime.get()
     except ParameterNotSupportedError:
         print("ExposureTime not available on this camera")
 
     try:
-        cam.set_parameter(ImageFormatControl.Width, 1920)
+        cam.params.ImageFormatControl.Width.set(1920)
     except ParameterReadOnlyError:
         print("Width is read-only while grabbing")
-```
-
-#### ⚠️ Legacy compatibility example *(compatibility path only)*
-
-> _Legacy compatibility path: kept for migration and older codebases. Prefer the structured API shown above._
-
-```python
-with HikCamera.from_device_info(cameras[0]) as cam:
-    cam.open()
-
-    width = cam.get_int_parameter("Width")
-    cam.set_int_parameter("Width", width)
-    exposure = cam.get_parameter("ExposureTime")
 ```
 
 ### Get camera information
@@ -321,19 +289,6 @@ with HikCamera.from_ip("192.168.1.100") as cam:
     print(f"Model: {info.get(DeviceControl.DeviceModelName)}")
 ```
 
-#### ⚠️ Legacy compatibility example *(compatibility path only)*
-
-> _Legacy compatibility path: kept for migration and older codebases. Prefer the structured API shown above._
-
-```python
-with HikCamera.from_ip("192.168.1.100") as cam:
-    cam.open(AccessMode.EXCLUSIVE)
-    info = cam.get_camera_info()
-
-    width = info["Width"]
-    model = info["DeviceModelName"]
-```
-
 ### Export / import camera configuration
 
 ```python
@@ -352,73 +307,39 @@ with HikCamera.from_ip("192.168.1.100") as cam:
 ### Save / load device user sets
 
 ```python
-from hikcamera import AccessMode, HikCamera, UserSetControl
+from hikcamera import AccessMode, HikCamera, enums
 
 with HikCamera.from_ip("192.168.1.100") as cam:
     cam.open(AccessMode.EXCLUSIVE)
 
-    # Preferred: structured enum values
-    cam.save_user_set(UserSetControl.UserSetSelector.USER_SET_1)
+    cam.params.UserSetControl.UserSetSelector.set(enums.UserSetSelector.USER_SET_1)
+    cam.params.UserSetControl.UserSetSave.execute()
 
     # Later, restore parameters from user set 1
-    cam.load_user_set(UserSetControl.UserSetSelector.USER_SET_1)
-```
-
-#### ⚠️ Legacy compatibility example *(compatibility path only)*
-
-> _Legacy compatibility path: kept for migration and older codebases. Prefer the structured API shown above._
-
-```python
-with HikCamera.from_ip("192.168.1.100") as cam:
-    cam.open(AccessMode.EXCLUSIVE)
-    cam.save_user_set("UserSet1")
-    cam.load_user_set("UserSet1")
+    cam.params.UserSetControl.UserSetSelector.set(enums.UserSetSelector.USER_SET_1)
+    cam.params.UserSetControl.UserSetLoad.execute()
 ```
 
 ## Adjustable Parameters
 
 The camera exposes **GenICam** standard parameters via the MVS SDK. The table
-below lists the commonly used parameters that `get_camera_info()` collects
-automatically, but new code should prefer `ParamNode`-based
-`get_parameter()` / `set_parameter()` access. The older typed getter/setter
-helpers remain available for backward compatibility, but should be considered
-compatibility APIs and may be gradually deprecated.
+below lists commonly used nodes. The recommended public API is the structured
+`cam.params.<Category>.<Node>` path.
 
-> **Note:** Not every camera model supports every parameter.  Unsupported
-> parameters raise `ParameterNotSupportedError` (or are silently skipped by
-> `set_parameter()` / `get_parameter()`). The documentation below separates the
-> recommended structured API from the legacy compatibility API to avoid mixing
-> the two styles in one place.
+> **Note:** Not every camera model supports every parameter. Unsupported
+> parameters raise `ParameterNotSupportedError` when read or written through the
+> structured API.
 
-### Recommended structured API
+### Structured parameter API
 
 | Method / style | Description |
 |---|---|
-| `set_parameter(param_node, value)` | Recommended write path. Pass `ParamNode` members such as `AcquisitionControl.ExposureTime` or `AnalogControl.GainAuto`; this enables IDE completion plus type/range/access validation before SDK calls |
-| `get_parameter(param_node, default=None)` | Recommended read path. Known nodes are read with schema-aware dispatch (including bool/enum/string/int/float) |
-| `cam.<CommandNode>()` | Recommended command invocation for command nodes, e.g. `cam.TriggerSoftware()` / `cam.UserSetLoad()` |
-| `save_user_set(user_set)` / `load_user_set(user_set)` | Recommended with structured enum members such as `UserSetControl.UserSetSelector.USER_SET_1` |
-| `get_camera_info()` | Recommended with `ParamNode` keys such as `info[ImageFormatControl.Width]` or `info.get(AcquisitionControl.ExposureTime)` |
+| `cam.params.<Category>.<Node>.set(value)` | Recommended write path with node-level type/range/access validation |
+| `cam.params.<Category>.<Node>.get(default=None)` | Recommended read path for structured nodes |
+| `cam.params.<Category>.<Command>.execute()` | Recommended command invocation for command nodes |
+| `get_camera_info()` | Batch-read common parameters, then access them with `ParamNode` keys such as `info[ImageFormatControl.Width]` or `info.get(AcquisitionControl.ExposureTime)` |
 | `get_optimal_packet_size()` | Query SDK for the optimal GigE packet size (GigE only) |
 | `get_packet_size()` / `set_packet_size(size)` | Get/set GigE streaming packet size (`GevSCPSPacketSize`) |
-
-### ⚠️ Legacy compatibility API *(gradually deprecated compatibility path)*
-
-> _Use these interfaces only when migrating older code. New code should prefer the structured API above._
-
-| Method / style | Description |
-|---|---|
-| `set_parameter(name, value)` | Legacy string-based writes such as `set_parameter("ExposureTime", 5000.0)` remain compatible for now |
-| `get_parameter(name, default=None)` | Legacy string-based reads remain compatible; unknown legacy strings still fall back to int → float → string probing |
-| `get_int_parameter(name)` / `set_int_parameter(name, value)` | Legacy compatibility helpers for integer parameters |
-| `get_float_parameter(name)` / `set_float_parameter(name, value)` | Legacy compatibility helpers for float parameters |
-| `get_bool_parameter(name)` / `set_bool_parameter(name, value)` | Legacy compatibility helpers for boolean parameters |
-| `get_enum_parameter(name)` / `set_enum_parameter(name, value)` | Legacy compatibility helpers for enum parameters |
-| `set_enum_parameter_by_string(name, string_value)` | Legacy helper for enum writes by symbolic name (e.g. `"Off"`, `"Continuous"`) |
-| `get_string_parameter(name)` / `set_string_parameter(name, value)` | Legacy compatibility helpers for string parameters |
-| `execute_command(name)` | Legacy string-based command invocation; prefer `cam.<CommandNode>()` in new code |
-| `save_user_set("UserSet1")` / `load_user_set("UserSet1")` | Legacy string-based user-set helpers remain compatible for now |
-| `info["Width"]` / `info["DeviceModelName"]` | Legacy string-key access on `get_camera_info()` results remains compatible for now |
 
 ### Common parameters
 
@@ -486,27 +407,16 @@ compatibility APIs and may be gradually deprecated.
 
 #### Common commands
 
-Prefer bound command-style calls such as `cam.TriggerSoftware()`. The legacy
-`execute_command("TriggerSoftware")` form remains compatible for now, but may be
-gradually deprecated.
-
-| ParamNode member | Preferred call | Description |
+| ParamNode member | Structured call | Description |
 |---|---|---|
-| `AcquisitionControl.TriggerSoftware` | `cam.TriggerSoftware()` | Fire a software trigger |
-| `UserSetControl.UserSetSave` | `cam.UserSetSave()` | Save current parameters to the selected user set |
-| `UserSetControl.UserSetLoad` | `cam.UserSetLoad()` | Load parameters from the selected user set |
+| `AcquisitionControl.TriggerSoftware` | `cam.params.AcquisitionControl.TriggerSoftware.execute()` | Fire a software trigger |
+| `UserSetControl.UserSetSave` | `cam.params.UserSetControl.UserSetSave.execute()` | Save current parameters to the selected user set |
+| `UserSetControl.UserSetLoad` | `cam.params.UserSetControl.UserSetLoad.execute()` | Load parameters from the selected user set |
 
 ### Example: reading & writing parameters
 
 ```python
-from hikcamera import (
-    AccessMode,
-    AcquisitionControl,
-    AnalogControl,
-    HikCamera,
-    ImageFormatControl,
-    UserSetControl,
-)
+from hikcamera import AccessMode, HikCamera, enums
 
 with HikCamera.from_ip("192.168.1.100") as cam:
     cam.open(AccessMode.EXCLUSIVE)
@@ -515,21 +425,18 @@ with HikCamera.from_ip("192.168.1.100") as cam:
     info = cam.get_camera_info()
     print(info)
 
-    # Preferred high-level convenience API: structured ParamNode objects
-    cam.set_parameter(AcquisitionControl.ExposureTime, 5000.0)
-    cam.set_parameter(AnalogControl.Gain, 2.5)
-    cam.set_parameter(AcquisitionControl.AcquisitionFrameRateEnable, True)
-    cam.set_parameter(AnalogControl.GainAuto, AnalogControl.GainAuto.OFF)
+    cam.params.AcquisitionControl.ExposureTime.set(5000.0)
+    cam.params.AnalogControl.Gain.set(2.5)
+    cam.params.AcquisitionControl.AcquisitionFrameRateEnable.set(True)
+    cam.params.AnalogControl.GainAuto.set(enums.GainAuto.OFF)
 
-    # ParamNode-based read access
-    exposure = cam.get_parameter(AcquisitionControl.ExposureTime)
-    width = cam.get_parameter(ImageFormatControl.Width)
+    exposure = cam.params.AcquisitionControl.ExposureTime.get()
+    width = cam.params.ImageFormatControl.Width.get()
 
-    # Preferred command invocation
-    cam.TriggerSoftware()
+    cam.params.AcquisitionControl.TriggerSoftware.execute()
 
-    # High-level user-set helper with structured enum value
-    cam.save_user_set(UserSetControl.UserSetSelector.USER_SET_1)
+    cam.params.UserSetControl.UserSetSelector.set(enums.UserSetSelector.USER_SET_1)
+    cam.params.UserSetControl.UserSetSave.execute()
 ```
 
 ## Demos

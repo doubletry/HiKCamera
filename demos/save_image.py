@@ -94,11 +94,11 @@ def main() -> None:
         print("Camera opened.")
 
         if args.exposure is not None:
-            cam.set_parameter(AcquisitionControl.ExposureTime, args.exposure)
+            cam.params.AcquisitionControl.ExposureTime.set(args.exposure)
             print(f"ExposureTime set to {args.exposure} µs")
 
         if args.gain is not None:
-            cam.set_parameter(AnalogControl.Gain, args.gain)
+            cam.params.AnalogControl.Gain.set(args.gain)
             print(f"Gain set to {args.gain}")
 
         cam.start_grabbing()

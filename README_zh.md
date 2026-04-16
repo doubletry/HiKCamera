@@ -14,7 +14,7 @@
 | **灵活连接** | 通过 IP 地址或序列号连接；按序列号搜索时优先使用更快的分层 SDK 枚举 |
 | **多种访问模式** | 独占、控制、监视、独占带切换、组播、单播 |
 | **GigE 包大小** | 打开时自动检测最优包大小；支持手动配置 |
-| **参数访问** | 推荐使用结构化 `ParamNode` 参数组进行读写，具备 IDE 补全与类型/范围/访问权限校验；旧字符串参数名当前仍兼容 |
+| **参数访问** | 使用结构化 `cam.params.<分类>.<节点>` 方式读写参数，具备 IDE 补全、类型/范围/访问权限校验与明确的节点分组 |
 | **相机信息** | `get_camera_info()` 一次调用即可获取常用参数（图像尺寸、帧率、曝光、增益、像素格式、设备型号等） |
 | **配置管理** | 导出/导入相机配置文件；保存/加载设备用户集 |
 | **帧捕获 – 轮询模式** | `start_grabbing()` + `get_frame()` |
@@ -82,22 +82,16 @@ CameraLink 的顺序优先扫描，因此常见的 GigE 场景无需等待无关
 
 ```python
 import cv2
-from hikcamera import (
-    AccessMode,
-    AcquisitionControl,
-    AnalogControl,
-    HikCamera,
-    OutputFormat,
-)
+from hikcamera import AccessMode, HikCamera, OutputFormat, enums
 
 cameras = HikCamera.enumerate()
 with HikCamera.from_device_info(cameras[0]) as cam:
     cam.open(AccessMode.EXCLUSIVE)
 
-    # 优先使用结构化 ParamNode 参数，IDE 补全和校验更完整。
-    # 旧的字符串参数名目前仍兼容，但后续会逐步废弃。
-    cam.set_parameter(AcquisitionControl.ExposureTime, 5000.0)
-    cam.set_parameter(AnalogControl.Gain, 1.0)
+    # 优先使用结构化 cam.params API，以获得 IDE 补全和校验。
+    cam.params.AcquisitionControl.ExposureTime.set(5000.0)
+    cam.params.AnalogControl.Gain.set(1.0)
+    cam.params.AnalogControl.GainAuto.set(enums.GainAuto.OFF)
 
     cam.start_grabbing()
     frame = cam.get_frame(timeout_ms=1000, output_format=OutputFormat.BGR8)
@@ -106,10 +100,8 @@ with HikCamera.from_device_info(cameras[0]) as cam:
 cv2.imwrite("frame.png", frame)
 ```
 
-推荐优先使用 `AcquisitionControl.ExposureTime`、`AnalogControl.Gain` 这类
-`ParamNode` 写法。旧的字符串方式如
-`cam.set_parameter("ExposureTime", 5000.0)` 当前仍保持兼容，但新代码建议尽快
-迁移到结构化 API，后续会逐步废弃字符串参数名写法。
+推荐统一使用 `cam.params.<分类>.<节点>` 结构化 API，这样代码里可以直接
+看到参数节点归属，并且枚举值可自然配合单独导入的 `enums.GainAuto.OFF` 使用。
 
 ### 回调模式帧捕获
 
@@ -259,44 +251,21 @@ with HikCamera.from_ip("192.168.1.100") as cam:
 ### 带错误处理的参数访问
 
 ```python
-from hikcamera import (
-    AnalogControl,
-    HikCamera,
-    ParameterNotSupportedError,
-    ParameterReadOnlyError,
-    AcquisitionControl,
-    ImageFormatControl,
-)
+from hikcamera import HikCamera, ParameterNotSupportedError, ParameterReadOnlyError, enums
 
 with HikCamera.from_device_info(cameras[0]) as cam:
     cam.open()
 
-    # 推荐：基于 ParamNode 的访问方式
-    cam.set_parameter(AnalogControl.GainAuto, AnalogControl.GainAuto.OFF)
-
-    # 基于 ParamNode 的读取方式
     try:
-        value = cam.get_parameter(AcquisitionControl.ExposureTime)
+        cam.params.AnalogControl.GainAuto.set(enums.GainAuto.OFF)
+        value = cam.params.AcquisitionControl.ExposureTime.get()
     except ParameterNotSupportedError:
         print("此相机不支持 ExposureTime 参数")
 
     try:
-        cam.set_parameter(ImageFormatControl.Width, 1920)
+        cam.params.ImageFormatControl.Width.set(1920)
     except ParameterReadOnlyError:
         print("取帧期间 Width 为只读参数")
-```
-
-#### ⚠️ 旧版兼容写法示例（仅兼容迁移路径）
-
-> _旧版兼容路径：保留用于迁移和维护历史代码；新代码请优先使用上方结构化新接口。_
-
-```python
-with HikCamera.from_device_info(cameras[0]) as cam:
-    cam.open()
-
-    width = cam.get_int_parameter("Width")
-    cam.set_int_parameter("Width", width)
-    exposure = cam.get_parameter("ExposureTime")
 ```
 
 ### 获取相机信息
@@ -317,19 +286,6 @@ with HikCamera.from_ip("192.168.1.100") as cam:
     print(f"型号: {info.get(DeviceControl.DeviceModelName)}")
 ```
 
-#### ⚠️ 旧版兼容写法示例（仅兼容迁移路径）
-
-> _旧版兼容路径：保留用于迁移和维护历史代码；新代码请优先使用上方结构化新接口。_
-
-```python
-with HikCamera.from_ip("192.168.1.100") as cam:
-    cam.open(AccessMode.EXCLUSIVE)
-    info = cam.get_camera_info()
-
-    width = info["Width"]
-    model = info["DeviceModelName"]
-```
-
 ### 导出 / 导入相机配置
 
 ```python
@@ -348,69 +304,37 @@ with HikCamera.from_ip("192.168.1.100") as cam:
 ### 保存 / 加载设备用户集
 
 ```python
-from hikcamera import AccessMode, HikCamera, UserSetControl
+from hikcamera import AccessMode, HikCamera, enums
 
 with HikCamera.from_ip("192.168.1.100") as cam:
     cam.open(AccessMode.EXCLUSIVE)
 
-    # 推荐：使用结构化枚举值
-    cam.save_user_set(UserSetControl.UserSetSelector.USER_SET_1)
+    cam.params.UserSetControl.UserSetSelector.set(enums.UserSetSelector.USER_SET_1)
+    cam.params.UserSetControl.UserSetSave.execute()
 
     # 稍后，从用户集 1 恢复参数
-    cam.load_user_set(UserSetControl.UserSetSelector.USER_SET_1)
-```
-
-#### ⚠️ 旧版兼容写法示例（仅兼容迁移路径）
-
-> _旧版兼容路径：保留用于迁移和维护历史代码；新代码请优先使用上方结构化新接口。_
-
-```python
-with HikCamera.from_ip("192.168.1.100") as cam:
-    cam.open(AccessMode.EXCLUSIVE)
-    cam.save_user_set("UserSet1")
-    cam.load_user_set("UserSet1")
+    cam.params.UserSetControl.UserSetSelector.set(enums.UserSetSelector.USER_SET_1)
+    cam.params.UserSetControl.UserSetLoad.execute()
 ```
 
 ## 可调参数
 
-相机通过 MVS SDK 暴露 **GenICam** 标准参数。下表列出了 `get_camera_info()` 自动
-收集的常用参数，但新代码应优先使用基于 `ParamNode` 的
-`get_parameter()` / `set_parameter()` 访问方式。旧的带类型
-getter/setter 仍保留用于向后兼容，但应视为兼容接口，后续可能逐步废弃。
+相机通过 MVS SDK 暴露 **GenICam** 标准参数。下表列出了常用节点；推荐统一
+使用结构化 `cam.params.<分类>.<节点>` 访问路径。
 
-> **注意：** 并非每个型号的相机都支持所有参数。不支持的参数会抛出
-> `ParameterNotSupportedError`（或被 `set_parameter()` / `get_parameter()` 静默跳过）。
-> 下方文档已将推荐的结构化新接口与旧版兼容接口分开列出，避免两种写法混排。
+> **注意：** 并非每个型号的相机都支持所有参数。通过结构化 API 读写时，如
+> 节点不受支持会抛出 `ParameterNotSupportedError`。
 
-### 推荐的新接口
+### 结构化参数 API
 
 | 方法 / 方式 | 说明 |
 |---|---|
-| `set_parameter(param_node, value)` | 推荐的写入方式。传入 `AcquisitionControl.ExposureTime`、`AnalogControl.GainAuto` 这类 `ParamNode` 成员，可获得 IDE 补全以及 SDK 调用前的类型/范围/访问权限校验 |
-| `get_parameter(param_node, default=None)` | 推荐的读取方式。已知节点按结构化模式读取（包括 bool/enum/string/int/float） |
-| `cam.<CommandNode>()` | 推荐的命令调用方式，例如 `cam.TriggerSoftware()` / `cam.UserSetLoad()` |
-| `save_user_set(user_set)` / `load_user_set(user_set)` | 推荐传入 `UserSetControl.UserSetSelector.USER_SET_1` 这类结构化枚举成员 |
-| `get_camera_info()` | 推荐通过 `ParamNode` key 访问返回值，例如 `info[ImageFormatControl.Width]`、`info.get(AcquisitionControl.ExposureTime)` |
+| `cam.params.<分类>.<节点>.set(value)` | 推荐的写入方式，具备节点级类型/范围/访问权限校验 |
+| `cam.params.<分类>.<节点>.get(default=None)` | 推荐的读取方式 |
+| `cam.params.<分类>.<命令>.execute()` | 推荐的命令调用方式 |
+| `get_camera_info()` | 批量读取常用参数，再用 `ParamNode` key 访问，例如 `info[ImageFormatControl.Width]`、`info.get(AcquisitionControl.ExposureTime)` |
 | `get_optimal_packet_size()` | 查询 SDK 获取 GigE 最优包大小（仅 GigE 相机） |
 | `get_packet_size()` / `set_packet_size(size)` | 获取/设置 GigE 流传输包大小（`GevSCPSPacketSize`） |
-
-### ⚠️ 旧版兼容接口（逐步废弃的兼容路径）
-
-> _这些接口仅建议在迁移旧代码时使用；新代码请优先使用上方结构化新接口。_
-
-| 方法 / 方式 | 说明 |
-|---|---|
-| `set_parameter(name, value)` | 旧的字符串写入方式，例如 `set_parameter("ExposureTime", 5000.0)`，目前仍兼容 |
-| `get_parameter(name, default=None)` | 旧的字符串读取方式目前仍兼容；未知旧字符串仍会回退为按 int → float → string 顺序探测 |
-| `get_int_parameter(name)` / `set_int_parameter(name, value)` | 整型参数的兼容接口 |
-| `get_float_parameter(name)` / `set_float_parameter(name, value)` | 浮点参数的兼容接口 |
-| `get_bool_parameter(name)` / `set_bool_parameter(name, value)` | 布尔参数的兼容接口 |
-| `get_enum_parameter(name)` / `set_enum_parameter(name, value)` | 枚举参数的兼容接口 |
-| `set_enum_parameter_by_string(name, string_value)` | 通过符号名称写入枚举值的兼容接口（如 `"Off"`、`"Continuous"`） |
-| `get_string_parameter(name)` / `set_string_parameter(name, value)` | 字符串参数的兼容接口 |
-| `execute_command(name)` | 旧的字符串命令调用方式；新代码建议改用 `cam.<CommandNode>()` |
-| `save_user_set("UserSet1")` / `load_user_set("UserSet1")` | 旧的字符串用户集辅助接口，目前仍兼容 |
-| `info["Width"]` / `info["DeviceModelName"]` | `get_camera_info()` 返回值上的旧字符串 key 访问方式，目前仍兼容 |
 
 ### 常用参数
 
@@ -478,26 +402,16 @@ getter/setter 仍保留用于向后兼容，但应视为兼容接口，后续可
 
 #### 常用命令
 
-推荐优先使用 `cam.TriggerSoftware()` 这类绑定命令调用。旧的
-`execute_command("TriggerSoftware")` 形式目前仍兼容，但后续可能逐步废弃。
-
-| ParamNode 成员 | 推荐调用方式 | 说明 |
+| ParamNode 成员 | 结构化调用方式 | 说明 |
 |---|---|---|
-| `AcquisitionControl.TriggerSoftware` | `cam.TriggerSoftware()` | 发送软触发 |
-| `UserSetControl.UserSetSave` | `cam.UserSetSave()` | 将当前参数保存到选定的用户集 |
-| `UserSetControl.UserSetLoad` | `cam.UserSetLoad()` | 从选定的用户集加载参数 |
+| `AcquisitionControl.TriggerSoftware` | `cam.params.AcquisitionControl.TriggerSoftware.execute()` | 发送软触发 |
+| `UserSetControl.UserSetSave` | `cam.params.UserSetControl.UserSetSave.execute()` | 将当前参数保存到选定的用户集 |
+| `UserSetControl.UserSetLoad` | `cam.params.UserSetControl.UserSetLoad.execute()` | 从选定的用户集加载参数 |
 
 ### 示例：读写参数
 
 ```python
-from hikcamera import (
-    AccessMode,
-    AcquisitionControl,
-    AnalogControl,
-    HikCamera,
-    ImageFormatControl,
-    UserSetControl,
-)
+from hikcamera import AccessMode, HikCamera, enums
 
 with HikCamera.from_ip("192.168.1.100") as cam:
     cam.open(AccessMode.EXCLUSIVE)
@@ -506,21 +420,18 @@ with HikCamera.from_ip("192.168.1.100") as cam:
     info = cam.get_camera_info()
     print(info)
 
-    # 推荐的高层便捷写法：使用结构化 ParamNode
-    cam.set_parameter(AcquisitionControl.ExposureTime, 5000.0)
-    cam.set_parameter(AnalogControl.Gain, 2.5)
-    cam.set_parameter(AcquisitionControl.AcquisitionFrameRateEnable, True)
-    cam.set_parameter(AnalogControl.GainAuto, AnalogControl.GainAuto.OFF)
+    cam.params.AcquisitionControl.ExposureTime.set(5000.0)
+    cam.params.AnalogControl.Gain.set(2.5)
+    cam.params.AcquisitionControl.AcquisitionFrameRateEnable.set(True)
+    cam.params.AnalogControl.GainAuto.set(enums.GainAuto.OFF)
 
-    # 基于 ParamNode 的读取方式
-    exposure = cam.get_parameter(AcquisitionControl.ExposureTime)
-    width = cam.get_parameter(ImageFormatControl.Width)
+    exposure = cam.params.AcquisitionControl.ExposureTime.get()
+    width = cam.params.ImageFormatControl.Width.get()
 
-    # 推荐的命令调用方式
-    cam.TriggerSoftware()
+    cam.params.AcquisitionControl.TriggerSoftware.execute()
 
-    # 使用结构化枚举值保存用户集
-    cam.save_user_set(UserSetControl.UserSetSelector.USER_SET_1)
+    cam.params.UserSetControl.UserSetSelector.set(enums.UserSetSelector.USER_SET_1)
+    cam.params.UserSetControl.UserSetSave.execute()
 ```
 
 ## 示例程序

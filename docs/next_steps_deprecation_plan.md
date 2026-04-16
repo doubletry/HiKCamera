@@ -1,56 +1,25 @@
-# Next Steps Deprecation Plan
+# Structured Parameter API Notes
 
-## Structured parameter API migration
+## Current public direction
 
-The project now has a structured `ParamNode`-based parameter API. Future
-documentation and examples should continue to prioritize:
+The public parameter workflow is now centered on the structured proxy API:
 
-- `cam.set_parameter(AcquisitionControl.ExposureTime, 5000.0)`
-- `cam.get_parameter(AcquisitionControl.ExposureTime)`
-- `info[ImageFormatControl.Width]` for values returned by `get_camera_info()`
+- `cam.params.AcquisitionControl.ExposureTime.set(5000.0)`
+- `cam.params.AcquisitionControl.ExposureTime.get()`
+- `cam.params.AnalogControl.GainAuto.set(enums.GainAuto.OFF)`
+- `cam.params.AcquisitionControl.TriggerSoftware.execute()`
 
-## Legacy APIs planned for gradual deprecation
+Enum values should be imported from `hikcamera.enums` (for example
+`enums.GainAuto.OFF` and `enums.UserSetSelector.USER_SET_1`) so editors can
+provide enum member completion directly from the enum type.
 
-The following legacy interfaces are still supported for backward compatibility,
-but should be documented as compatibility APIs and considered for gradual
-deprecation in a future release:
+## Follow-up work
 
-- String-based parameter names in `set_parameter()` / `get_parameter()`
-- Typed parameter helpers such as:
-  - `get_int_parameter()` / `set_int_parameter()`
-  - `get_float_parameter()` / `set_float_parameter()`
-  - `get_bool_parameter()` / `set_bool_parameter()`
-  - `get_enum_parameter()` / `set_enum_parameter()`
-  - `get_string_parameter()` / `set_string_parameter()`
-- `execute_command("NodeName")` string-based command execution
-- Legacy string arguments such as `"UserSet1"` in helpers that now prefer
-  structured enum values like `UserSetControl.UserSetSelector.USER_SET_1`
-- String-key access on `get_camera_info()` results
-
-## Recommended rollout
-
-1. Keep all legacy interfaces working during the transition period.
-2. Prefer `ParamNode` usage in all demos, docs, and new tests.
-3. Add deprecation warnings only after the migration guidance is fully
-   reflected in release notes and documentation.
-4. Eventually switch examples and public recommendations entirely to the
-   `ParamNode` path.
-
-## Tentative milestones
-
-These milestones are intentionally provisional, but they document the expected
-order of work so users can plan migrations:
-
-- Next minor release (tentatively `v0.2.x`):
-  - keep all legacy APIs fully working
-  - continue migrating docs, demos, and examples to `ParamNode`
-  - keep compatibility behavior in `get_camera_info()`
-- Following minor release (tentatively `v0.3.x`):
-  - consider adding deprecation warnings for typed getter/setter helpers and
-    legacy string-key access in `get_camera_info()`
-  - consider adding deprecation warnings for `execute_command("NodeName")`
-    and legacy string user-set helper arguments
-  - keep runtime behavior backward compatible
-- Future major release (tentatively `v1.0` or later):
-  - re-evaluate whether legacy typed helpers and legacy string-key access
-    should remain supported, based on migration feedback and adoption
+1. Keep the structured proxy API and the parameter node tables synchronized with
+   the SDK parameter documentation whenever new nodes are added.
+2. Continue improving documentation examples so every parameter category example
+   shows the full `cam.params.<Category>.<Node>` path explicitly.
+3. Consider adding richer generated API documentation or type stubs in the
+   future if stronger editor hints are needed for dynamically created proxy
+   objects.
+4. Keep `get_camera_info()` examples aligned with `ParamNode` key access.

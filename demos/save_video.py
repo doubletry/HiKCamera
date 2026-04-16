@@ -116,9 +116,9 @@ def main() -> None:
         print("Camera opened.")
 
         if args.exposure is not None:
-            cam.set_parameter(AcquisitionControl.ExposureTime, args.exposure)
+            cam.params.AcquisitionControl.ExposureTime.set(args.exposure)
         if args.gain is not None:
-            cam.set_parameter(AnalogControl.Gain, args.gain)
+            cam.params.AnalogControl.Gain.set(args.gain)
 
         # Grab the first frame to get image dimensions
         # 抓取第一帧以获取图像尺寸

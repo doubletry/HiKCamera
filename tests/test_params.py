@@ -145,9 +145,9 @@ class TestParamNodeTypeValidation:
         node = ParamNode("GainAuto", GainAuto, "R/W", "Auto gain")
         assert node.validate(GainAuto.OFF) == GainAuto.OFF
 
-    def test_enum_paramnode_exposes_enum_members(self):
-        assert AnalogControl.GainAuto.OFF == GainAuto.OFF
-        assert UserSetControl.UserSetSelector.USER_SET_1.name == "USER_SET_1"
+    def test_enum_paramnode_keeps_enum_type_metadata(self):
+        assert AnalogControl.GainAuto.data_type is GainAuto
+        assert UserSetControl.UserSetSelector.data_type.__name__ == "UserSetSelector"
 
     def test_enum_rejects_raw_string(self):
         node = ParamNode("GainAuto", GainAuto, "R/W", "Auto gain")
@@ -410,83 +410,63 @@ class TestSchemaAndLookup:
 
 
 # ---------------------------------------------------------------------------
-# Integration: set_parameter / get_parameter with ParamNode
+# Integration: cam.params proxy
 # ---------------------------------------------------------------------------
 
-class TestSetParameterWithParamNode:
-    """Test set_parameter() and get_parameter() accept ParamNode objects."""
+class TestStructuredParamProxy:
+    """Test ``cam.params`` structured parameter access."""
 
-    def test_set_parameter_with_param_node_int(self, camera_with_mock_sdk):
+    def test_set_int(self, camera_with_mock_sdk):
         cam = camera_with_mock_sdk
-        cam.set_parameter(ImageFormatControl.Width, 1280)
+        cam.params.ImageFormatControl.Width.set(1280)
         cam._sdk.MV_CC_SetIntValueEx.assert_called()
 
-    def test_set_parameter_with_param_node_float(self, camera_with_mock_sdk):
+    def test_set_float(self, camera_with_mock_sdk):
         cam = camera_with_mock_sdk
-        cam.set_parameter(AcquisitionControl.ExposureTime, 5000.0)
+        cam.params.AcquisitionControl.ExposureTime.set(5000.0)
         cam._sdk.MV_CC_SetFloatValue.assert_called()
 
-    def test_set_parameter_with_param_node_bool(self, camera_with_mock_sdk):
+    def test_set_bool(self, camera_with_mock_sdk):
         cam = camera_with_mock_sdk
-        cam.set_parameter(AcquisitionControl.AcquisitionFrameRateEnable, True)
+        cam.params.AcquisitionControl.AcquisitionFrameRateEnable.set(True)
         cam._sdk.MV_CC_SetBoolValue.assert_called()
 
-    def test_set_parameter_with_param_node_enum(self, camera_with_mock_sdk):
+    def test_set_enum(self, camera_with_mock_sdk):
         cam = camera_with_mock_sdk
-        cam.set_parameter(AnalogControl.GainAuto, AnalogControl.GainAuto.OFF)
+        cam.params.AnalogControl.GainAuto.set(GainAuto.OFF)
         cam._sdk.MV_CC_SetEnumValueByString.assert_called()
 
-    def test_set_parameter_with_param_node_string(self, camera_with_mock_sdk):
+    def test_set_string(self, camera_with_mock_sdk):
         cam = camera_with_mock_sdk
-        cam.set_parameter(DeviceControl.DeviceUserID, "MyCam")
+        cam.params.DeviceControl.DeviceUserID.set("MyCam")
         cam._sdk.MV_CC_SetStringValue.assert_called()
 
-    def test_set_parameter_with_param_node_rejects_read_only(self, camera_with_mock_sdk):
+    def test_set_rejects_read_only(self, camera_with_mock_sdk):
         cam = camera_with_mock_sdk
         with pytest.raises(ParameterReadOnlyError, match="read-only"):
-            cam.set_parameter(DeviceControl.DeviceModelName, "NewModel")
+            cam.params.DeviceControl.DeviceModelName.set("NewModel")
 
-    def test_set_parameter_with_param_node_validates_range(self, camera_with_mock_sdk):
+    def test_set_validates_range(self, camera_with_mock_sdk):
         cam = camera_with_mock_sdk
         with pytest.raises(ParameterValueError, match="below minimum"):
-            cam.set_parameter(ImageFormatControl.Width, 0)
+            cam.params.ImageFormatControl.Width.set(0)
 
-    def test_set_parameter_with_param_node_validates_type(self, camera_with_mock_sdk):
+    def test_set_validates_type(self, camera_with_mock_sdk):
         cam = camera_with_mock_sdk
         with pytest.raises(ParameterValueError, match="expects float"):
-            cam.set_parameter(AcquisitionControl.ExposureTime, "fast")
+            cam.params.AcquisitionControl.ExposureTime.set("fast")
 
-    def test_set_parameter_with_param_node_float_accepts_int(self, camera_with_mock_sdk):
+    def test_set_float_accepts_int(self, camera_with_mock_sdk):
         cam = camera_with_mock_sdk
-        cam.set_parameter(AcquisitionControl.ExposureTime, 5000)
+        cam.params.AcquisitionControl.ExposureTime.set(5000)
         cam._sdk.MV_CC_SetFloatValue.assert_called()
 
-    def test_set_parameter_string_backward_compat(self, camera_with_mock_sdk):
-        """String-based calls still work exactly as before."""
+    def test_get_with_param_node(self, camera_with_mock_sdk):
         cam = camera_with_mock_sdk
-        cam.set_parameter("ExposureTime", 5000.0)
-        cam._sdk.MV_CC_SetFloatValue.assert_called()
-
-    def test_set_parameter_string_still_validates_type(self, camera_with_mock_sdk):
-        cam = camera_with_mock_sdk
-        with pytest.raises(ParameterValueError, match="expects GainAuto"):
-            cam.set_parameter("GainAuto", "Off")
-
-    def test_set_parameter_string_range_validates(self, camera_with_mock_sdk):
-        cam = camera_with_mock_sdk
-        with pytest.raises(ParameterValueError, match="below minimum"):
-            cam.set_parameter("Width", 0)
-
-    def test_set_parameter_unknown_string_falls_back(self, camera_with_mock_sdk):
-        """Unknown param names still fall back to Python type dispatch."""
-        cam = camera_with_mock_sdk
-        cam.set_parameter("SomeVendorSpecificParam", "hello")
-        cam._sdk.MV_CC_SetStringValue.assert_called()
-
-    def test_get_parameter_with_param_node(self, camera_with_mock_sdk):
-        """get_parameter accepts a ParamNode."""
-        cam = camera_with_mock_sdk
-        # The mock returns MV_OK for int getter, so it should return something
-        result = cam.get_parameter(ImageFormatControl.Width)
-        # With the mock, the actual value is 0 from ctypes default
+        result = cam.params.ImageFormatControl.Width.get()
         assert result is not None or result == 0
+
+    def test_get_returns_default_when_not_supported(self, camera_with_mock_sdk):
+        cam = camera_with_mock_sdk
+        cam._sdk.MV_CC_GetIntValueEx.return_value = 0x80000001
+        assert cam.params.ImageFormatControl.Width.get(default="fallback") == "fallback"
