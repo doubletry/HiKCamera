@@ -27,7 +27,6 @@ Typical usage / 典型用法
 from __future__ import annotations
 
 from dataclasses import dataclass
-from enum import IntEnum, StrEnum
 from typing import Any, Literal
 
 from . import enums as camera_enums
@@ -35,7 +34,6 @@ from .exceptions import ParameterReadOnlyError, ParameterValueError
 
 # Sentinel for "no value set" (distinct from ``None``).
 _UNSET: object = object()
-_ENUM_BASE_TYPES: tuple[type[StrEnum], type[IntEnum]] = (StrEnum, IntEnum)
 
 # Local enum aliases keep ``ParamNode.data_type`` visually distinct from
 # same-named ``ParamNode`` members such as ``ImageFormatControl.RegionSelector``.
@@ -177,16 +175,7 @@ class ParamNode:
 
         # 5. Type check / 类型检查
         if not isinstance(value, expected_type):
-            if isinstance(expected_type, type):
-                try:
-                    if issubclass(expected_type, _ENUM_BASE_TYPES):
-                        type_name = expected_type.__name__
-                    else:
-                        type_name = expected_type.__name__
-                except TypeError:  # pragma: no cover - defensive
-                    type_name = expected_type.__name__
-            else:
-                type_name = str(expected_type)
+            type_name = expected_type.__name__ if isinstance(expected_type, type) else str(expected_type)
             raise ParameterValueError(
                 f"Parameter {self.name!r} expects {type_name}, "
                 f"got {type(value).__name__}: {value!r}"

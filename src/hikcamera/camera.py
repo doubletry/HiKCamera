@@ -1829,6 +1829,8 @@ class HikCamera:
         else:
             getters = ()
         if not getters:
+            # Defensive fallback for unexpected schema types.
+            # 对意外的参数模式类型使用防御性回退。
             return default
 
         for getter in getters:
