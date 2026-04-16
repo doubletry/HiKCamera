@@ -146,12 +146,14 @@ class CameraInfoDict(dict[str, Any]):
         Convert ParamNode keys to their GenICam string names.
         将 ParamNode key 转换为对应的 GenICam 字符串名称。
 
-        Non-ParamNode keys are returned unchanged.
-        非 ParamNode 的 key 将原样返回。
+        Legacy string keys are accepted unchanged.
+        旧字符串 key 会原样保留。
         """
         if isinstance(key, ParamNode):
             return key.name
-        return cast(str, key)
+        if isinstance(key, str):
+            return key
+        raise TypeError("CameraInfoDict keys must be str or ParamNode")
 
     def __getitem__(self, key: object) -> Any:
         return super().__getitem__(self._normalize_key(key))
@@ -1307,7 +1309,7 @@ class HikCamera:
 
         self._ensure_frame_buffer()
         if self._frame_buffer is None:  # pragma: no cover - defensive
-            raise RuntimeError("Frame buffer is not initialized")
+            raise RuntimeError("Failed to initialize frame buffer")
 
         frame_info = MV_FRAME_OUT_INFO_EX()
         ret = self._sdk.MV_CC_GetOneFrameTimeout(
@@ -1351,7 +1353,7 @@ class HikCamera:
 
         self._ensure_frame_buffer()
         if self._frame_buffer is None:  # pragma: no cover - defensive
-            raise RuntimeError("Frame buffer is not initialized")
+            raise RuntimeError("Failed to initialize frame buffer")
 
         frame_info = MV_FRAME_OUT_INFO_EX()
         ret = self._sdk.MV_CC_GetOneFrameTimeout(
