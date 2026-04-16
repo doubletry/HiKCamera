@@ -149,6 +149,10 @@ class TestParamNodeTypeValidation:
         assert AnalogControl.GainAuto.data_type is GainAuto
         assert UserSetControl.UserSetSelector.data_type.__name__ == "UserSetSelector"
 
+    def test_enum_paramnode_does_not_expose_enum_members(self):
+        with pytest.raises(AttributeError):
+            _ = AnalogControl.GainAuto.OFF
+
     def test_enum_rejects_raw_string(self):
         node = ParamNode("GainAuto", GainAuto, "R/W", "Auto gain")
         with pytest.raises(ParameterValueError, match="expects GainAuto"):

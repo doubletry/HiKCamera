@@ -503,11 +503,9 @@ class HikCamera:
         Structured parameter access root.
         结构化参数访问入口。
         """
-        params_proxy = getattr(self, "_params_proxy", None)
-        if params_proxy is None:
-            params_proxy = CameraParamsProxy(self)
-            self._params_proxy = params_proxy
-        return params_proxy
+        if self._params_proxy is None:
+            self._params_proxy = CameraParamsProxy(self)
+        return self._params_proxy
 
     @classmethod
     def enumerate(

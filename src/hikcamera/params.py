@@ -27,6 +27,7 @@ Typical usage / 典型用法
 from __future__ import annotations
 
 from dataclasses import dataclass
+from enum import IntEnum, StrEnum
 from typing import Any, Literal
 
 from . import enums as camera_enums
@@ -161,6 +162,10 @@ class ParamNode:
             return value  # Command nodes accept any trigger value
 
         expected_type: type = self.data_type  # type: ignore[assignment]
+        is_enum_type = isinstance(expected_type, type) and issubclass(
+            expected_type,
+            (StrEnum, IntEnum),
+        )
 
         # 3. Reject bool for int/float schemas / 对 int/float 拒绝 bool
         if expected_type in (int, float) and isinstance(value, bool):
@@ -177,7 +182,7 @@ class ParamNode:
         if not isinstance(value, expected_type):
             type_name = (
                 expected_type.__name__
-                if isinstance(expected_type, type)
+                if is_enum_type or isinstance(expected_type, type)
                 else str(expected_type)
             )
             raise ParameterValueError(
