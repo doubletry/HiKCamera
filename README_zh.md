@@ -21,7 +21,11 @@
 | **帧捕获 – 回调模式** | `start_grabbing(callback=my_fn)` ── 自定义回调接收 numpy 数组 |
 | **像素格式** | Mono8/10/12/16, Bayer GR/RG/GB/BG 8/10/12（紧凑和平面格式）, RGB/BGR 8, RGBA/BGRA 8, YUV422（UYVY 和 YUYV） |
 | **输出格式** | `MONO8`、`MONO16`、`BGR8`、`RGB8`、`BGRA8`、`RGBA8`（均为 numpy 数组） |
-| **SDK 像素转换** | `sdk_convert_pixel()` 将转换任务交由原生库完成 |
+| **SDK 图像处理** | SDK 去马赛克 / 颜色转换（`MV_CC_ConvertPixelTypeEx`）作为**默认**解码路径；`utils.raw_to_numpy` 中的 OpenCV 路径作为回退保留。可通过 `cam.use_sdk_decode` 与 Bayer / ISP 调优 API 控制。 |
+| **图像保存与编码** | `cam.save_image_to_file(image, "out.png")` 与 `cam.encode_image(image, fmt)` 使用 `MV_CC_SaveImageToFileEx` / `MV_CC_SaveImageEx3`（>65535 像素自动切换到 `MV_CC_SaveImageToFileEx2`）。 |
+| **旋转 / 翻转** | `cam.rotate_image(image, angle)`、`cam.flip_image(image, direction)` 封装 `MV_CC_RotateImage` / `MV_CC_FlipImage`，支持 MONO8/RGB8/BGR8。 |
+| **视频录制** | `with cam.record(path, fps, w, h) as rec: rec.write(frame)` 封装 `MV_CC_StartRecord` / `MV_CC_InputOneFrame` / `MV_CC_StopRecord`。 |
+| **SDK 像素转换** | `sdk_convert_pixel()` 作为底层辅助方法保留（`get_frame*` / 回调路径默认使用 SDK 管线）。 |
 | **设备断开检测** | `on_exception` 回调 + `device_exception` 属性实时检测断开连接；自动重连模式 |
 | **示例程序** | 保存单张图像、录制视频、异常处理、自动重连 |
 
@@ -394,6 +398,49 @@ with HikCamera.from_ip("192.168.1.100") as cam:
 
     cam.params.UserSetControl.UserSetSelector.set(Hik.UserSetSelector.USER_SET_1)
     cam.params.UserSetControl.UserSetSave.execute()
+```
+
+## 与 MVS 输出保持一致
+
+当 `use_sdk_decode=True`（默认）时，`HikCamera` 通过海康 SDK 图像处理管线
+解码帧，输出与 MVS 桌面应用一致。以下调优 API 可用于复刻任何自定义 MVS
+配置：
+
+```python
+cam.set_bayer_cvt_quality(Hik.BayerCvtQuality.BEST)   # 默认；FAST/BALANCED/BEST/BEST_PLUS
+cam.set_bayer_filter_enable(True)                     # Bayer 平滑滤波
+cam.set_bayer_gamma(0.45)                             # Bayer 伽玛
+cam.set_gamma(Hik.PixelFormat.RGB8_PACKED, 0.45)      # 非 Bayer 像素的伽玛
+cam.set_bayer_ccm([[1024, 0, 0], [0, 1024, 0], [0, 0, 1024]])
+img = cam.image_contrast(img, contrast_factor=120)
+img = cam.purple_fringing(img, purple_value=10)
+cam.set_isp_config("/path/to/isp.xml")
+img = cam.isp_process(img)
+```
+
+设置 `cam.use_sdk_decode = False`（或在构造时使用
+`HikCamera(use_sdk_decode=False)` /
+`HikCamera.from_device_info(..., use_sdk_decode=False)`）即可回退到
+`hikcamera.utils.raw_to_numpy` 的 OpenCV 管线。
+
+## 图像保存、编码、旋转、翻转与录制
+
+```python
+# 通过 MV_CC_SaveImageToFileEx 保存图像
+cam.save_image_to_file(image, "out.png")          # 根据扩展名推断格式
+cam.save_image_to_file(image, "out.jpg", jpeg_quality=85)
+
+# 通过 MV_CC_SaveImageEx3 在内存中编码为 JPEG 字节
+jpeg_bytes = cam.encode_image(image, Hik.ImageFileFormat.JPEG)
+
+# 通过 MV_CC_RotateImage / MV_CC_FlipImage 旋转 / 翻转
+rotated = cam.rotate_image(image, Hik.RotateAngle.DEG_90)
+flipped = cam.flip_image(image, Hik.FlipDirection.HORIZONTAL)
+
+# 通过 MV_CC_StartRecord / MV_CC_InputOneFrame / MV_CC_StopRecord 录制视频
+with cam.record("out.mp4", fps=25, width=w, height=h, fmt=Hik.RecordFormat.MP4) as rec:
+    while running:
+        rec.write(cam.get_frame())
 ```
 
 ## 示例程序

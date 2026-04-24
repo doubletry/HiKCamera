@@ -21,7 +21,11 @@ A Python 3.12 library for Hikvision industrial cameras (MVS SDK).
 | **Frame capture – callback** | `start_grabbing(callback=my_fn)` – custom callback receives a numpy array |
 | **Pixel formats** | Mono8/10/12/16, Bayer GR/RG/GB/BG 8/10/12 (packed & planar), RGB/BGR 8, RGBA/BGRA 8, YUV422 (UYVY & YUYV) |
 | **Output formats** | `MONO8`, `MONO16`, `BGR8`, `RGB8`, `BGRA8`, `RGBA8` (all as numpy arrays) |
-| **SDK pixel conversion** | `sdk_convert_pixel()` offloads conversion to the native library |
+| **SDK image processing** | SDK demosaic / colour conversion (`MV_CC_ConvertPixelTypeEx`) is the **default** decode path; OpenCV in `utils.raw_to_numpy` is kept as a fallback. Tunable via `cam.use_sdk_decode` and Bayer / ISP helpers. |
+| **Image save & encode** | `cam.save_image_to_file(image, "out.png")` and `cam.encode_image(image, fmt)` use `MV_CC_SaveImageToFileEx` / `MV_CC_SaveImageEx3` (incl. >65535 px via `MV_CC_SaveImageToFileEx2`). |
+| **Rotate / flip** | `cam.rotate_image(image, angle)` and `cam.flip_image(image, direction)` wrap `MV_CC_RotateImage` / `MV_CC_FlipImage` for MONO8/RGB8/BGR8 frames. |
+| **Video recording** | `with cam.record(path, fps, w, h) as rec: rec.write(frame)` wraps `MV_CC_StartRecord` / `MV_CC_InputOneFrame` / `MV_CC_StopRecord`. |
+| **SDK pixel conversion** | `sdk_convert_pixel()` is kept as a low-level helper (the `get_frame*` / callback pipeline now uses the SDK by default). |
 | **Device disconnect detection** | `on_exception` callback + `device_exception` property for real-time disconnect detection; automatic reconnection pattern |
 | **Demos** | Save single image, record video, exception handling, auto-reconnect |
 
@@ -399,6 +403,48 @@ with HikCamera.from_ip("192.168.1.100") as cam:
 
     cam.params.UserSetControl.UserSetSelector.set(Hik.UserSetSelector.USER_SET_1)
     cam.params.UserSetControl.UserSetSave.execute()
+```
+
+## Matching MVS output
+
+When `use_sdk_decode=True` (the default) `HikCamera` decodes frames through the
+Hikvision SDK image-processing pipeline, so output matches the MVS desktop
+application. The following tuning APIs let you mirror any custom MVS profile:
+
+```python
+cam.set_bayer_cvt_quality(Hik.BayerCvtQuality.BEST)   # default; FAST/BALANCED/BEST/BEST_PLUS
+cam.set_bayer_filter_enable(True)                     # Bayer smooth filter
+cam.set_bayer_gamma(0.45)                             # Bayer gamma value
+cam.set_gamma(Hik.PixelFormat.RGB8_PACKED, 0.45)      # gamma for non-Bayer formats
+cam.set_bayer_ccm([[1024, 0, 0], [0, 1024, 0], [0, 0, 1024]])
+img = cam.image_contrast(img, contrast_factor=120)
+img = cam.purple_fringing(img, purple_value=10)
+cam.set_isp_config("/path/to/isp.xml")
+img = cam.isp_process(img)
+```
+
+Set `cam.use_sdk_decode = False` (or pass `HikCamera(use_sdk_decode=False)` /
+`HikCamera.from_device_info(..., use_sdk_decode=False)` *via the constructor*)
+to fall back to the OpenCV-based pipeline in `hikcamera.utils.raw_to_numpy`.
+
+## Image save, encode, rotate, flip & record
+
+```python
+# Save an image to disk via MV_CC_SaveImageToFileEx
+cam.save_image_to_file(image, "out.png")          # format inferred from extension
+cam.save_image_to_file(image, "out.jpg", jpeg_quality=85)
+
+# Encode in-memory to a JPEG byte string via MV_CC_SaveImageEx3
+jpeg_bytes = cam.encode_image(image, Hik.ImageFileFormat.JPEG)
+
+# Rotate / flip via MV_CC_RotateImage / MV_CC_FlipImage
+rotated = cam.rotate_image(image, Hik.RotateAngle.DEG_90)
+flipped = cam.flip_image(image, Hik.FlipDirection.HORIZONTAL)
+
+# Record a video via MV_CC_StartRecord / MV_CC_InputOneFrame / MV_CC_StopRecord
+with cam.record("out.mp4", fps=25, width=w, height=h, fmt=Hik.RecordFormat.MP4) as rec:
+    while running:
+        rec.write(cam.get_frame())
 ```
 
 ## Demos

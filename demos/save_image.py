@@ -21,7 +21,6 @@ import argparse
 import sys
 from pathlib import Path
 
-import cv2
 import numpy as np
 
 from hikcamera import (
@@ -89,6 +88,11 @@ def main() -> None:
         cam.open(Hik.AccessMode.EXCLUSIVE)
         print("Camera opened.")
 
+        # Optional: explicitly set the Bayer demosaic quality (BEST is the
+        # SDK-pipeline default applied by HikCamera.open()).
+        # 可选：显式设置 Bayer 去马赛克质量（HikCamera.open() 默认应用 BEST）。
+        cam.set_bayer_cvt_quality(Hik.BayerCvtQuality.BEST)
+
         if args.exposure is not None:
             cam.params.AcquisitionControl.ExposureTime.set(args.exposure)
             print(f"ExposureTime set to {args.exposure} µs")
@@ -105,24 +109,13 @@ def main() -> None:
         )
         cam.stop_grabbing()
 
-    # ---------------------------------------------------------------
-    # Save image / 保存图像
-    # ---------------------------------------------------------------
-    output_path = Path(args.output)
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-
-    if output_format in (Hik.OutputFormat.MONO8, Hik.OutputFormat.MONO16):
-        cv2.imwrite(str(output_path), image)
-    elif output_format in (Hik.OutputFormat.RGB8, Hik.OutputFormat.RGBA8):
-        # OpenCV expects BGR; convert before saving
-        # OpenCV 需要 BGR 格式；保存前进行转换
-        if output_format == Hik.OutputFormat.RGB8:
-            save_img = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
-        else:
-            save_img = cv2.cvtColor(image, cv2.COLOR_RGBA2BGRA)
-        cv2.imwrite(str(output_path), save_img)
-    else:
-        cv2.imwrite(str(output_path), image)
+        # -----------------------------------------------------------
+        # Save image via the SDK (MV_CC_SaveImageToFileEx).
+        # 通过 SDK (MV_CC_SaveImageToFileEx) 保存图像。
+        # -----------------------------------------------------------
+        output_path = Path(args.output)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        cam.save_image_to_file(image, output_path)
 
     print(f"Image saved to {output_path}  (shape={image.shape}, dtype={image.dtype})")
 

@@ -2,9 +2,11 @@
 Demo: Capture a sequence of frames and save them as a video file.
 演示：捕获一系列帧并保存为视频文件。
 
-Uses the callback-based acquisition mode so no frames are dropped
-between calls.
-使用基于回调的采集模式以避免帧丢失。
+Uses the SDK-backed :py:meth:`~hikcamera.HikCamera.record` context manager
+together with callback-based acquisition so frames are not dropped between
+calls.
+使用 SDK 提供的 :py:meth:`~hikcamera.HikCamera.record` 上下文管理器
+配合回调采集，避免帧丢失。
 
 Usage / 用法::
 
@@ -26,7 +28,6 @@ import time
 from pathlib import Path
 from typing import Any
 
-import cv2
 import numpy as np
 
 from hikcamera import (
@@ -145,36 +146,31 @@ def main() -> None:
         cam.start_grabbing(callback=on_frame, output_format=Hik.OutputFormat.BGR8)
 
         # ---------------------------------------------------------------
-        # Set up video writer / 设置视频写入器
+        # Open the SDK recorder / 打开 SDK 录制器
         # ---------------------------------------------------------------
         output_path = Path(args.output)
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
-        fourcc = cv2.VideoWriter_fourcc(*"mp4v")
-        writer = cv2.VideoWriter(str(output_path), fourcc, args.fps, (w, h))
-        if not writer.isOpened():
-            print(f"Failed to open VideoWriter for {output_path}")
-            cam.stop_grabbing()
-            sys.exit(1)
+        with cam.record(
+            output_path,
+            fps=args.fps,
+            width=w,
+            height=h,
+            fmt=Hik.RecordFormat.MP4,
+        ) as recorder:
+            recorder.write(first_frame)
+            total_frames = 1
+            end_time = time.monotonic() + args.duration
 
-        # ---------------------------------------------------------------
-        # Write first frame then collect remaining frames
-        # 写入第一帧，然后采集剩余帧
-        # ---------------------------------------------------------------
-        writer.write(first_frame)
-        total_frames = 1
-        end_time = time.monotonic() + args.duration
-
-        while time.monotonic() < end_time:
-            try:
-                frame = frame_queue.get(timeout=0.1)
-                writer.write(frame)
-                total_frames += 1
-            except queue.Empty:
-                continue
+            while time.monotonic() < end_time:
+                try:
+                    frame = frame_queue.get(timeout=0.1)
+                    recorder.write(frame)
+                    total_frames += 1
+                except queue.Empty:
+                    continue
 
         cam.stop_grabbing()
-        writer.release()
 
     print(
         f"Video saved to {output_path}  "
