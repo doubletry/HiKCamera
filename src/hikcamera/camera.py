@@ -51,6 +51,7 @@ from ctypes import c_ubyte, c_uint, c_void_p
 from enum import IntEnum, StrEnum
 from typing import Any, cast
 
+import cv2
 import numpy as np
 
 from .enums import (
@@ -2617,10 +2618,38 @@ class HikCamera:
         ``fmt`` defaults to inferring from the file extension.
         ``fmt`` 默认根据文件扩展名推断。
         """
-        self._assert_open()
         path_str = os.fspath(path)
         if fmt is None:
             fmt = _infer_image_format(path_str)
+        try:
+            self._save_image_to_file_sdk(
+                image,
+                path_str,
+                int(fmt),
+                src_pixel_type=src_pixel_type,
+                jpeg_quality=jpeg_quality,
+                png_compression=png_compression,
+            )
+        except (CameraNotOpenError, FeatureUnsupportedError, HikCameraError) as exc:
+            logger.debug(
+                "SDK image save failed, falling back to OpenCV for %s: %s",
+                path_str,
+                exc,
+            )
+            _save_image_with_opencv(image, path_str)
+
+    def _save_image_to_file_sdk(
+        self,
+        image: np.ndarray,
+        path_str: str,
+        fmt: int,
+        *,
+        src_pixel_type: int | None,
+        jpeg_quality: int,
+        png_compression: int,
+    ) -> None:
+        """Internal SDK-backed implementation for :meth:`save_image_to_file`."""
+        self._assert_open()
         h, w = image.shape[:2]
         data_bytes = image.tobytes()
         src_buf = (c_ubyte * len(data_bytes)).from_buffer_copy(data_bytes)
@@ -2631,20 +2660,18 @@ class HikCamera:
         )
         params.pData = src_buf
         params.nDataLen = len(data_bytes)
-        params.enImageType = int(fmt)
+        params.enImageType = fmt
         path_bytes = os.fsencode(path_str)
         if len(path_bytes) >= 256:
             raise ValueError("Image path is too long (max 255 bytes)")
         params.pImagePath = path_bytes
         params.nQuality = (
-            int(jpeg_quality) if int(fmt) == int(Hik.ImageFileFormat.JPEG) else int(png_compression)
+            int(jpeg_quality)
+            if fmt == int(Hik.ImageFileFormat.JPEG)
+            else int(png_compression)
         )
         params.iMethodValue = 0
 
-        # MV_CC_SaveImageToFileEx uses uint16 width/height; switch to the
-        # 64-bit-dimension variant when needed.
-        # MV_CC_SaveImageToFileEx 的宽高使用 uint16；当超出范围时切换至支持
-        # 64 位维度的变体。
         if w > 0xFFFF or h > 0xFFFF:
             big = getattr(self._sdk, "MV_CC_SaveImageToFileEx2", None)
             if big is None:
@@ -3044,6 +3071,27 @@ def _infer_image_format(path: str) -> ImageFileFormat:
         f"Cannot infer image format from extension {ext!r}; "
         "pass `fmt=Hik.ImageFileFormat.<...>` explicitly"
     )
+
+
+def _save_image_with_opencv(image: np.ndarray, path: str) -> None:
+    """
+    Save *image* with OpenCV as a fallback when the SDK save APIs are
+    unavailable or fail at runtime.
+    当 SDK 图像保存 API 不可用或运行时报错时，使用 OpenCV 作为回退保存 *image*。
+    """
+    save_img = image
+    if image.ndim == 3 and image.shape[2] == 3:
+        # Heuristic: HikCamera returns BGR for the default hot path and the
+        # demo default is BGR8, so 3-channel images can be written directly.
+        # For RGB callers, the documented workaround is to pass a BGR image or
+        # save via the SDK path.
+        # 启发式规则：HikCamera 默认热路径返回 BGR，且 demo 默认使用 BGR8，
+        # 因此 3 通道图像可直接写入。若调用方持有 RGB 图像，可先转换为 BGR
+        # 或优先使用 SDK 路径保存。
+        save_img = image
+    ok = cv2.imwrite(path, save_img)
+    if not ok:
+        raise HikCameraError(f"OpenCV fallback failed to save image to {path!r}")
 
 
 # ---------------------------------------------------------------------------

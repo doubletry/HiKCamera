@@ -11,6 +11,7 @@ from unittest.mock import MagicMock
 import numpy as np
 import pytest
 
+import hikcamera.camera as camera_module
 from hikcamera.enums import (
     BayerCvtQuality,
     FlipDirection,
@@ -20,7 +21,7 @@ from hikcamera.enums import (
     PixelFormat,
     RotateAngle,
 )
-from hikcamera.exceptions import FeatureUnsupportedError, HikCameraError, PixelFormatError
+from hikcamera.exceptions import FeatureUnsupportedError, PixelFormatError
 from hikcamera.sdk_wrapper import (
     MV_CC_FLIP_IMAGE_PARAM,
     MV_CC_ROTATE_IMAGE_PARAM,
@@ -166,8 +167,27 @@ class TestSaveImageToFile:
         cam = camera_with_mock_sdk
         cam._sdk.MV_CC_SaveImageToFileEx = MagicMock(return_value=MvErrorCode.MV_E_PARAMETER)
         img = np.zeros((4, 4, 3), dtype=np.uint8)
-        with pytest.raises(HikCameraError):
+        fallback = MagicMock(return_value=True)
+        original = camera_module.cv2.imwrite
+        camera_module.cv2.imwrite = fallback
+        try:
             cam.save_image_to_file(img, tmp_path / "image.png")
+        finally:
+            camera_module.cv2.imwrite = original
+        fallback.assert_called_once()
+
+    def test_save_falls_back_when_camera_is_closed(self, camera_with_mock_sdk, tmp_path):
+        cam = camera_with_mock_sdk
+        cam._is_open = False
+        img = np.zeros((4, 4, 3), dtype=np.uint8)
+        fallback = MagicMock(return_value=True)
+        original = camera_module.cv2.imwrite
+        camera_module.cv2.imwrite = fallback
+        try:
+            cam.save_image_to_file(img, tmp_path / "image.png")
+        finally:
+            camera_module.cv2.imwrite = original
+        fallback.assert_called_once()
 
 
 # ---------------------------------------------------------------------------
