@@ -2672,6 +2672,10 @@ class HikCamera:
         )
         params.iMethodValue = 0
 
+        # MV_CC_SaveImageToFileEx uses uint16 width/height; switch to the
+        # 64-bit-dimension variant when needed.
+        # MV_CC_SaveImageToFileEx 的宽高使用 uint16；当超出范围时切换至支持
+        # 64 位维度的变体。
         if w > 0xFFFF or h > 0xFFFF:
             big = getattr(self._sdk, "MV_CC_SaveImageToFileEx2", None)
             if big is None:
@@ -3079,17 +3083,16 @@ def _save_image_with_opencv(image: np.ndarray, path: str) -> None:
     unavailable or fail at runtime.
     当 SDK 图像保存 API 不可用或运行时报错时，使用 OpenCV 作为回退保存 *image*。
     """
-    save_img = image
-    if image.ndim == 3 and image.shape[2] == 3:
-        # Heuristic: HikCamera returns BGR for the default hot path and the
-        # demo default is BGR8, so 3-channel images can be written directly.
-        # For RGB callers, the documented workaround is to pass a BGR image or
-        # save via the SDK path.
-        # 启发式规则：HikCamera 默认热路径返回 BGR，且 demo 默认使用 BGR8，
-        # 因此 3 通道图像可直接写入。若调用方持有 RGB 图像，可先转换为 BGR
-        # 或优先使用 SDK 路径保存。
-        pass
-    ok = cv2.imwrite(path, save_img)
+    # Heuristic: HikCamera returns BGR for the default hot path and the demo
+    # default is BGR8, so 3-channel images can be written directly.
+    # For RGB callers, the documented workaround is to pass a BGR image or
+    # save via the SDK path.
+    # 启发式规则：HikCamera 默认热路径返回 BGR，且 demo 默认使用 BGR8，
+    # 因此 3 通道图像可直接写入。若调用方持有 RGB 图像，可先转换为 BGR
+    # 或优先使用 SDK 路径保存。
+    # 3-channel images are already in OpenCV's BGR layout.
+    # 3 通道图像已处于 OpenCV 所需的 BGR 排列。
+    ok = cv2.imwrite(path, image)
     if not ok:
         raise HikCameraError(f"OpenCV fallback failed to save image to {path!r}")
 
