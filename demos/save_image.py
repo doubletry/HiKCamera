@@ -88,11 +88,6 @@ def main() -> None:
         cam.open(Hik.AccessMode.EXCLUSIVE)
         print("Camera opened.")
 
-        # Optional: explicitly set the Bayer demosaic quality (BEST is the
-        # SDK-pipeline default applied by HikCamera.open()).
-        # 可选：显式设置 Bayer 去马赛克质量（HikCamera.open() 默认应用 BEST）。
-        cam.set_bayer_cvt_quality(Hik.BayerCvtQuality.BEST)
-
         if args.exposure is not None:
             cam.params.AcquisitionControl.ExposureTime.set(args.exposure)
             print(f"ExposureTime set to {args.exposure} µs")

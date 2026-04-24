@@ -426,21 +426,31 @@ img = cam.isp_process(img)
 ## 图像保存、编码、旋转、翻转与录制
 
 ```python
-# 通过 MV_CC_SaveImageToFileEx 保存图像
-cam.save_image_to_file(image, "out.png")          # 根据扩展名推断格式
-cam.save_image_to_file(image, "out.jpg", jpeg_quality=85)
+with HikCamera.from_ip("192.168.1.100") as cam:
+    cam.open(Hik.AccessMode.EXCLUSIVE)
+    cam.start_grabbing()
 
-# 通过 MV_CC_SaveImageEx3 在内存中编码为 JPEG 字节
-jpeg_bytes = cam.encode_image(image, Hik.ImageFileFormat.JPEG)
+    image = cam.get_frame(output_format=Hik.OutputFormat.BGR8)
 
-# 通过 MV_CC_RotateImage / MV_CC_FlipImage 旋转 / 翻转
-rotated = cam.rotate_image(image, Hik.RotateAngle.DEG_90)
-flipped = cam.flip_image(image, Hik.FlipDirection.HORIZONTAL)
+    # 通过 MV_CC_SaveImageToFileEx 保存图像
+    cam.save_image_to_file(image, "out.png")          # 根据扩展名推断格式
+    cam.save_image_to_file(image, "out.jpg", jpeg_quality=85)
 
-# 通过 MV_CC_StartRecord / MV_CC_InputOneFrame / MV_CC_StopRecord 录制视频
-with cam.record("out.mp4", fps=25, width=w, height=h, fmt=Hik.RecordFormat.MP4) as rec:
-    while running:
-        rec.write(cam.get_frame())
+    # 通过 MV_CC_SaveImageEx3 在内存中编码为 JPEG 字节
+    jpeg_bytes = cam.encode_image(image, Hik.ImageFileFormat.JPEG)
+
+    # 通过 MV_CC_RotateImage / MV_CC_FlipImage 旋转 / 翻转
+    rotated = cam.rotate_image(image, Hik.RotateAngle.DEG_90)
+    flipped = cam.flip_image(image, Hik.FlipDirection.HORIZONTAL)
+
+    # 从 BGR8 图像录制一小段 MP4
+    h, w = image.shape[:2]
+    with cam.record("out.mp4", fps=25, width=w, height=h, fmt=Hik.RecordFormat.MP4) as rec:
+        rec.write(image)
+        for _ in range(100):
+            rec.write(cam.get_frame(output_format=Hik.OutputFormat.BGR8))
+
+    cam.stop_grabbing()
 ```
 
 ## 示例程序

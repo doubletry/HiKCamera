@@ -430,21 +430,31 @@ to fall back to the OpenCV-based pipeline in `hikcamera.utils.raw_to_numpy`.
 ## Image save, encode, rotate, flip & record
 
 ```python
-# Save an image to disk via MV_CC_SaveImageToFileEx
-cam.save_image_to_file(image, "out.png")          # format inferred from extension
-cam.save_image_to_file(image, "out.jpg", jpeg_quality=85)
+with HikCamera.from_ip("192.168.1.100") as cam:
+    cam.open(Hik.AccessMode.EXCLUSIVE)
+    cam.start_grabbing()
 
-# Encode in-memory to a JPEG byte string via MV_CC_SaveImageEx3
-jpeg_bytes = cam.encode_image(image, Hik.ImageFileFormat.JPEG)
+    image = cam.get_frame(output_format=Hik.OutputFormat.BGR8)
 
-# Rotate / flip via MV_CC_RotateImage / MV_CC_FlipImage
-rotated = cam.rotate_image(image, Hik.RotateAngle.DEG_90)
-flipped = cam.flip_image(image, Hik.FlipDirection.HORIZONTAL)
+    # Save an image to disk via MV_CC_SaveImageToFileEx
+    cam.save_image_to_file(image, "out.png")          # format inferred from extension
+    cam.save_image_to_file(image, "out.jpg", jpeg_quality=85)
 
-# Record a video via MV_CC_StartRecord / MV_CC_InputOneFrame / MV_CC_StopRecord
-with cam.record("out.mp4", fps=25, width=w, height=h, fmt=Hik.RecordFormat.MP4) as rec:
-    while running:
-        rec.write(cam.get_frame())
+    # Encode in-memory to a JPEG byte string via MV_CC_SaveImageEx3
+    jpeg_bytes = cam.encode_image(image, Hik.ImageFileFormat.JPEG)
+
+    # Rotate / flip via MV_CC_RotateImage / MV_CC_FlipImage
+    rotated = cam.rotate_image(image, Hik.RotateAngle.DEG_90)
+    flipped = cam.flip_image(image, Hik.FlipDirection.HORIZONTAL)
+
+    # Record a short MP4 clip from BGR8 frames
+    h, w = image.shape[:2]
+    with cam.record("out.mp4", fps=25, width=w, height=h, fmt=Hik.RecordFormat.MP4) as rec:
+        rec.write(image)
+        for _ in range(100):
+            rec.write(cam.get_frame(output_format=Hik.OutputFormat.BGR8))
+
+    cam.stop_grabbing()
 ```
 
 ## Demos

@@ -3,10 +3,9 @@ Demo: Capture a sequence of frames and save them as a video file.
 演示：捕获一系列帧并保存为视频文件。
 
 Uses the SDK-backed :py:meth:`~hikcamera.HikCamera.record` context manager
-together with callback-based acquisition so frames are not dropped between
-calls.
-使用 SDK 提供的 :py:meth:`~hikcamera.HikCamera.record` 上下文管理器
-配合回调采集，避免帧丢失。
+together with polling-based acquisition for a simple, robust demo flow.
+使用 SDK 提供的 :py:meth:`~hikcamera.HikCamera.record` 上下文管理器，
+配合轮询取帧实现一个简单、稳健的示例流程。
 
 Usage / 用法::
 
@@ -22,17 +21,15 @@ before executing this script.
 from __future__ import annotations
 
 import argparse
-import queue
 import sys
 import time
 from pathlib import Path
-from typing import Any
-
-import numpy as np
 
 from hikcamera import (
+    FrameTimeoutError,
     Hik,
     HikCamera,
+    HikCameraError,
     SDKNotFoundError,
 )
 
@@ -61,6 +58,22 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def infer_record_format(path: str | Path) -> Hik.RecordFormat:
+    """
+    Infer the SDK recorder format from the output file extension.
+    根据输出文件扩展名推断 SDK 录制格式。
+    """
+    suffix = Path(path).suffix.lower()
+    if suffix == ".avi":
+        return Hik.RecordFormat.AVI
+    if suffix in {"", ".mp4"}:
+        return Hik.RecordFormat.MP4
+    raise ValueError(
+        f"Cannot infer record format from extension {suffix!r}; "
+        "use a .mp4 or .avi output path"
+    )
+
+
 def main() -> None:
     args = parse_args()
 
@@ -87,25 +100,6 @@ def main() -> None:
         sys.exit(1)
 
     # ---------------------------------------------------------------
-    # Thread-safe frame queue / 线程安全帧队列
-    # ---------------------------------------------------------------
-    frame_queue: queue.Queue[np.ndarray] = queue.Queue(maxsize=256)
-
-    def on_frame(image: np.ndarray, frame_info: dict[str, Any]) -> None:
-        """
-        Enqueue decoded frames (drop oldest if full to avoid blocking).
-        将解码后的帧入队（队列满时丢弃最旧帧以避免阻塞）。
-        """
-        try:
-            frame_queue.put_nowait(image)
-        except queue.Full:
-            try:
-                frame_queue.get_nowait()
-            except queue.Empty:
-                pass
-            frame_queue.put_nowait(image)
-
-    # ---------------------------------------------------------------
     # Open and start grabbing / 打开相机并开始取帧
     # ---------------------------------------------------------------
     with cam:
@@ -121,56 +115,47 @@ def main() -> None:
         # 抓取第一帧以获取图像尺寸
         cam.start_grabbing()
         print(f"Grabbing started. Recording for {args.duration:.1f} seconds …")
-
-        # Wait for the first frame to determine size
-        # 等待第一帧以确定尺寸
-        first_frame: np.ndarray | None = None
-        deadline = time.monotonic() + 5.0
-        while first_frame is None and time.monotonic() < deadline:
-            try:
-                first_frame = cam.get_frame(timeout_ms=500, output_format=Hik.OutputFormat.BGR8)
-            except Exception:  # noqa: BLE001
-                continue
-
-        if first_frame is None:
-            print("Failed to receive any frames. Aborting.")
-            cam.stop_grabbing()
-            sys.exit(1)
-
-        h, w = first_frame.shape[:2]
-        print(f"Frame size: {w}×{h}")
-
-        cam.stop_grabbing()
-
-        # Restart with callback / 以回调模式重新启动
-        cam.start_grabbing(callback=on_frame, output_format=Hik.OutputFormat.BGR8)
-
-        # ---------------------------------------------------------------
-        # Open the SDK recorder / 打开 SDK 录制器
-        # ---------------------------------------------------------------
         output_path = Path(args.output)
         output_path.parent.mkdir(parents=True, exist_ok=True)
+        total_frames = 0
+        try:
+            first_frame = cam.get_frame(timeout_ms=5000, output_format=Hik.OutputFormat.BGR8)
+            h, w = first_frame.shape[:2]
+            print(f"Frame size: {w}×{h}")
 
-        with cam.record(
-            output_path,
-            fps=args.fps,
-            width=w,
-            height=h,
-            fmt=Hik.RecordFormat.MP4,
-        ) as recorder:
-            recorder.write(first_frame)
-            total_frames = 1
-            end_time = time.monotonic() + args.duration
+            # -----------------------------------------------------------
+            # Open the SDK recorder / 打开 SDK 录制器
+            # -----------------------------------------------------------
+            with cam.record(
+                output_path,
+                fps=args.fps,
+                width=w,
+                height=h,
+                fmt=infer_record_format(output_path),
+            ) as recorder:
+                recorder.write(first_frame)
+                total_frames = 1
+                end_time = time.monotonic() + args.duration
 
-            while time.monotonic() < end_time:
                 try:
-                    frame = frame_queue.get(timeout=0.1)
-                    recorder.write(frame)
-                    total_frames += 1
-                except queue.Empty:
-                    continue
-
-        cam.stop_grabbing()
+                    while time.monotonic() < end_time:
+                        remaining_ms = max(1, int((end_time - time.monotonic()) * 1000))
+                        try:
+                            frame = cam.get_frame(
+                                timeout_ms=min(remaining_ms, 1000),
+                                output_format=Hik.OutputFormat.BGR8,
+                            )
+                        except FrameTimeoutError:
+                            continue
+                        recorder.write(frame)
+                        total_frames += 1
+                except KeyboardInterrupt:
+                    print("\nCtrl+C received. Stopping recording …")
+        finally:
+            try:
+                cam.stop_grabbing()
+            except HikCameraError as exc:
+                print(f"Stopping grabbing reported: {exc}")
 
     print(
         f"Video saved to {output_path}  "
