@@ -21,7 +21,7 @@ A Python 3.12 library for Hikvision industrial cameras (MVS SDK).
 | **Frame capture – callback** | `start_grabbing(callback=my_fn)` – custom callback receives a numpy array |
 | **Pixel formats** | Mono8/10/12/16, Bayer GR/RG/GB/BG 8/10/12 (packed & planar), RGB/BGR 8, RGBA/BGRA 8, YUV422 (UYVY & YUYV) |
 | **Output formats** | `MONO8`, `MONO16`, `BGR8`, `RGB8`, `BGRA8`, `RGBA8` (all as numpy arrays) |
-| **SDK image processing** | SDK demosaic / colour conversion (`MV_CC_ConvertPixelTypeEx`) is the **default** decode path; OpenCV in `utils.raw_to_numpy` is kept as a fallback. Tunable via `cam.use_sdk_decode` and Bayer / ISP helpers. |
+| **SDK image processing** | SDK demosaic / colour conversion (`MV_CC_ConvertPixelTypeEx`) is the **default** decode path; OpenCV in `utils.raw_to_numpy` is kept as a fallback. Toggle via `cam.set_use_sdk_decode(...)` and tune with the Bayer / ISP helpers. |
 | **Image save & encode** | Captured frames are numpy arrays; save them with OpenCV (`cv2.imwrite`) and encode in-memory with `cam.encode_image(image, fmt)` when SDK-side compression is needed. |
 | **Rotate / flip** | `cam.rotate_image(image, angle)` and `cam.flip_image(image, direction)` wrap `MV_CC_RotateImage` / `MV_CC_FlipImage` for MONO8/RGB8/BGR8 frames. |
 | **Video recording** | Record returned numpy frames with OpenCV `cv2.VideoWriter`; see `demos/save_video.py` for a callback-based example that uses the camera FPS. |
@@ -407,9 +407,11 @@ with HikCamera.from_ip("192.168.1.100") as cam:
 
 ## Matching MVS output
 
-When `use_sdk_decode=True` (the default) `HikCamera` decodes frames through the
-Hikvision SDK image-processing pipeline, so output matches the MVS desktop
-application. The following tuning APIs let you mirror any custom MVS profile:
+By default `HikCamera` decodes frames through the Hikvision SDK
+image-processing pipeline (`cam.use_sdk_decode` is `True`), so output matches
+the MVS desktop application. Toggle the pipeline at runtime with
+`cam.set_use_sdk_decode(...)` (see below) and use the following tuning APIs to
+mirror any custom MVS profile:
 
 ```python
 cam.set_bayer_cvt_quality(Hik.BayerCvtQuality.BEST)   # default; FAST/BALANCED/BEST/BEST_PLUS
@@ -423,15 +425,21 @@ cam.set_isp_config("/path/to/isp.xml")
 img = cam.isp_process(img)
 ```
 
+> **Migration note**: the `use_sdk_decode=` keyword argument was removed from
+> `HikCamera()` and the `from_device_info` / `from_ip` / `from_serial_number`
+> factory methods. Toggle the pipeline with `cam.set_use_sdk_decode(False)` /
+> `cam.get_use_sdk_decode()` instead.
+
 Practical guidance:
 
-- `use_sdk_decode=True` (default): recommended when you want output to match MVS,
+- SDK decode enabled (default): recommended when you want output to match MVS,
   especially for Bayer cameras or when you plan to use Bayer / ISP tuning APIs.
-- `use_sdk_decode=False`: falls back to the OpenCV-based pipeline in
-  `hikcamera.utils.raw_to_numpy`. This is useful when you want the simplest
-  numpy/OpenCV-only decode path or need to compare SDK vs OpenCV output.
+- SDK decode disabled (`cam.set_use_sdk_decode(False)`): falls back to the
+  OpenCV-based pipeline in `hikcamera.utils.raw_to_numpy`. This is useful when
+  you want the simplest numpy/OpenCV-only decode path or need to compare SDK vs
+  OpenCV output.
 - `set_bayer_cvt_quality(...)` only affects Bayer demosaic in the SDK decode
-  path, so it is only meaningful when `use_sdk_decode=True`.
+  path, so it is only meaningful while SDK decode is enabled.
 - `HikCamera.open()` already applies `Hik.BayerCvtQuality.BEST` by default.
   Call `cam.set_bayer_cvt_quality(...)` after `open()` and before grabbing if
   you want a different speed/quality trade-off:
@@ -452,7 +460,8 @@ with HikCamera.from_device_info(devices[0]) as cam:
     cam.stop_grabbing()
 
 # Force the OpenCV decode path instead of the SDK pipeline
-with HikCamera.from_device_info(devices[0], use_sdk_decode=False) as cam:
+with HikCamera.from_device_info(devices[0]) as cam:
+    cam.set_use_sdk_decode(False)
     cam.open()
     cam.start_grabbing()
     frame = cam.get_frame(output_format=Hik.OutputFormat.BGR8)

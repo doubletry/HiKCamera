@@ -25,9 +25,13 @@ Note / 注意
 This module is the **OpenCV-based fallback** image-conversion path.
 The SDK pipeline (``MV_CC_ConvertPixelTypeEx``, optionally preceded by
 ``MV_CC_HB_Decode``) is preferred whenever a :py:class:`HikCamera`
-instance is open with ``use_sdk_decode=True`` (the default).
+instance is open and :py:attr:`HikCamera.use_sdk_decode` is ``True``
+(the default; toggle via
+:py:meth:`HikCamera.set_use_sdk_decode`).
 本模块为基于 OpenCV 的**回退**图像转换路径。
-当 :py:class:`HikCamera` 实例已打开且 ``use_sdk_decode=True``（默认）时，
+当 :py:class:`HikCamera` 实例已打开且
+:py:attr:`HikCamera.use_sdk_decode` 为 ``True``（默认；通过
+:py:meth:`HikCamera.set_use_sdk_decode` 切换）时，
 优先使用 SDK 管线（``MV_CC_ConvertPixelTypeEx``，必要时先经过
 ``MV_CC_HB_Decode``）。
 

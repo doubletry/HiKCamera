@@ -26,7 +26,8 @@ provide enum member completion directly from the enum type.
 5. **`HikCamera.sdk_convert_pixel`** remains public for backward compatibility
    but is now considered a low-level helper – the high-level
    `get_frame*` / callback path goes through the SDK pipeline automatically
-   when `use_sdk_decode=True` (the default). It may be moved to an
+   when :py:attr:`HikCamera.use_sdk_decode` is ``True`` (the default;
+   toggle via :py:meth:`HikCamera.set_use_sdk_decode`). It may be moved to an
    underscore-prefixed name in a future major release. New code should
    save / record the returned numpy frames with OpenCV, and only use the
    library helpers where SDK-side processing is still required
