@@ -423,9 +423,41 @@ cam.set_isp_config("/path/to/isp.xml")
 img = cam.isp_process(img)
 ```
 
-Set `cam.use_sdk_decode = False` (or pass `HikCamera(use_sdk_decode=False)` /
-`HikCamera.from_device_info(..., use_sdk_decode=False)` *via the constructor*)
-to fall back to the OpenCV-based pipeline in `hikcamera.utils.raw_to_numpy`.
+Practical guidance:
+
+- `use_sdk_decode=True` (default): recommended when you want output to match MVS,
+  especially for Bayer cameras or when you plan to use Bayer / ISP tuning APIs.
+- `use_sdk_decode=False`: falls back to the OpenCV-based pipeline in
+  `hikcamera.utils.raw_to_numpy`. This is useful when you want the simplest
+  numpy/OpenCV-only decode path or need to compare SDK vs OpenCV output.
+- `set_bayer_cvt_quality(...)` only affects Bayer demosaic in the SDK decode
+  path, so it is only meaningful when `use_sdk_decode=True`.
+- `HikCamera.open()` already applies `Hik.BayerCvtQuality.BEST` by default.
+  Call `cam.set_bayer_cvt_quality(...)` after `open()` and before grabbing if
+  you want a different speed/quality trade-off:
+  - `FAST`: prioritise throughput
+  - `BALANCED`: middle ground
+  - `BEST`: default, close to MVS defaults
+  - `BEST_PLUS`: highest quality, potentially slower
+
+Examples:
+
+```python
+# Match MVS-style output (default behaviour)
+with HikCamera.from_device_info(devices[0]) as cam:
+    cam.open()
+    cam.set_bayer_cvt_quality(Hik.BayerCvtQuality.BEST_PLUS)
+    cam.start_grabbing()
+    frame = cam.get_frame(output_format=Hik.OutputFormat.BGR8)
+    cam.stop_grabbing()
+
+# Force the OpenCV decode path instead of the SDK pipeline
+with HikCamera.from_device_info(devices[0], use_sdk_decode=False) as cam:
+    cam.open()
+    cam.start_grabbing()
+    frame = cam.get_frame(output_format=Hik.OutputFormat.BGR8)
+    cam.stop_grabbing()
+```
 
 ## Image save, video save, encode, rotate & flip
 

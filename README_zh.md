@@ -418,10 +418,41 @@ cam.set_isp_config("/path/to/isp.xml")
 img = cam.isp_process(img)
 ```
 
-设置 `cam.use_sdk_decode = False`（或在构造时使用
-`HikCamera(use_sdk_decode=False)` /
-`HikCamera.from_device_info(..., use_sdk_decode=False)`）即可回退到
-`hikcamera.utils.raw_to_numpy` 的 OpenCV 管线。
+实用说明：
+
+- `use_sdk_decode=True`（默认）：推荐在希望输出尽量与 MVS 保持一致时使用，
+  尤其适合 Bayer 相机，或需要配合 Bayer / ISP 调优 API 时。
+- `use_sdk_decode=False`：回退到 `hikcamera.utils.raw_to_numpy` 的 OpenCV
+  解码路径。适合需要最直接的 numpy/OpenCV 解码流程，或希望对比 SDK 与
+  OpenCV 输出差异时使用。
+- `set_bayer_cvt_quality(...)` 只影响 SDK 解码路径中的 Bayer 去马赛克，因此
+  仅在 `use_sdk_decode=True` 时才有实际意义。
+- `HikCamera.open()` 默认会应用 `Hik.BayerCvtQuality.BEST`。如果需要调整速度 /
+  质量权衡，建议在 `open()` 之后、开始取流之前调用
+  `cam.set_bayer_cvt_quality(...)`：
+  - `FAST`：优先速度
+  - `BALANCED`：速度与质量折中
+  - `BEST`：默认值，接近 MVS 默认输出
+  - `BEST_PLUS`：最高质量，但可能更慢
+
+示例：
+
+```python
+# 保持与 MVS 更接近的输出（默认行为）
+with HikCamera.from_device_info(devices[0]) as cam:
+    cam.open()
+    cam.set_bayer_cvt_quality(Hik.BayerCvtQuality.BEST_PLUS)
+    cam.start_grabbing()
+    frame = cam.get_frame(output_format=Hik.OutputFormat.BGR8)
+    cam.stop_grabbing()
+
+# 强制使用 OpenCV 解码路径，而不是 SDK 图像处理管线
+with HikCamera.from_device_info(devices[0], use_sdk_decode=False) as cam:
+    cam.open()
+    cam.start_grabbing()
+    frame = cam.get_frame(output_format=Hik.OutputFormat.BGR8)
+    cam.stop_grabbing()
+```
 
 ## 图像保存、视频保存、编码、旋转与翻转
 
