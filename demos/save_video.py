@@ -244,10 +244,7 @@ def main() -> None:
             print(str(exc))
             sys.exit(1)
         if output_path != requested_output_path:
-            print(
-                "VideoWriter for "
-                f"{requested_output_path} was unavailable; falling back to {output_path}."
-            )
+            print(f"VideoWriter for {requested_output_path} was unavailable; falling back to {output_path}.")
 
         def on_frame(image: np.ndarray, _info: dict[str, Any]) -> None:
             """

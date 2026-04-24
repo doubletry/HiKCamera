@@ -330,8 +330,9 @@ def test_save_video_demo_falls_back_to_avi_when_mp4_writer_cannot_open(
 
     module.main()
 
-    assert writer_factory.call_args_list[0].args[0] == str(requested_path)
-    assert writer_factory.call_args_list[1].args[0] == str(fallback_path)
+    first_call, second_call = writer_factory.call_args_list
+    assert first_call.args[0] == str(requested_path)
+    assert second_call.args[0] == str(fallback_path)
     first_writer.release.assert_called_once()
     second_writer.release.assert_called_once()
     fake_cam.start_grabbing.assert_called_once()
