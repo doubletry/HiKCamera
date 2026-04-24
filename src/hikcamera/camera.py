@@ -2611,9 +2611,10 @@ class HikCamera:
         """
         self._assert_open()
         h, w = image.shape[:2]
-        if not (0 < w <= 0xFFFF and 0 < h <= 0xFFFF):
+        max_dimension = 65535
+        if not (0 < w <= max_dimension and 0 < h <= max_dimension):
             raise ValueError(
-                "image width and height must be in the range [1, 65535] "
+                f"image width and height must be in the range [1, {max_dimension}] "
                 f"for MV_CC_SaveImageEx3 (got width={w}, height={h})"
             )
         if int(fmt) == int(ImageFileFormat.JPEG) and not (1 <= int(jpeg_quality) <= 100):

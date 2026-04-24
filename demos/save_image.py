@@ -41,9 +41,7 @@ def _image_for_imwrite(
     if output_format == Hik.OutputFormat.RGB8:
         return np.ascontiguousarray(image[..., ::-1])
     if output_format == Hik.OutputFormat.RGBA8:
-        converted = image.copy()
-        converted[..., :3] = converted[..., 2::-1]
-        return converted
+        return np.ascontiguousarray(image[..., [2, 1, 0, 3]])
     return image
 
 
