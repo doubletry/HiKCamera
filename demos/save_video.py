@@ -138,6 +138,9 @@ def main() -> None:
                 end_time = time.monotonic() + args.duration
 
                 try:
+                    # Cache the current time once per loop iteration so timeout
+                    # calculations stay consistent and avoid redundant calls.
+                    # 每轮循环缓存一次当前时间，便于保持超时计算一致并避免重复调用。
                     now = time.monotonic()
                     while now < end_time:
                         remaining_ms = max(1, int((end_time - now) * 1000))

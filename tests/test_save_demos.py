@@ -30,8 +30,8 @@ class _FakeRecordingSession:
     def __enter__(self) -> _FakeRecordingSession:
         return self
 
-    def __exit__(self, exc_type, exc, tb) -> None:
-        pass
+    def __exit__(self, exc_type, exc, tb) -> bool:
+        return False
 
 
 class _FakeCamera:
@@ -52,8 +52,8 @@ class _FakeCamera:
     def __enter__(self) -> _FakeCamera:
         return self
 
-    def __exit__(self, exc_type, exc, tb) -> None:
-        pass
+    def __exit__(self, exc_type, exc, tb) -> bool:
+        return False
 
     def get_frame(self, *args, **kwargs) -> np.ndarray:
         self._get_frame_calls += 1
