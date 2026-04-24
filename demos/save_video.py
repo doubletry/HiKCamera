@@ -124,13 +124,16 @@ def main() -> None:
     # Open and start grabbing / 打开相机并开始取帧
     # ---------------------------------------------------------------
     output_path = Path(args.output)
-    output_path.parent.mkdir(parents=True, exist_ok=True)
     total_frames = 0
     writer: cv2.VideoWriter | None = None
 
     with cam:
         cam.open(Hik.AccessMode.EXCLUSIVE)
         print("Camera opened.")
+        # Only create the output directory once the camera has opened, so a
+        # failed connection does not leave behind empty directories.
+        # 仅在相机成功打开后再创建输出目录，避免连接失败时遗留空目录。
+        output_path.parent.mkdir(parents=True, exist_ok=True)
 
         if args.exposure is not None:
             cam.params.AcquisitionControl.ExposureTime.set(args.exposure)
@@ -160,7 +163,11 @@ def main() -> None:
             end_time = time.monotonic() + args.duration
 
             try:
-                while time.monotonic() < end_time:
+                # Cache the current time once per loop iteration so timeout
+                # calculations stay consistent and avoid redundant calls.
+                # 每轮循环缓存一次当前时间，便于保持超时计算一致并避免重复调用。
+                now = time.monotonic()
+                while now < end_time:
                     # Short timeout keeps Python responsive to Ctrl+C between frames.
                     # 短超时使主线程在帧间隔间能及时响应 Ctrl+C。
                     try:
@@ -169,9 +176,11 @@ def main() -> None:
                             output_format=Hik.OutputFormat.BGR8,
                         )
                     except FrameTimeoutError:
+                        now = time.monotonic()
                         continue
                     writer.write(frame)
                     total_frames += 1
+                    now = time.monotonic()
             except KeyboardInterrupt:
                 print("\nCtrl+C received. Stopping recording …")
         finally:
