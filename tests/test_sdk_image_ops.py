@@ -137,6 +137,20 @@ class TestEncodeImage:
         out = cam.encode_image(img, ImageFileFormat.JPEG, jpeg_quality=80)
         assert out == encoded_bytes
 
+    def test_encode_rejects_oversized_dimensions(self, camera_with_mock_sdk):
+        cam = camera_with_mock_sdk
+        img = np.zeros((1, 65536, 3), dtype=np.uint8)
+
+        with pytest.raises(ValueError, match="width and height must be in the range"):
+            cam.encode_image(img, ImageFileFormat.JPEG)
+
+    def test_encode_rejects_invalid_jpeg_quality(self, camera_with_mock_sdk):
+        cam = camera_with_mock_sdk
+        img = np.zeros((4, 4, 3), dtype=np.uint8)
+
+        with pytest.raises(ValueError, match="jpeg_quality must be in the range"):
+            cam.encode_image(img, ImageFileFormat.JPEG, jpeg_quality=101)
+
 
 # ---------------------------------------------------------------------------
 # Bayer pipeline tuning

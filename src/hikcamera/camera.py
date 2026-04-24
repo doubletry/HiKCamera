@@ -2117,7 +2117,7 @@ class HikCamera:
         elif isinstance(data, (bytes, bytearray)):
             src_bytes = bytes(data[:src_data_len])
         else:
-            src_bytes = bytes(bytearray(data)[:src_data_len])
+            src_bytes = ctypes.string_at(ctypes.addressof(data), src_data_len)
 
         # Pre-decode high-bandwidth (HB) compressed frames.
         # 预解码高带宽 (HB) 压缩帧。
@@ -2191,9 +2191,12 @@ class HikCamera:
             raise FeatureUnsupportedError(
                 "MV_CC_HB_Decode is not available in this SDK build"
             )
-        # Worst case: 16-bit / pixel.
-        # 最差情况：16 位 / 像素。
-        dst_size = width * height * 2
+        # Allocate a safe worst-case destination buffer because the SDK may
+        # decode HB frames into 8-bit mono, 16-bit mono, RGB/BGR, or 4-channel
+        # outputs depending on the requested / returned pixel type.
+        # 分配安全的最差情况目标缓冲区，因为 SDK 可能根据请求 / 返回的像素格式
+        # 将 HB 帧解码为 8 位单通道、16 位单通道、RGB/BGR 或 4 通道输出。
+        dst_size = width * height * 4
         dst_buf = (c_ubyte * dst_size)()
         src_buf = (c_ubyte * len(src_bytes)).from_buffer_copy(src_bytes)
 
@@ -2212,8 +2215,13 @@ class HikCamera:
             raise ImageConversionError(
                 f"MV_CC_HB_Decode failed: 0x{code:08X}", code
             )
-        n = params.nDstBufLen or dst_size
-        return bytes(bytearray(dst_buf)[:n]), int(params.enDstPixelType)
+        n = int(params.nDstBufLen or dst_size)
+        if n < 0 or n > dst_size:
+            raise ImageConversionError(
+                "MV_CC_HB_Decode returned an invalid output length: "
+                f"{n} > buffer size {dst_size}"
+            )
+        return ctypes.string_at(dst_buf, n), int(params.enDstPixelType)
 
     # ------------------------------------------------------------------
     # Bayer / ISP tuning / Bayer / ISP 调优
@@ -2603,6 +2611,16 @@ class HikCamera:
         """
         self._assert_open()
         h, w = image.shape[:2]
+        if not (0 < w <= 0xFFFF and 0 < h <= 0xFFFF):
+            raise ValueError(
+                "image width and height must be in the range [1, 65535] "
+                f"for MV_CC_SaveImageEx3 (got width={w}, height={h})"
+            )
+        if int(fmt) == int(ImageFileFormat.JPEG) and not (1 <= int(jpeg_quality) <= 100):
+            raise ValueError(
+                "jpeg_quality must be in the range [1, 100] for JPEG encoding "
+                f"(got {jpeg_quality})"
+            )
         data_bytes = image.tobytes()
         src_buf = (c_ubyte * len(data_bytes)).from_buffer_copy(data_bytes)
         # Allocate generously: encoded image rarely exceeds the source size

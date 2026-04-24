@@ -90,6 +90,50 @@ def test_save_image_demo_runs_without_explicit_bayer_quality(tmp_path, monkeypat
     np.testing.assert_array_equal(saved_image, fake_cam._frame)
 
 
+@pytest.mark.parametrize(
+    ("fmt", "frame", "expected"),
+    [
+        (
+            "RGB8",
+            np.array([[[1, 2, 3], [4, 5, 6]]], dtype=np.uint8),
+            np.array([[[3, 2, 1], [6, 5, 4]]], dtype=np.uint8),
+        ),
+        (
+            "RGBA8",
+            np.array([[[1, 2, 3, 40], [4, 5, 6, 70]]], dtype=np.uint8),
+            np.array([[[3, 2, 1, 40], [6, 5, 4, 70]]], dtype=np.uint8),
+        ),
+    ],
+)
+def test_save_image_demo_converts_rgb_channel_order_for_opencv(
+    tmp_path, monkeypatch, fmt: str, frame: np.ndarray, expected: np.ndarray
+) -> None:
+    module = _load_demo_module("save_image")
+    fake_cam = _FakeCamera(frame)
+    imwrite = MagicMock(return_value=True)
+
+    monkeypatch.setattr(
+        module,
+        "parse_args",
+        lambda: argparse.Namespace(
+            ip=None,
+            sn="DA4860722",
+            output=str(tmp_path / "image.png"),
+            format=fmt,
+            timeout=1000,
+            exposure=None,
+            gain=None,
+        ),
+    )
+    monkeypatch.setattr(module.HikCamera, "from_serial_number", lambda sn: fake_cam)
+    monkeypatch.setattr(module.cv2, "imwrite", imwrite)
+
+    module.main()
+
+    saved_image = imwrite.call_args.args[1]
+    np.testing.assert_array_equal(saved_image, expected)
+
+
 def test_save_image_demo_raises_when_opencv_cannot_write(tmp_path, monkeypatch) -> None:
     module = _load_demo_module("save_image")
     fake_cam = _FakeCamera(np.zeros((4, 6, 3), dtype=np.uint8))
@@ -126,7 +170,7 @@ def test_save_video_demo_writes_frames_via_callback(tmp_path, monkeypatch) -> No
             ip=None,
             sn="DA4860722",
             output=str(output_path),
-            duration=0.0,
+            duration=0.2,
             exposure=None,
             gain=None,
         ),
@@ -147,8 +191,22 @@ def test_save_video_demo_writes_frames_via_callback(tmp_path, monkeypatch) -> No
         captured["callback"] = callback
 
     fake_cam.start_grabbing.side_effect = _fake_start
-    monkeypatch.setattr(module.time, "monotonic", lambda: 100.0)
-    monkeypatch.setattr(module.time, "sleep", lambda _s: None)
+    monotonic_values = iter([100.0, 100.0, 100.1, 100.2, 100.2])
+    monkeypatch.setattr(module.time, "monotonic", lambda: next(monotonic_values))
+
+    delivered = False
+
+    def _fake_sleep(_s: float) -> None:
+        nonlocal delivered
+        if delivered:
+            return
+        delivered = True
+        cb = captured["callback"]
+        assert callable(cb)
+        cb(np.zeros((4, 6, 3), dtype=np.uint8), {"frame_num": 1})
+        cb(np.zeros((4, 6, 3), dtype=np.uint8), {"frame_num": 2})
+
+    monkeypatch.setattr(module.time, "sleep", _fake_sleep)
 
     module.main()
 
@@ -160,13 +218,50 @@ def test_save_video_demo_writes_frames_via_callback(tmp_path, monkeypatch) -> No
     writer_factory.assert_called_once_with(str(output_path), 0x7634706D, 30.0, (6, 4))
     fake_writer.release.assert_called_once()
 
-    # Simulate the SDK delivering two frames on its callback thread.
-    # 模拟 SDK 在回调线程上推送两帧。
-    cb = captured["callback"]
-    assert callable(cb)
-    cb(np.zeros((4, 6, 3), dtype=np.uint8), {"frame_num": 1})
-    cb(np.zeros((4, 6, 3), dtype=np.uint8), {"frame_num": 2})
     assert fake_writer.write.call_count == 2
+
+
+def test_save_video_demo_ignores_callback_during_shutdown(tmp_path, monkeypatch) -> None:
+    module = _load_demo_module("save_video")
+    fake_cam = _FakeCamera(np.zeros((4, 6, 3), dtype=np.uint8), fps=30.0)
+    captured: dict[str, object] = {}
+
+    monkeypatch.setattr(
+        module,
+        "parse_args",
+        lambda: argparse.Namespace(
+            ip=None,
+            sn="DA4860722",
+            output=str(tmp_path / "video.mp4"),
+            duration=0.0,
+            exposure=None,
+            gain=None,
+        ),
+    )
+    monkeypatch.setattr(module.HikCamera, "from_serial_number", lambda sn: fake_cam)
+
+    fake_writer = MagicMock()
+    fake_writer.isOpened.return_value = True
+    monkeypatch.setattr(module.cv2, "VideoWriter", MagicMock(return_value=fake_writer))
+    monkeypatch.setattr(module.cv2, "VideoWriter_fourcc", lambda *args: 0)
+
+    def _fake_start(callback, output_format):  # noqa: ARG001
+        captured["callback"] = callback
+
+    def _fake_stop() -> None:
+        cb = captured["callback"]
+        assert callable(cb)
+        cb(np.ones((4, 6, 3), dtype=np.uint8), {"frame_num": 99})
+
+    fake_cam.start_grabbing.side_effect = _fake_start
+    fake_cam.stop_grabbing.side_effect = _fake_stop
+    monkeypatch.setattr(module.time, "monotonic", lambda: 100.0)
+    monkeypatch.setattr(module.time, "sleep", lambda _s: None)
+
+    module.main()
+
+    fake_writer.write.assert_not_called()
+    fake_writer.release.assert_called_once()
 
 
 def test_save_video_demo_aborts_when_writer_cannot_be_opened(tmp_path, monkeypatch) -> None:

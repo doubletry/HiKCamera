@@ -31,6 +31,22 @@ from hikcamera import (
 )
 
 
+def _image_for_imwrite(
+    image: np.ndarray, output_format: Hik.OutputFormat
+) -> np.ndarray:
+    """
+    Convert RGB/RGBA frames into OpenCV's BGR/BGRA channel order before saving.
+    在保存前将 RGB/RGBA 图像转换为 OpenCV 使用的 BGR/BGRA 通道顺序。
+    """
+    if output_format == Hik.OutputFormat.RGB8:
+        return np.ascontiguousarray(image[..., ::-1])
+    if output_format == Hik.OutputFormat.RGBA8:
+        converted = image.copy()
+        converted[..., :3] = converted[..., 2::-1]
+        return converted
+    return image
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Save a single image from a Hikvision camera.")
     group = parser.add_mutually_exclusive_group()
@@ -111,7 +127,8 @@ def main() -> None:
         # -----------------------------------------------------------
         output_path = Path(args.output)
         output_path.parent.mkdir(parents=True, exist_ok=True)
-        if not cv2.imwrite(str(output_path), image):
+        image_to_save = _image_for_imwrite(image, output_format)
+        if not cv2.imwrite(str(output_path), image_to_save):
             raise RuntimeError(
                 "Failed to save image to "
                 f"{output_path}. Check that the directory exists, the file "

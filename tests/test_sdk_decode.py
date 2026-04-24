@@ -12,7 +12,7 @@ import numpy as np
 import pytest
 
 from hikcamera.enums import MvErrorCode, OutputFormat, PixelFormat
-from hikcamera.exceptions import FeatureUnsupportedError
+from hikcamera.exceptions import FeatureUnsupportedError, ImageConversionError
 from hikcamera.sdk_wrapper import MV_CC_PIXEL_CONVERT_PARAM_EX
 
 
@@ -241,6 +241,50 @@ class TestHbDecode:
         assert "convert" not in call_order
         assert out.shape == (4, 4)
         assert (out == 0x77).all()
+
+    def test_hb_decode_allocates_safe_buffer_for_rgb_outputs(self, camera_with_mock_sdk):
+        cam = camera_with_mock_sdk
+
+        from hikcamera.sdk_wrapper import MV_CC_HB_DECODE_PARAM
+
+        captured: dict[str, int] = {}
+
+        def hb_side_effect(handle, p_params):
+            params = ctypes.cast(
+                p_params, ctypes.POINTER(MV_CC_HB_DECODE_PARAM)
+            ).contents
+            captured["dst_size"] = int(params.nDstBufSize)
+            ctypes.memset(params.pDstBuf, 0x12, 4 * 4 * 3)
+            params.nDstBufLen = 4 * 4 * 3
+            params.enDstPixelType = int(PixelFormat.RGB8_PACKED)
+            return MvErrorCode.MV_OK
+
+        cam._sdk.MV_CC_HB_Decode = MagicMock(side_effect=hb_side_effect)
+        out = cam._sdk_decode_frame(
+            b"\x00" * 16, 4, 4, 0x80000001, 16, OutputFormat.RGB8
+        )
+
+        assert captured["dst_size"] == 4 * 4 * 4
+        assert out.shape == (4, 4, 3)
+        assert (out == 0x12).all()
+
+    def test_hb_decode_rejects_invalid_reported_output_length(self, camera_with_mock_sdk):
+        cam = camera_with_mock_sdk
+
+        from hikcamera.sdk_wrapper import MV_CC_HB_DECODE_PARAM
+
+        def hb_side_effect(handle, p_params):
+            params = ctypes.cast(
+                p_params, ctypes.POINTER(MV_CC_HB_DECODE_PARAM)
+            ).contents
+            params.nDstBufLen = params.nDstBufSize + 1
+            params.enDstPixelType = int(PixelFormat.MONO8)
+            return MvErrorCode.MV_OK
+
+        cam._sdk.MV_CC_HB_Decode = MagicMock(side_effect=hb_side_effect)
+
+        with pytest.raises(ImageConversionError, match="invalid output length"):
+            cam._sdk_decode_frame(b"\x00" * 16, 4, 4, 0x80000001, 16, OutputFormat.MONO8)
 
     def test_hb_decode_missing_raises_unsupported(self, camera_with_mock_sdk):
         cam = camera_with_mock_sdk

@@ -2,15 +2,15 @@
 Demo: Capture a sequence of frames and save them as a video file.
 演示：捕获一系列帧并保存为视频文件。
 
-Frames are delivered from the SDK via a callback and written to disk through
-OpenCV's :class:`cv2.VideoWriter` from the SDK callback thread.  The demo
-queries the camera for its actual ``ResultingFrameRate`` so the recorded
+Frames are delivered from the SDK via a callback, while access to the OpenCV
+writer is synchronised so shutdown cannot race with an in-flight callback. The
+demo queries the camera for its actual ``ResultingFrameRate`` so the recorded
 file plays back at the same rate the device produces frames — there is no
 ``--fps`` option to keep out of sync with reality.
-帧由 SDK 通过回调推送，并在 SDK 回调线程中通过 OpenCV 的
-:class:`cv2.VideoWriter` 写入磁盘。Demo 会查询相机的 ``ResultingFrameRate``
-作为录制帧率，使录像的播放速率与相机实际采集速率一致；不再提供 ``--fps``
-参数以避免人为帧率与实际帧率不一致。
+帧由 SDK 通过回调推送，OpenCV 写入器的访问则通过锁同步，避免关闭阶段与正在
+执行的回调发生竞争。Demo 会查询相机的 ``ResultingFrameRate`` 作为录制帧率，
+使录像的播放速率与相机实际采集速率一致；不再提供 ``--fps`` 参数以避免人为
+帧率与实际帧率不一致。
 
 The OpenCV writer is used instead of the SDK ``MV_CC_StartRecord`` MP4 path
 because that path requires the separately shipped ``MvFFmpegPlugin`` and can
@@ -162,6 +162,7 @@ def main() -> None:
     # 在 SDK 回调线程与主线程之间共享的状态。
     state_lock = threading.Lock()
     frame_count = 0
+    stopping = False
 
     with cam:
         cam.open(Hik.AccessMode.EXCLUSIVE)
@@ -197,12 +198,14 @@ def main() -> None:
             SDK 回调：将每一帧写入 OpenCV 写入器。
             """
             nonlocal frame_count
-            try:
-                writer.write(image)
-            except Exception:  # noqa: BLE001  # never let exceptions cross SDK thread
-                return
             with state_lock:
-                frame_count += 1
+                if stopping or writer is None:
+                    return
+                try:
+                    writer.write(image)
+                    frame_count += 1
+                except Exception:  # noqa: BLE001  # never let exceptions cross SDK thread
+                    return
 
         cam.start_grabbing(callback=on_frame, output_format=Hik.OutputFormat.BGR8)
         print(f"Grabbing started. Recording for {args.duration:.1f} seconds …")
@@ -222,15 +225,20 @@ def main() -> None:
             except KeyboardInterrupt:
                 print("\nCtrl+C received. Stopping recording …")
         finally:
-            # Stop grabbing first so the SDK callback thread will not call
-            # writer.write() after the writer is released.
-            # 先停止取流，确保 SDK 回调线程不会在写入器释放后继续调用 write。
+            # Mark shutdown under the callback lock so the writer cannot race
+            # with writer.release().
+            # 在与回调相同的锁下标记关闭状态，确保不会与 writer.release() 竞争。
+            with state_lock:
+                stopping = True
             try:
                 cam.stop_grabbing()
             except HikCameraError as exc:
                 print(f"Error while stopping grabbing: {exc}")
-            if writer is not None:
-                writer.release()
+            with state_lock:
+                writer_to_release = writer
+                writer = None
+            if writer_to_release is not None:
+                writer_to_release.release()
 
     with state_lock:
         total_frames = frame_count
