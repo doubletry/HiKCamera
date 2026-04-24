@@ -3088,7 +3088,7 @@ def _save_image_with_opencv(image: np.ndarray, path: str) -> None:
         # 启发式规则：HikCamera 默认热路径返回 BGR，且 demo 默认使用 BGR8，
         # 因此 3 通道图像可直接写入。若调用方持有 RGB 图像，可先转换为 BGR
         # 或优先使用 SDK 路径保存。
-        save_img = image
+        pass
     ok = cv2.imwrite(path, save_img)
     if not ok:
         raise HikCameraError(f"OpenCV fallback failed to save image to {path!r}")

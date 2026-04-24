@@ -6,7 +6,7 @@ Bayer pipeline tuning helpers.
 from __future__ import annotations
 
 import ctypes
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
@@ -167,26 +167,16 @@ class TestSaveImageToFile:
         cam = camera_with_mock_sdk
         cam._sdk.MV_CC_SaveImageToFileEx = MagicMock(return_value=MvErrorCode.MV_E_PARAMETER)
         img = np.zeros((4, 4, 3), dtype=np.uint8)
-        fallback = MagicMock(return_value=True)
-        original = camera_module.cv2.imwrite
-        camera_module.cv2.imwrite = fallback
-        try:
+        with patch.object(camera_module.cv2, "imwrite", return_value=True) as fallback:
             cam.save_image_to_file(img, tmp_path / "image.png")
-        finally:
-            camera_module.cv2.imwrite = original
         fallback.assert_called_once()
 
     def test_save_falls_back_when_camera_is_closed(self, camera_with_mock_sdk, tmp_path):
         cam = camera_with_mock_sdk
         cam._is_open = False
         img = np.zeros((4, 4, 3), dtype=np.uint8)
-        fallback = MagicMock(return_value=True)
-        original = camera_module.cv2.imwrite
-        camera_module.cv2.imwrite = fallback
-        try:
+        with patch.object(camera_module.cv2, "imwrite", return_value=True) as fallback:
             cam.save_image_to_file(img, tmp_path / "image.png")
-        finally:
-            camera_module.cv2.imwrite = original
         fallback.assert_called_once()
 
 
