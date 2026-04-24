@@ -155,7 +155,7 @@ def main() -> None:
     # ---------------------------------------------------------------
     # Open and start grabbing / 打开相机并开始取帧
     # ---------------------------------------------------------------
-    output_path = Path(args.output)
+    requested_output_path = Path(args.output)
     writer: cv2.VideoWriter | None = None
 
     # Shared state between the SDK callback thread and main thread.
@@ -170,7 +170,7 @@ def main() -> None:
         # Only create the output directory once the camera has opened, so a
         # failed connection does not leave behind empty directories.
         # 仅在相机成功打开后再创建输出目录，避免连接失败时遗留空目录。
-        output_path.parent.mkdir(parents=True, exist_ok=True)
+        requested_output_path.parent.mkdir(parents=True, exist_ok=True)
 
         if args.exposure is not None:
             cam.params.AcquisitionControl.ExposureTime.set(args.exposure)
@@ -186,12 +186,14 @@ def main() -> None:
         print(f"Frame size: {width}×{height}")
         print(f"Camera frame rate: {fps:.2f} fps")
 
-        fourcc_name = fourcc_for_path(output_path)
+        fourcc_name = fourcc_for_path(requested_output_path)
         fourcc = cv2.VideoWriter_fourcc(*fourcc_name)
-        writer = cv2.VideoWriter(str(output_path), fourcc, fps, (width, height))
+        writer = cv2.VideoWriter(
+            str(requested_output_path), fourcc, fps, (width, height)
+        )
         if not writer.isOpened():
             print(
-                f"Failed to open VideoWriter for {output_path} "
+                f"Failed to open VideoWriter for {requested_output_path} "
                 f"(codec {fourcc_name})."
             )
             sys.exit(1)
@@ -250,7 +252,7 @@ def main() -> None:
     with state_lock:
         total_frames = frame_count
     print(
-        f"Video saved to {output_path}  "
+        f"Video saved to {requested_output_path}  "
         f"({total_frames} frames, {fps:.2f} fps)"
     )
 
