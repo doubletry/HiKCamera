@@ -460,7 +460,7 @@ with HikCamera.from_ip("192.168.1.100") as cam:
 python demos/save_image.py --ip 192.168.1.100 --output image.png --format BGR8
 
 # 录制 10 秒视频
-python demos/save_video.py --ip 192.168.1.100 --output video.mp4 --fps 25 --duration 10
+python demos/save_video.py --ip 192.168.1.100 --output video.mp4 --duration 10
 
 # 异常处理（断开连接检测）
 python demos/exception_handling.py --ip 192.168.1.100 --duration 30

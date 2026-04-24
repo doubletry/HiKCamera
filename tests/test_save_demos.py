@@ -29,15 +29,24 @@ class _FakeCamera:
     覆盖 demo 所需 HikCamera 接口的最小替身。
     """
 
-    def __init__(self, frame: np.ndarray) -> None:
+    def __init__(self, frame: np.ndarray, fps: float = 30.0) -> None:
         self._frame = frame
+        h, w = frame.shape[:2]
         self.open = MagicMock()
         self.start_grabbing = MagicMock()
         self.stop_grabbing = MagicMock()
         self.save_image_to_file = MagicMock()
         self.params = SimpleNamespace(
-            AcquisitionControl=SimpleNamespace(ExposureTime=SimpleNamespace(set=MagicMock())),
+            AcquisitionControl=SimpleNamespace(
+                ExposureTime=SimpleNamespace(set=MagicMock()),
+                ResultingFrameRate=SimpleNamespace(get=MagicMock(return_value=fps)),
+                AcquisitionFrameRate=SimpleNamespace(get=MagicMock(return_value=fps)),
+            ),
             AnalogControl=SimpleNamespace(Gain=SimpleNamespace(set=MagicMock())),
+            ImageFormatControl=SimpleNamespace(
+                Width=SimpleNamespace(get=MagicMock(return_value=w)),
+                Height=SimpleNamespace(get=MagicMock(return_value=h)),
+            ),
         )
 
     def __enter__(self) -> _FakeCamera:
@@ -77,9 +86,9 @@ def test_save_image_demo_runs_without_explicit_bayer_quality(tmp_path, monkeypat
     fake_cam.save_image_to_file.assert_called_once()
 
 
-def test_save_video_demo_writes_first_frame_via_opencv(tmp_path, monkeypatch) -> None:
+def test_save_video_demo_writes_frames_via_callback(tmp_path, monkeypatch) -> None:
     module = _load_demo_module("save_video")
-    fake_cam = _FakeCamera(np.zeros((4, 6, 3), dtype=np.uint8))
+    fake_cam = _FakeCamera(np.zeros((4, 6, 3), dtype=np.uint8), fps=30.0)
 
     output_path = tmp_path / "video.mp4"
     monkeypatch.setattr(
@@ -89,7 +98,6 @@ def test_save_video_demo_writes_first_frame_via_opencv(tmp_path, monkeypatch) ->
             ip=None,
             sn="DA4860722",
             output=str(output_path),
-            fps=25.0,
             duration=0.0,
             exposure=None,
             gain=None,
@@ -102,18 +110,35 @@ def test_save_video_demo_writes_first_frame_via_opencv(tmp_path, monkeypatch) ->
     writer_factory = MagicMock(return_value=fake_writer)
     monkeypatch.setattr(module.cv2, "VideoWriter", writer_factory)
     monkeypatch.setattr(module.cv2, "VideoWriter_fourcc", lambda *args: 0x7634706D)
-    # duration=0 means no second frame is read after the first one
-    # duration=0 表示首帧之后不会再读取额外帧
+
+    # Capture the registered SDK callback so the test can synthesise frames.
+    # 捕获注册的 SDK 回调，以便测试用例合成帧。
+    captured: dict[str, object] = {}
+
+    def _fake_start(callback, output_format):  # noqa: ARG001
+        captured["callback"] = callback
+
+    fake_cam.start_grabbing.side_effect = _fake_start
     monkeypatch.setattr(module.time, "monotonic", lambda: 100.0)
+    monkeypatch.setattr(module.time, "sleep", lambda _s: None)
 
     module.main()
 
     fake_cam.open.assert_called_once_with(Hik.AccessMode.EXCLUSIVE)
     fake_cam.start_grabbing.assert_called_once()
     fake_cam.stop_grabbing.assert_called_once()
-    writer_factory.assert_called_once_with(str(output_path), 0x7634706D, 25.0, (6, 4))
-    fake_writer.write.assert_called_once()
+    # FPS pulled from the camera (30.0), not from a CLI flag.
+    # 帧率取自相机（30.0），而非 CLI 参数。
+    writer_factory.assert_called_once_with(str(output_path), 0x7634706D, 30.0, (6, 4))
     fake_writer.release.assert_called_once()
+
+    # Simulate the SDK delivering two frames on its callback thread.
+    # 模拟 SDK 在回调线程上推送两帧。
+    cb = captured["callback"]
+    assert callable(cb)
+    cb(np.zeros((4, 6, 3), dtype=np.uint8), {"frame_num": 1})
+    cb(np.zeros((4, 6, 3), dtype=np.uint8), {"frame_num": 2})
+    assert fake_writer.write.call_count == 2
 
 
 def test_save_video_demo_aborts_when_writer_cannot_be_opened(tmp_path, monkeypatch) -> None:
@@ -127,7 +152,6 @@ def test_save_video_demo_aborts_when_writer_cannot_be_opened(tmp_path, monkeypat
             ip=None,
             sn="DA4860722",
             output=str(tmp_path / "video.mp4"),
-            fps=25.0,
             duration=1.0,
             exposure=None,
             gain=None,
@@ -143,7 +167,10 @@ def test_save_video_demo_aborts_when_writer_cannot_be_opened(tmp_path, monkeypat
     with pytest.raises(SystemExit):
         module.main()
 
-    fake_cam.stop_grabbing.assert_called_once()
+    # Writer failed to open before grabbing started, so nothing to stop.
+    # 写入器在开始取流之前失败，因此无需停止取流。
+    fake_cam.start_grabbing.assert_not_called()
+    fake_cam.stop_grabbing.assert_not_called()
 
 
 @pytest.mark.parametrize(
