@@ -1,17 +1,16 @@
 """
-Tests for SDK-backed image operations: rotate, flip, save, encode, plus
+Tests for SDK-backed image operations: rotate, flip, encode, plus
 Bayer pipeline tuning helpers.
 """
 
 from __future__ import annotations
 
 import ctypes
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import numpy as np
 import pytest
 
-import hikcamera.camera as camera_module
 from hikcamera.enums import (
     BayerCvtQuality,
     FlipDirection,
@@ -26,7 +25,6 @@ from hikcamera.sdk_wrapper import (
     MV_CC_FLIP_IMAGE_PARAM,
     MV_CC_ROTATE_IMAGE_PARAM,
     MV_SAVE_IMAGE_PARAM_EX3,
-    MV_SAVE_IMG_TO_FILE_PARAM_EX,
 )
 
 # ---------------------------------------------------------------------------
@@ -113,71 +111,6 @@ class TestFlipImage:
         cam = camera_with_mock_sdk
         with pytest.raises(PixelFormatError):
             cam.flip_image(np.zeros((4, 4), dtype=np.float32), FlipDirection.HORIZONTAL)
-
-
-# ---------------------------------------------------------------------------
-# save_image_to_file
-# ---------------------------------------------------------------------------
-
-class TestSaveImageToFile:
-    @pytest.mark.parametrize(
-        "ext,expected_fmt",
-        [
-            (".png", ImageFileFormat.PNG),
-            (".jpg", ImageFileFormat.JPEG),
-            (".jpeg", ImageFileFormat.JPEG),
-            (".bmp", ImageFileFormat.BMP),
-            (".tif", ImageFileFormat.TIFF),
-            (".tiff", ImageFileFormat.TIFF),
-        ],
-    )
-    def test_format_inferred_from_extension(self, camera_with_mock_sdk, tmp_path, ext, expected_fmt):
-        cam = camera_with_mock_sdk
-        captured: dict = {}
-
-        def side_effect(handle, p_params):
-            params = ctypes.cast(
-                p_params, ctypes.POINTER(MV_SAVE_IMG_TO_FILE_PARAM_EX)
-            ).contents
-            captured["fmt"] = int(params.enImageType)
-            captured["path"] = bytes(params.pImagePath).rstrip(b"\x00")
-            captured["pixel_type"] = int(params.enPixelType)
-            captured["w"] = int(params.nWidth)
-            captured["h"] = int(params.nHeight)
-            return MvErrorCode.MV_OK
-
-        cam._sdk.MV_CC_SaveImageToFileEx = MagicMock(side_effect=side_effect)
-        img = np.zeros((4, 4, 3), dtype=np.uint8)
-        out_path = tmp_path / f"image{ext}"
-        cam.save_image_to_file(img, out_path)
-        assert captured["fmt"] == int(expected_fmt)
-        assert captured["path"] == str(out_path).encode()
-        assert captured["pixel_type"] == int(PixelFormat.BGR8_PACKED)
-        assert captured["w"] == 4
-        assert captured["h"] == 4
-
-    def test_unknown_extension_requires_explicit_fmt(self, camera_with_mock_sdk, tmp_path):
-        cam = camera_with_mock_sdk
-        cam._sdk.MV_CC_SaveImageToFileEx = MagicMock(return_value=MvErrorCode.MV_OK)
-        img = np.zeros((4, 4, 3), dtype=np.uint8)
-        with pytest.raises(ValueError):
-            cam.save_image_to_file(img, tmp_path / "image.xyz")
-
-    def test_save_propagates_sdk_error(self, camera_with_mock_sdk, tmp_path):
-        cam = camera_with_mock_sdk
-        cam._sdk.MV_CC_SaveImageToFileEx = MagicMock(return_value=MvErrorCode.MV_E_PARAMETER)
-        img = np.zeros((4, 4, 3), dtype=np.uint8)
-        with patch.object(camera_module.cv2, "imwrite", return_value=True) as fallback:
-            cam.save_image_to_file(img, tmp_path / "image.png")
-        fallback.assert_called_once()
-
-    def test_save_falls_back_when_camera_is_closed(self, camera_with_mock_sdk, tmp_path):
-        cam = camera_with_mock_sdk
-        cam._is_open = False
-        img = np.zeros((4, 4, 3), dtype=np.uint8)
-        with patch.object(camera_module.cv2, "imwrite", return_value=True) as fallback:
-            cam.save_image_to_file(img, tmp_path / "image.png")
-        fallback.assert_called_once()
 
 
 # ---------------------------------------------------------------------------

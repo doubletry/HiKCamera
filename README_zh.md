@@ -22,9 +22,9 @@
 | **像素格式** | Mono8/10/12/16, Bayer GR/RG/GB/BG 8/10/12（紧凑和平面格式）, RGB/BGR 8, RGBA/BGRA 8, YUV422（UYVY 和 YUYV） |
 | **输出格式** | `MONO8`、`MONO16`、`BGR8`、`RGB8`、`BGRA8`、`RGBA8`（均为 numpy 数组） |
 | **SDK 图像处理** | SDK 去马赛克 / 颜色转换（`MV_CC_ConvertPixelTypeEx`）作为**默认**解码路径；`utils.raw_to_numpy` 中的 OpenCV 路径作为回退保留。可通过 `cam.use_sdk_decode` 与 Bayer / ISP 调优 API 控制。 |
-| **图像保存与编码** | `cam.save_image_to_file(image, "out.png")` 与 `cam.encode_image(image, fmt)` 使用 `MV_CC_SaveImageToFileEx` / `MV_CC_SaveImageEx3`（>65535 像素自动切换到 `MV_CC_SaveImageToFileEx2`）。 |
+| **图像保存与编码** | 采集结果是 numpy 图像；保存请直接用 OpenCV（`cv2.imwrite`），若需要 SDK 侧内存编码可用 `cam.encode_image(image, fmt)`。 |
 | **旋转 / 翻转** | `cam.rotate_image(image, angle)`、`cam.flip_image(image, direction)` 封装 `MV_CC_RotateImage` / `MV_CC_FlipImage`，支持 MONO8/RGB8/BGR8。 |
-| **视频录制** | `with cam.record(path, fps, w, h) as rec: rec.write(frame)` 封装 `MV_CC_StartRecord` / `MV_CC_InputOneFrame` / `MV_CC_StopRecord`。 |
+| **视频录制** | 对返回的 numpy 帧使用 OpenCV `cv2.VideoWriter` 录制；参考 `demos/save_video.py` 中基于回调、自动读取相机 FPS 的示例。 |
 | **SDK 像素转换** | `sdk_convert_pixel()` 作为底层辅助方法保留（`get_frame*` / 回调路径默认使用 SDK 管线）。 |
 | **设备断开检测** | `on_exception` 回调 + `device_exception` 属性实时检测断开连接；自动重连模式 |
 | **示例程序** | 保存单张图像、录制视频、异常处理、自动重连 |
@@ -423,18 +423,19 @@ img = cam.isp_process(img)
 `HikCamera.from_device_info(..., use_sdk_decode=False)`）即可回退到
 `hikcamera.utils.raw_to_numpy` 的 OpenCV 管线。
 
-## 图像保存、编码、旋转、翻转与录制
+## 图像保存、视频保存、编码、旋转与翻转
 
 ```python
+import cv2
+
 with HikCamera.from_ip("192.168.1.100") as cam:
     cam.open(Hik.AccessMode.EXCLUSIVE)
     cam.start_grabbing()
 
     image = cam.get_frame(output_format=Hik.OutputFormat.BGR8)
 
-    # 通过 MV_CC_SaveImageToFileEx 保存图像
-    cam.save_image_to_file(image, "out.png")          # 根据扩展名推断格式
-    cam.save_image_to_file(image, "out.jpg", jpeg_quality=85)
+    # 用 OpenCV 保存解码后的 numpy 图像
+    cv2.imwrite("out.png", image)
 
     # 通过 MV_CC_SaveImageEx3 在内存中编码为 JPEG 字节
     jpeg_bytes = cam.encode_image(image, Hik.ImageFileFormat.JPEG)
@@ -443,12 +444,19 @@ with HikCamera.from_ip("192.168.1.100") as cam:
     rotated = cam.rotate_image(image, Hik.RotateAngle.DEG_90)
     flipped = cam.flip_image(image, Hik.FlipDirection.HORIZONTAL)
 
-    # 从 BGR8 图像录制一小段 MP4
+    # 用 OpenCV 从 BGR8 图像录制一小段 MP4
     h, w = image.shape[:2]
-    with cam.record("out.mp4", fps=25, width=w, height=h, fmt=Hik.RecordFormat.MP4) as rec:
-        rec.write(image)
-        for _ in range(100):
-            rec.write(cam.get_frame(output_format=Hik.OutputFormat.BGR8))
+    fps = cam.params.AcquisitionControl.ResultingFrameRate.get()
+    writer = cv2.VideoWriter(
+        "out.mp4",
+        cv2.VideoWriter_fourcc(*"mp4v"),
+        fps,
+        (w, h),
+    )
+    writer.write(image)
+    for _ in range(100):
+        writer.write(cam.get_frame(output_format=Hik.OutputFormat.BGR8))
+    writer.release()
 
     cam.stop_grabbing()
 ```

@@ -35,7 +35,6 @@ class _FakeCamera:
         self.open = MagicMock()
         self.start_grabbing = MagicMock()
         self.stop_grabbing = MagicMock()
-        self.save_image_to_file = MagicMock()
         self.params = SimpleNamespace(
             AcquisitionControl=SimpleNamespace(
                 ExposureTime=SimpleNamespace(set=MagicMock()),
@@ -62,6 +61,7 @@ class _FakeCamera:
 def test_save_image_demo_runs_without_explicit_bayer_quality(tmp_path, monkeypatch) -> None:
     module = _load_demo_module("save_image")
     fake_cam = _FakeCamera(np.zeros((4, 6, 3), dtype=np.uint8))
+    imwrite = MagicMock(return_value=True)
 
     monkeypatch.setattr(
         module,
@@ -77,13 +77,17 @@ def test_save_image_demo_runs_without_explicit_bayer_quality(tmp_path, monkeypat
         ),
     )
     monkeypatch.setattr(module.HikCamera, "from_serial_number", lambda sn: fake_cam)
+    monkeypatch.setattr(module.cv2, "imwrite", imwrite)
 
     module.main()
 
     fake_cam.open.assert_called_once_with(Hik.AccessMode.EXCLUSIVE)
     fake_cam.start_grabbing.assert_called_once()
     fake_cam.stop_grabbing.assert_called_once()
-    fake_cam.save_image_to_file.assert_called_once()
+    imwrite.assert_called_once()
+    saved_path, saved_image = imwrite.call_args.args
+    assert saved_path == str(tmp_path / "image.png")
+    np.testing.assert_array_equal(saved_image, fake_cam._frame)
 
 
 def test_save_video_demo_writes_frames_via_callback(tmp_path, monkeypatch) -> None:

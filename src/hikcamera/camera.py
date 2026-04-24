@@ -51,7 +51,6 @@ from ctypes import c_ubyte, c_uint, c_void_p
 from enum import IntEnum, StrEnum
 from typing import Any, cast
 
-import cv2
 import numpy as np
 
 from .enums import (
@@ -63,7 +62,6 @@ from .enums import (
     MvErrorCode,
     OutputFormat,
     PixelFormat,
-    RecordFormat,
     RotateAngle,
     StreamingMode,
     TransportLayer,
@@ -114,15 +112,12 @@ from .sdk_wrapper import (
     MV_CC_GAMMA_PARAM,
     MV_CC_HB_DECODE_PARAM,
     MV_CC_IMAGE,
-    MV_CC_INPUT_FRAME_INFO,
     MV_CC_ISP_CONFIG_PARAM,
     MV_CC_PIXEL_CONVERT_PARAM_EX,
     MV_CC_PURPLE_FRINGING_PARAM,
-    MV_CC_RECORD_PARAM,
     MV_CC_ROTATE_IMAGE_PARAM,
     MV_FRAME_OUT_INFO_EX,
     MV_SAVE_IMAGE_PARAM_EX3,
-    MV_SAVE_IMG_TO_FILE_PARAM_EX,
     MVCC_ENUMVALUE,
     MVCC_FLOATVALUE,
     MVCC_INTVALUE_EX,
@@ -619,7 +614,6 @@ class HikCamera:
         # for the OpenCV fallback).
         # SDK 优先的图像处理管线（OpenCV 回退见 :py:mod:`hikcamera.utils`）。
         self.use_sdk_decode: bool = use_sdk_decode
-        self._is_recording: bool = False
 
     @property
     def params(self) -> CameraParamsProxy:
@@ -2595,111 +2589,6 @@ class HikCamera:
             return out.reshape(h, w, 3)
         return out.reshape(h, w)
 
-    def save_image_to_file(
-        self,
-        image: np.ndarray,
-        path: str | os.PathLike[str],
-        fmt: ImageFileFormat | int | None = None,
-        *,
-        src_pixel_type: int | None = None,
-        jpeg_quality: int = 90,
-        png_compression: int = 6,
-    ) -> None:
-        """
-        Save *image* to *path* via ``MV_CC_SaveImageToFileEx``.
-        通过 ``MV_CC_SaveImageToFileEx`` 将 *image* 保存到 *path*。
-
-        ``MV_CC_SaveImageToFileEx2`` is used automatically when the image
-        dimensions exceed ``USHRT_MAX`` (65535) and the symbol is exported
-        by the loaded SDK.
-        当图像尺寸超过 ``USHRT_MAX`` (65535) 且当前 SDK 导出该符号时，
-        自动使用 ``MV_CC_SaveImageToFileEx2``。
-
-        ``fmt`` defaults to inferring from the file extension.
-        ``fmt`` 默认根据文件扩展名推断。
-        """
-        path_str = os.fspath(path)
-        if fmt is None:
-            fmt = _infer_image_format(path_str)
-        try:
-            self._save_image_to_file_sdk(
-                image,
-                path_str,
-                int(fmt),
-                src_pixel_type=src_pixel_type,
-                jpeg_quality=jpeg_quality,
-                png_compression=png_compression,
-            )
-        except (CameraNotOpenError, FeatureUnsupportedError, HikCameraError) as exc:
-            logger.debug(
-                "SDK image save failed, falling back to OpenCV for %s: %s",
-                path_str,
-                exc,
-            )
-            _save_image_with_opencv(image, path_str)
-
-    def _save_image_to_file_sdk(
-        self,
-        image: np.ndarray,
-        path_str: str,
-        fmt: int,
-        *,
-        src_pixel_type: int | None,
-        jpeg_quality: int,
-        png_compression: int,
-    ) -> None:
-        """Internal SDK-backed implementation for :meth:`save_image_to_file`."""
-        self._assert_open()
-        h, w = image.shape[:2]
-        data_bytes = image.tobytes()
-        src_buf = (c_ubyte * len(data_bytes)).from_buffer_copy(data_bytes)
-
-        params = MV_SAVE_IMG_TO_FILE_PARAM_EX()
-        params.enPixelType = int(
-            src_pixel_type if src_pixel_type is not None else _infer_pixel_type(image)
-        )
-        params.pData = src_buf
-        params.nDataLen = len(data_bytes)
-        params.enImageType = fmt
-        path_bytes = os.fsencode(path_str)
-        if len(path_bytes) >= 256:
-            raise ValueError("Image path is too long (max 255 bytes)")
-        params.pImagePath = path_bytes
-        params.nQuality = (
-            int(jpeg_quality)
-            if fmt == int(Hik.ImageFileFormat.JPEG)
-            else int(png_compression)
-        )
-        params.iMethodValue = 0
-
-        # MV_CC_SaveImageToFileEx uses uint16 width/height; switch to the
-        # 64-bit-dimension variant when needed.
-        # MV_CC_SaveImageToFileEx 的宽高使用 uint16；当超出范围时切换至支持
-        # 64 位维度的变体。
-        if w > 0xFFFF or h > 0xFFFF:
-            big = getattr(self._sdk, "MV_CC_SaveImageToFileEx2", None)
-            if big is None:
-                raise FeatureUnsupportedError(
-                    "MV_CC_SaveImageToFileEx2 is not available in this SDK build "
-                    "(image dimensions exceed 65535)"
-                )
-            ret = big(self._handle, ctypes.byref(params))
-            api_name = "MV_CC_SaveImageToFileEx2"
-        else:
-            params.nWidth = w
-            params.nHeight = h
-            save_fn = getattr(self._sdk, "MV_CC_SaveImageToFileEx", None)
-            if save_fn is None:
-                raise FeatureUnsupportedError(
-                    "MV_CC_SaveImageToFileEx is not available in this SDK build"
-                )
-            ret = save_fn(self._handle, ctypes.byref(params))
-            api_name = "MV_CC_SaveImageToFileEx"
-        if ret != MvErrorCode.MV_OK:
-            raise HikCameraError(
-                f"{api_name} failed: 0x{ret & 0xFFFFFFFF:08X}", ret & 0xFFFFFFFF
-            )
-
     def encode_image(
         self,
         image: np.ndarray,
@@ -2749,149 +2638,6 @@ class HikCamera:
             )
         n = params.nImageLen or 0
         return bytes(bytearray(dst_buf)[:n])
-
-    # ------------------------------------------------------------------
-    # Video recording / 视频录制
-    # ------------------------------------------------------------------
-
-    def start_record(
-        self,
-        path: str | os.PathLike[str],
-        fps: float,
-        width: int,
-        height: int,
-        *,
-        pixel_type: int = int(PixelFormat.BGR8_PACKED),
-        fmt: RecordFormat | int = RecordFormat.MP4,
-        bitrate: int = 0,
-    ) -> None:
-        """
-        Start a video recording session via ``MV_CC_StartRecord``.
-        通过 ``MV_CC_StartRecord`` 启动视频录制会话。
-
-        Use :py:meth:`record` for an exception-safe context-manager wrapper
-        around ``start_record`` / :py:meth:`input_recorded_frame` /
-        :py:meth:`stop_record`.
-        建议使用 :py:meth:`record` 上下文管理器以异常安全的方式封装
-        ``start_record`` / :py:meth:`input_recorded_frame` / :py:meth:`stop_record`。
-        """
-        self._assert_open()
-        if self._is_recording:
-            raise HikCameraError("Recording is already in progress")
-        start_fn = getattr(self._sdk, "MV_CC_StartRecord", None)
-        if start_fn is None:
-            raise FeatureUnsupportedError(
-                "MV_CC_StartRecord is not available in this SDK build"
-            )
-
-        params = MV_CC_RECORD_PARAM()
-        params.enPixelType = int(pixel_type)
-        params.nWidth = int(width)
-        params.nHeight = int(height)
-        params.fFrameRate = float(fps)
-        params.nBitRate = int(bitrate)
-        params.enRecordFmtType = int(fmt)
-        path_bytes = os.fsencode(os.fspath(path))
-        if len(path_bytes) >= 256:
-            raise ValueError("Video output path is too long (max 255 bytes)")
-        params.strFilePath = path_bytes
-
-        ret = start_fn(self._handle, ctypes.byref(params))
-        if ret != MvErrorCode.MV_OK:
-            raise HikCameraError(
-                f"MV_CC_StartRecord failed: 0x{ret & 0xFFFFFFFF:08X}",
-                ret & 0xFFFFFFFF,
-            )
-        self._is_recording = True
-
-    def input_recorded_frame(self, data: bytes | np.ndarray | ctypes.Array[c_ubyte]) -> None:
-        """
-        Forward a decoded frame to the active recording session via
-        ``MV_CC_InputOneFrame``.
-        通过 ``MV_CC_InputOneFrame`` 将一帧数据写入当前录制会话。
-        """
-        if not self._is_recording:
-            raise HikCameraError("No active recording session")
-        input_fn = getattr(self._sdk, "MV_CC_InputOneFrame", None)
-        if input_fn is None:
-            raise FeatureUnsupportedError(
-                "MV_CC_InputOneFrame is not available in this SDK build"
-            )
-        if isinstance(data, np.ndarray):
-            payload = data.tobytes()
-        elif isinstance(data, (bytes, bytearray)):
-            payload = bytes(data)
-        else:
-            payload = bytes(bytearray(data))
-        buf = (c_ubyte * len(payload)).from_buffer_copy(payload)
-        params = MV_CC_INPUT_FRAME_INFO()
-        params.pData = buf
-        params.nDataLen = len(payload)
-        ret = input_fn(self._handle, ctypes.byref(params))
-        if ret != MvErrorCode.MV_OK:
-            raise HikCameraError(
-                f"MV_CC_InputOneFrame failed: 0x{ret & 0xFFFFFFFF:08X}",
-                ret & 0xFFFFFFFF,
-            )
-
-    def stop_record(self) -> None:
-        """
-        Finalise the active recording session via ``MV_CC_StopRecord``.
-        通过 ``MV_CC_StopRecord`` 结束当前录制会话。
-        """
-        if not self._is_recording:
-            raise HikCameraError("No active recording session")
-        stop_fn = getattr(self._sdk, "MV_CC_StopRecord", None)
-        try:
-            if stop_fn is None:
-                raise FeatureUnsupportedError(
-                    "MV_CC_StopRecord is not available in this SDK build"
-                )
-            ret = stop_fn(self._handle)
-            if ret != MvErrorCode.MV_OK:
-                raise HikCameraError(
-                    f"MV_CC_StopRecord failed: 0x{ret & 0xFFFFFFFF:08X}",
-                    ret & 0xFFFFFFFF,
-                )
-        finally:
-            self._is_recording = False
-
-    def record(
-        self,
-        path: str | os.PathLike[str],
-        fps: float,
-        width: int,
-        height: int,
-        *,
-        pixel_type: int = int(PixelFormat.BGR8_PACKED),
-        fmt: RecordFormat | int = RecordFormat.MP4,
-        bitrate: int = 0,
-    ) -> _RecordingSession:
-        """
-        Return a context manager that wraps :py:meth:`start_record` /
-        :py:meth:`stop_record` and exposes
-        :py:meth:`~_RecordingSession.write` to push frames.
-        返回一个上下文管理器，封装 :py:meth:`start_record` /
-        :py:meth:`stop_record`，并通过 :py:meth:`~_RecordingSession.write`
-        推送帧。
-
-        Example / 示例::
-
-            with cam.record("out.mp4", fps=25, width=w, height=h) as rec:
-                while running:
-                    frame = cam.get_frame()
-                    rec.write(frame)
-        """
-        return _RecordingSession(
-            self,
-            path=path,
-            fps=fps,
-            width=width,
-            height=height,
-            pixel_type=pixel_type,
-            fmt=fmt,
-            bitrate=bitrate,
-        )
 
     # ------------------------------------------------------------------
     # Helpers / 辅助
@@ -2971,44 +2717,6 @@ class HikCamera:
 
         buf = np.ctypeslib.as_array(data, shape=(frame_len,))
         return raw_to_numpy(buf, w, h, pf, output_format)
-
-
-class _RecordingSession:
-    """
-    Context manager wrapping :py:meth:`HikCamera.start_record` /
-    :py:meth:`HikCamera.stop_record` for safe lifecycle management.
-    封装 :py:meth:`HikCamera.start_record` / :py:meth:`HikCamera.stop_record`
-    的上下文管理器，确保生命周期安全。
-    """
-
-    __slots__ = ("_camera", "_kwargs")
-
-    def __init__(self, camera: HikCamera, **kwargs: Any) -> None:
-        self._camera = camera
-        self._kwargs = kwargs
-
-    def __enter__(self) -> _RecordingSession:
-        path = self._kwargs.pop("path")
-        fps = self._kwargs.pop("fps")
-        width = self._kwargs.pop("width")
-        height = self._kwargs.pop("height")
-        self._camera.start_record(path, fps, width, height, **self._kwargs)
-        return self
-
-    def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
-        try:
-            self._camera.stop_record()
-        except HikCameraError:
-            pass
-
-    def write(self, frame: bytes | np.ndarray | ctypes.Array[c_ubyte]) -> None:
-        """
-        Push *frame* to the active recording session.
-        将 *frame* 写入当前录制会话。
-        """
-        self._camera.input_recorded_frame(frame)
-
-
 # ---------------------------------------------------------------------------
 # Helpers used by HikCamera / HikCamera 使用的辅助函数
 # ---------------------------------------------------------------------------
@@ -3058,43 +2766,6 @@ def _populate_ccm_matrix(
     for row, names in zip(matrix, fields):
         for value, name in zip(row, names):
             setattr(params, name, int(value))
-
-
-def _infer_image_format(path: str) -> ImageFileFormat:
-    """Infer the SDK image format from the file extension."""
-    ext = os.path.splitext(path)[1].lower()
-    if ext in (".jpg", ".jpeg"):
-        return Hik.ImageFileFormat.JPEG
-    if ext == ".bmp":
-        return Hik.ImageFileFormat.BMP
-    if ext == ".png":
-        return Hik.ImageFileFormat.PNG
-    if ext in (".tif", ".tiff"):
-        return Hik.ImageFileFormat.TIFF
-    raise ValueError(
-        f"Cannot infer image format from extension {ext!r}; "
-        "pass `fmt=Hik.ImageFileFormat.<...>` explicitly"
-    )
-
-
-def _save_image_with_opencv(image: np.ndarray, path: str) -> None:
-    """
-    Save *image* with OpenCV as a fallback when the SDK save APIs are
-    unavailable or fail at runtime.
-    当 SDK 图像保存 API 不可用或运行时报错时，使用 OpenCV 作为回退保存 *image*。
-    """
-    # Heuristic: HikCamera returns BGR for the default hot path and the demo
-    # default is BGR8, so 3-channel images can be written directly.
-    # For RGB callers, the documented workaround is to pass a BGR image or
-    # save via the SDK path.
-    # 启发式规则：HikCamera 默认热路径返回 BGR，且 demo 默认使用 BGR8，
-    # 因此 3 通道图像可直接写入。若调用方持有 RGB 图像，可先转换为 BGR
-    # 或优先使用 SDK 路径保存。
-    # 3-channel images are already in OpenCV's BGR layout.
-    # 3 通道图像已处于 OpenCV 所需的 BGR 排列。
-    ok = cv2.imwrite(path, image)
-    if not ok:
-        raise HikCameraError(f"OpenCV fallback failed to save image to {path!r}")
 
 
 # ---------------------------------------------------------------------------

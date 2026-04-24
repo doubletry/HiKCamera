@@ -1,6 +1,6 @@
 """
-Demo: Save a single image from a Hikvision camera.
-演示：从海康威视相机保存单张图像。
+Demo: Save a single frame from a Hikvision camera with OpenCV.
+演示：从海康威视相机采集单帧并用 OpenCV 保存。
 
 Usage / 用法::
 
@@ -21,6 +21,7 @@ import argparse
 import sys
 from pathlib import Path
 
+import cv2
 import numpy as np
 
 from hikcamera import (
@@ -105,12 +106,13 @@ def main() -> None:
         cam.stop_grabbing()
 
         # -----------------------------------------------------------
-        # Save image via the SDK (MV_CC_SaveImageToFileEx).
-        # 通过 SDK (MV_CC_SaveImageToFileEx) 保存图像。
+        # Save the decoded numpy image with OpenCV.
+        # 通过 OpenCV 保存解码后的 numpy 图像。
         # -----------------------------------------------------------
         output_path = Path(args.output)
         output_path.parent.mkdir(parents=True, exist_ok=True)
-        cam.save_image_to_file(image, output_path)
+        if not cv2.imwrite(str(output_path), image):
+            raise RuntimeError(f"Failed to save image to {output_path}")
 
     print(f"Image saved to {output_path}  (shape={image.shape}, dtype={image.dtype})")
 

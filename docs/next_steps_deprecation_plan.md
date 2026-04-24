@@ -28,5 +28,6 @@ provide enum member completion directly from the enum type.
    `get_frame*` / callback path goes through the SDK pipeline automatically
    when `use_sdk_decode=True` (the default). It may be moved to an
    underscore-prefixed name in a future major release. New code should
-   prefer the high-level helpers (`save_image_to_file`, `encode_image`,
-   `record(...)`, `rotate_image`, `flip_image`).
+   save / record the returned numpy frames with OpenCV, and only use the
+   library helpers where SDK-side processing is still required
+   (`encode_image`, `rotate_image`, `flip_image`).

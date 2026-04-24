@@ -22,9 +22,9 @@ A Python 3.12 library for Hikvision industrial cameras (MVS SDK).
 | **Pixel formats** | Mono8/10/12/16, Bayer GR/RG/GB/BG 8/10/12 (packed & planar), RGB/BGR 8, RGBA/BGRA 8, YUV422 (UYVY & YUYV) |
 | **Output formats** | `MONO8`, `MONO16`, `BGR8`, `RGB8`, `BGRA8`, `RGBA8` (all as numpy arrays) |
 | **SDK image processing** | SDK demosaic / colour conversion (`MV_CC_ConvertPixelTypeEx`) is the **default** decode path; OpenCV in `utils.raw_to_numpy` is kept as a fallback. Tunable via `cam.use_sdk_decode` and Bayer / ISP helpers. |
-| **Image save & encode** | `cam.save_image_to_file(image, "out.png")` and `cam.encode_image(image, fmt)` use `MV_CC_SaveImageToFileEx` / `MV_CC_SaveImageEx3` (incl. >65535 px via `MV_CC_SaveImageToFileEx2`). |
+| **Image save & encode** | Captured frames are numpy arrays; save them with OpenCV (`cv2.imwrite`) and encode in-memory with `cam.encode_image(image, fmt)` when SDK-side compression is needed. |
 | **Rotate / flip** | `cam.rotate_image(image, angle)` and `cam.flip_image(image, direction)` wrap `MV_CC_RotateImage` / `MV_CC_FlipImage` for MONO8/RGB8/BGR8 frames. |
-| **Video recording** | `with cam.record(path, fps, w, h) as rec: rec.write(frame)` wraps `MV_CC_StartRecord` / `MV_CC_InputOneFrame` / `MV_CC_StopRecord`. |
+| **Video recording** | Record returned numpy frames with OpenCV `cv2.VideoWriter`; see `demos/save_video.py` for a callback-based example that uses the camera FPS. |
 | **SDK pixel conversion** | `sdk_convert_pixel()` is kept as a low-level helper (the `get_frame*` / callback pipeline now uses the SDK by default). |
 | **Device disconnect detection** | `on_exception` callback + `device_exception` property for real-time disconnect detection; automatic reconnection pattern |
 | **Demos** | Save single image, record video, exception handling, auto-reconnect |
@@ -427,18 +427,19 @@ Set `cam.use_sdk_decode = False` (or pass `HikCamera(use_sdk_decode=False)` /
 `HikCamera.from_device_info(..., use_sdk_decode=False)` *via the constructor*)
 to fall back to the OpenCV-based pipeline in `hikcamera.utils.raw_to_numpy`.
 
-## Image save, encode, rotate, flip & record
+## Image save, video save, encode, rotate & flip
 
 ```python
+import cv2
+
 with HikCamera.from_ip("192.168.1.100") as cam:
     cam.open(Hik.AccessMode.EXCLUSIVE)
     cam.start_grabbing()
 
     image = cam.get_frame(output_format=Hik.OutputFormat.BGR8)
 
-    # Save an image to disk via MV_CC_SaveImageToFileEx
-    cam.save_image_to_file(image, "out.png")          # format inferred from extension
-    cam.save_image_to_file(image, "out.jpg", jpeg_quality=85)
+    # Save the decoded numpy image with OpenCV
+    cv2.imwrite("out.png", image)
 
     # Encode in-memory to a JPEG byte string via MV_CC_SaveImageEx3
     jpeg_bytes = cam.encode_image(image, Hik.ImageFileFormat.JPEG)
@@ -447,12 +448,19 @@ with HikCamera.from_ip("192.168.1.100") as cam:
     rotated = cam.rotate_image(image, Hik.RotateAngle.DEG_90)
     flipped = cam.flip_image(image, Hik.FlipDirection.HORIZONTAL)
 
-    # Record a short MP4 clip from BGR8 frames
+    # Record a short MP4 clip from BGR8 frames with OpenCV
     h, w = image.shape[:2]
-    with cam.record("out.mp4", fps=25, width=w, height=h, fmt=Hik.RecordFormat.MP4) as rec:
-        rec.write(image)
-        for _ in range(100):
-            rec.write(cam.get_frame(output_format=Hik.OutputFormat.BGR8))
+    fps = cam.params.AcquisitionControl.ResultingFrameRate.get()
+    writer = cv2.VideoWriter(
+        "out.mp4",
+        cv2.VideoWriter_fourcc(*"mp4v"),
+        fps,
+        (w, h),
+    )
+    writer.write(image)
+    for _ in range(100):
+        writer.write(cam.get_frame(output_format=Hik.OutputFormat.BGR8))
+    writer.release()
 
     cam.stop_grabbing()
 ```
