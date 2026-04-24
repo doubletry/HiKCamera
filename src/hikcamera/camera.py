@@ -594,7 +594,7 @@ class HikCamera:
     # Construction helpers / 构造辅助方法
     # ------------------------------------------------------------------
 
-    def __init__(self, *, use_sdk_decode: bool = True) -> None:
+    def __init__(self) -> None:
         self._sdk = load_sdk()
         self._handle: c_void_p = c_void_p(None)
         self._device_info: MV_CC_DEVICE_INFO | None = None
@@ -611,9 +611,10 @@ class HikCamera:
         self._lock: threading.Lock = threading.Lock()
         self._params_proxy: CameraParamsProxy | None = None
         # SDK-first image-processing pipeline (see :py:mod:`hikcamera.utils`
-        # for the OpenCV fallback).
+        # for the OpenCV fallback). Toggle with :py:meth:`set_use_sdk_decode`.
         # SDK 优先的图像处理管线（OpenCV 回退见 :py:mod:`hikcamera.utils`）。
-        self.use_sdk_decode: bool = use_sdk_decode
+        # 通过 :py:meth:`set_use_sdk_decode` 切换。
+        self.use_sdk_decode: bool = True
 
     @property
     def params(self) -> CameraParamsProxy:
@@ -2226,6 +2227,74 @@ class HikCamera:
     # ------------------------------------------------------------------
     # Bayer / ISP tuning / Bayer / ISP 调优
     # ------------------------------------------------------------------
+
+    def set_use_sdk_decode(self, enable: bool) -> None:
+        """
+        Enable or disable the SDK-based image-processing decode pipeline.
+        启用或禁用基于 SDK 的图像处理解码管线。
+
+        When enabled (the default), :py:meth:`get_frame` and the callback
+        path try ``MV_CC_HB_Decode`` + ``MV_CC_ConvertPixelTypeEx`` first
+        and fall back to the OpenCV-based
+        :py:func:`hikcamera.utils.raw_to_numpy` only on unsupported
+        pixel-format pairs or missing SDK symbols. When disabled, the
+        OpenCV fallback is always used.
+        启用时（默认），:py:meth:`get_frame` 与回调路径会优先尝试
+        ``MV_CC_HB_Decode`` + ``MV_CC_ConvertPixelTypeEx``，仅当像素格式
+        组合不支持或 SDK 符号缺失时才回退到基于 OpenCV 的
+        :py:func:`hikcamera.utils.raw_to_numpy`；禁用时始终走 OpenCV
+        回退路径。
+
+        If the camera is already open and SDK decode is being switched on,
+        :py:meth:`set_bayer_cvt_quality` is invoked with
+        :py:attr:`~hikcamera.enums.BayerCvtQuality.BEST` to mirror the
+        behaviour applied by :py:meth:`open`. Failures from that call are
+        logged at debug level and otherwise ignored, matching
+        :py:meth:`open`.
+        若相机已打开且本次将 SDK 解码从关闭切换为启用，会以
+        :py:attr:`~hikcamera.enums.BayerCvtQuality.BEST` 调用
+        :py:meth:`set_bayer_cvt_quality`，以复刻 :py:meth:`open` 的行为；
+        该调用失败时按 :py:meth:`open` 中的逻辑仅以 debug 级别记录。
+
+        Note / 注意
+        -----------
+        :py:meth:`set_bayer_cvt_quality` 与其他 Bayer / ISP 调优 API 仅在
+        SDK 解码启用时才会影响输出。
+        :py:meth:`set_bayer_cvt_quality` and other Bayer / ISP tuning APIs
+        only affect the output while SDK decode is enabled.
+
+        Parameters
+        ----------
+        enable : bool
+            ``True`` to use the SDK decode pipeline; ``False`` to force the
+            OpenCV fallback.
+        """
+        if not isinstance(enable, bool):
+            raise TypeError(
+                "`enable` must be a bool, got "
+                f"{type(enable).__name__}"
+            )
+        previous = self.use_sdk_decode
+        self.use_sdk_decode = enable
+        if enable and not previous and self._is_open:
+            try:
+                self.set_bayer_cvt_quality(Hik.BayerCvtQuality.BEST)
+            except FeatureUnsupportedError:
+                logger.debug(
+                    "MV_CC_SetBayerCvtQuality not available; "
+                    "using SDK default quality"
+                )
+            except HikCameraError as exc:
+                logger.debug(
+                    "MV_CC_SetBayerCvtQuality returned an error: %s", exc
+                )
+
+    def get_use_sdk_decode(self) -> bool:
+        """
+        Return the current state of the SDK decode pipeline switch.
+        返回当前 SDK 解码管线开关状态。
+        """
+        return self.use_sdk_decode
 
     def set_bayer_cvt_quality(self, quality: BayerCvtQuality | int) -> None:
         """

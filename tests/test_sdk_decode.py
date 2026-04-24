@@ -180,7 +180,7 @@ class TestDecodeFallback:
 
     def test_use_sdk_decode_false_skips_sdk(self, camera_with_mock_sdk):
         cam = camera_with_mock_sdk
-        cam.use_sdk_decode = False
+        cam.set_use_sdk_decode(False)
         cam._sdk.MV_CC_ConvertPixelTypeEx.reset_mock()
 
         data = np.full(16, 0x55, dtype=np.uint8)

@@ -21,7 +21,7 @@
 | **帧捕获 – 回调模式** | `start_grabbing(callback=my_fn)` ── 自定义回调接收 numpy 数组 |
 | **像素格式** | Mono8/10/12/16, Bayer GR/RG/GB/BG 8/10/12（紧凑和平面格式）, RGB/BGR 8, RGBA/BGRA 8, YUV422（UYVY 和 YUYV） |
 | **输出格式** | `MONO8`、`MONO16`、`BGR8`、`RGB8`、`BGRA8`、`RGBA8`（均为 numpy 数组） |
-| **SDK 图像处理** | SDK 去马赛克 / 颜色转换（`MV_CC_ConvertPixelTypeEx`）作为**默认**解码路径；`utils.raw_to_numpy` 中的 OpenCV 路径作为回退保留。可通过 `cam.use_sdk_decode` 与 Bayer / ISP 调优 API 控制。 |
+| **SDK 图像处理** | SDK 去马赛克 / 颜色转换（`MV_CC_ConvertPixelTypeEx`）作为**默认**解码路径；`utils.raw_to_numpy` 中的 OpenCV 路径作为回退保留。可通过 `cam.set_use_sdk_decode(...)` 切换，并配合 Bayer / ISP 调优 API 进行调节。 |
 | **图像保存与编码** | 采集结果是 numpy 图像；保存请直接用 OpenCV（`cv2.imwrite`），若需要 SDK 侧内存编码可用 `cam.encode_image(image, fmt)`。 |
 | **旋转 / 翻转** | `cam.rotate_image(image, angle)`、`cam.flip_image(image, direction)` 封装 `MV_CC_RotateImage` / `MV_CC_FlipImage`，支持 MONO8/RGB8/BGR8。 |
 | **视频录制** | 对返回的 numpy 帧使用 OpenCV `cv2.VideoWriter` 录制；参考 `demos/save_video.py` 中基于回调、自动读取相机 FPS 的示例。 |
@@ -402,9 +402,10 @@ with HikCamera.from_ip("192.168.1.100") as cam:
 
 ## 与 MVS 输出保持一致
 
-当 `use_sdk_decode=True`（默认）时，`HikCamera` 通过海康 SDK 图像处理管线
-解码帧，输出与 MVS 桌面应用一致。以下调优 API 可用于复刻任何自定义 MVS
-配置：
+默认情况下 `HikCamera` 通过海康 SDK 图像处理管线解码帧（`cam.use_sdk_decode`
+为 `True`），输出与 MVS 桌面应用一致。可在运行时通过
+`cam.set_use_sdk_decode(...)` 切换该管线（见下文），并使用以下调优 API
+复刻任何自定义 MVS 配置：
 
 ```python
 cam.set_bayer_cvt_quality(Hik.BayerCvtQuality.BEST)   # 默认；FAST/BALANCED/BEST/BEST_PLUS
@@ -418,15 +419,19 @@ cam.set_isp_config("/path/to/isp.xml")
 img = cam.isp_process(img)
 ```
 
+> **迁移提示**：`HikCamera()` 与 `from_device_info` / `from_ip` /
+> `from_serial_number` 工厂方法已**移除** `use_sdk_decode=` 关键字参数。
+> 请改用 `cam.set_use_sdk_decode(False)` / `cam.get_use_sdk_decode()` 切换。
+
 实用说明：
 
-- `use_sdk_decode=True`（默认）：推荐在希望输出尽量与 MVS 保持一致时使用，
-  尤其适合 Bayer 相机，或需要配合 Bayer / ISP 调优 API 时。
-- `use_sdk_decode=False`：回退到 `hikcamera.utils.raw_to_numpy` 的 OpenCV
-  解码路径。适合需要最直接的 numpy/OpenCV 解码流程，或希望对比 SDK 与
-  OpenCV 输出差异时使用。
+- 启用 SDK 解码（默认）：推荐在希望输出尽量与 MVS 保持一致时使用，尤其
+  适合 Bayer 相机，或需要配合 Bayer / ISP 调优 API 时。
+- 禁用 SDK 解码（`cam.set_use_sdk_decode(False)`）：回退到
+  `hikcamera.utils.raw_to_numpy` 的 OpenCV 解码路径。适合需要最直接的
+  numpy/OpenCV 解码流程，或希望对比 SDK 与 OpenCV 输出差异时使用。
 - `set_bayer_cvt_quality(...)` 只影响 SDK 解码路径中的 Bayer 去马赛克，因此
-  仅在 `use_sdk_decode=True` 时才有实际意义。
+  仅在 SDK 解码启用时才有实际意义。
 - `HikCamera.open()` 默认会应用 `Hik.BayerCvtQuality.BEST`。如果需要调整速度 /
   质量权衡，建议在 `open()` 之后、开始取流之前调用
   `cam.set_bayer_cvt_quality(...)`：
@@ -447,7 +452,8 @@ with HikCamera.from_device_info(devices[0]) as cam:
     cam.stop_grabbing()
 
 # 强制使用 OpenCV 解码路径，而不是 SDK 图像处理管线
-with HikCamera.from_device_info(devices[0], use_sdk_decode=False) as cam:
+with HikCamera.from_device_info(devices[0]) as cam:
+    cam.set_use_sdk_decode(False)
     cam.open()
     cam.start_grabbing()
     frame = cam.get_frame(output_format=Hik.OutputFormat.BGR8)
