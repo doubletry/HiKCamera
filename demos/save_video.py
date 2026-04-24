@@ -138,24 +138,27 @@ def main() -> None:
                 end_time = time.monotonic() + args.duration
 
                 try:
-                    while time.monotonic() < end_time:
-                        remaining_ms = max(1, int((end_time - time.monotonic()) * 1000))
+                    now = time.monotonic()
+                    while now < end_time:
+                        remaining_ms = max(1, int((end_time - now) * 1000))
                         try:
                             frame = cam.get_frame(
                                 timeout_ms=min(remaining_ms, 1000),
                                 output_format=Hik.OutputFormat.BGR8,
                             )
                         except FrameTimeoutError:
+                            now = time.monotonic()
                             continue
                         recorder.write(frame)
                         total_frames += 1
+                        now = time.monotonic()
                 except KeyboardInterrupt:
                     print("\nCtrl+C received. Stopping recording …")
         finally:
             try:
                 cam.stop_grabbing()
             except HikCameraError as exc:
-                print(f"Stopping grabbing reported: {exc}")
+                print(f"Error while stopping grabbing: {exc}")
 
     print(
         f"Video saved to {output_path}  "

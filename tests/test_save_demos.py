@@ -31,7 +31,7 @@ class _FakeRecordingSession:
         return self
 
     def __exit__(self, exc_type, exc, tb) -> None:
-        return None
+        pass
 
 
 class _FakeCamera:
@@ -53,7 +53,7 @@ class _FakeCamera:
         return self
 
     def __exit__(self, exc_type, exc, tb) -> None:
-        return None
+        pass
 
     def get_frame(self, *args, **kwargs) -> np.ndarray:
         self._get_frame_calls += 1
