@@ -325,6 +325,280 @@ MV_PIXEL_CONVERT_PARAM = MV_CC_PIXEL_CONVERT_PARAM_EX
 
 
 # ---------------------------------------------------------------------------
+# Image-processing structs / 图像处理结构体
+# ---------------------------------------------------------------------------
+# Field layouts derive from the SDK V4.7.0 documentation
+# (CameraParams.h / 31_01_*结构体定义.html).  Reserved padding fields are
+# included to keep correct memory alignment with the native library.
+# 字段布局参考 SDK V4.7.0 文档 (CameraParams.h / 31_01_*结构体定义.html)。
+# 保留的 nReserved 字段用于与原生库保持正确的内存对齐。
+
+
+class MV_CC_HB_DECODE_PARAM(Structure):  # noqa: N801
+    """
+    Parameter block for ``MV_CC_HB_Decode`` (high-bandwidth image decoding).
+    ``MV_CC_HB_Decode``（高带宽图像解码）的参数块。
+    """
+
+    _fields_ = [
+        ("pSrcBuf", POINTER(c_ubyte)),
+        ("nSrcLen", c_uint),
+        ("nWidth", c_uint),
+        ("nHeight", c_uint),
+        ("pDstBuf", POINTER(c_ubyte)),
+        ("nDstBufSize", c_uint),
+        ("nDstBufLen", c_uint),
+        ("enDstPixelType", c_uint),
+        ("nReserved", c_uint * 4),
+    ]
+
+
+class MV_CC_ROTATE_IMAGE_PARAM(Structure):  # noqa: N801
+    """
+    Parameter block for ``MV_CC_RotateImage``.
+    ``MV_CC_RotateImage`` 的参数块。
+    """
+
+    _fields_ = [
+        ("enPixelType", c_uint),
+        ("nWidth", c_uint),
+        ("nHeight", c_uint),
+        ("pSrcData", POINTER(c_ubyte)),
+        ("nSrcDataLen", c_uint),
+        ("pDstBuf", POINTER(c_ubyte)),
+        ("nDstBufSize", c_uint),
+        ("nDstBufLen", c_uint),
+        ("enRotationAngle", c_uint),
+        ("nReserved", c_uint * 4),
+    ]
+
+
+class MV_CC_FLIP_IMAGE_PARAM(Structure):  # noqa: N801
+    """
+    Parameter block for ``MV_CC_FlipImage``.
+    ``MV_CC_FlipImage`` 的参数块。
+    """
+
+    _fields_ = [
+        ("enPixelType", c_uint),
+        ("nWidth", c_uint),
+        ("nHeight", c_uint),
+        ("pSrcData", POINTER(c_ubyte)),
+        ("nSrcDataLen", c_uint),
+        ("pDstBuf", POINTER(c_ubyte)),
+        ("nDstBufSize", c_uint),
+        ("nDstBufLen", c_uint),
+        ("enFlipType", c_uint),
+        ("nReserved", c_uint * 4),
+    ]
+
+
+class MV_SAVE_IMG_TO_FILE_PARAM_EX(Structure):  # noqa: N801
+    """
+    Parameter block for ``MV_CC_SaveImageToFileEx``.
+    ``MV_CC_SaveImageToFileEx`` 的参数块。
+    """
+
+    _fields_ = [
+        ("enPixelType", c_uint),
+        ("nWidth", c_uint16),
+        ("nHeight", c_uint16),
+        ("pData", POINTER(c_ubyte)),
+        ("nDataLen", c_uint),
+        ("enImageType", c_uint),
+        ("pImagePath", c_char * 256),
+        ("nQuality", c_uint),
+        ("iMethodValue", c_int),
+        ("nReserved", c_uint * 4),
+    ]
+
+
+class MV_SAVE_IMAGE_PARAM_EX3(Structure):  # noqa: N801
+    """
+    Parameter block for ``MV_CC_SaveImageEx3`` (in-memory save).
+    ``MV_CC_SaveImageEx3`` 的参数块（内存保存）。
+    """
+
+    _fields_ = [
+        ("pData", POINTER(c_ubyte)),
+        ("nDataLen", c_uint),
+        ("enPixelType", c_uint),
+        ("nWidth", c_uint16),
+        ("nHeight", c_uint16),
+        ("pImageBuffer", POINTER(c_ubyte)),
+        ("nImageLen", c_uint),
+        ("nBufferSize", c_uint),
+        ("enImageType", c_uint),
+        ("nJpgQuality", c_uint),
+        ("iMethodValue", c_int),
+        ("nReserved", c_uint * 3),
+    ]
+
+
+class MV_CC_INPUT_FRAME_INFO(Structure):  # noqa: N801
+    """
+    Parameter block for ``MV_CC_InputOneFrame`` (video recording).
+    ``MV_CC_InputOneFrame`` 的参数块（视频录制）。
+    """
+
+    _fields_ = [
+        ("pData", POINTER(c_ubyte)),
+        ("nDataLen", c_uint),
+        ("nReserved", c_uint * 4),
+    ]
+
+
+class MV_CC_RECORD_PARAM(Structure):  # noqa: N801
+    """
+    Parameter block for ``MV_CC_StartRecord``.
+    ``MV_CC_StartRecord`` 的参数块。
+    """
+
+    _fields_ = [
+        ("enPixelType", c_uint),
+        ("nWidth", c_uint16),
+        ("nHeight", c_uint16),
+        ("fFrameRate", c_float),
+        ("nBitRate", c_uint),
+        ("enRecordFmtType", c_uint),
+        ("strFilePath", c_char * 256),
+        ("nReserved", c_uint * 8),
+    ]
+
+
+class MV_CC_GAMMA_PARAM(Structure):  # noqa: N801
+    """
+    Parameter block for ``MV_CC_SetBayerGammaParam``.
+    ``MV_CC_SetBayerGammaParam`` 的参数块。
+    """
+
+    _fields_ = [
+        ("enGammaType", c_uint),
+        ("fGammaValue", c_float),
+        ("nReserved", c_uint * 8),
+    ]
+
+
+class MV_CC_CCM_PARAM(Structure):  # noqa: N801
+    """
+    Parameter block for ``MV_CC_SetBayerCCMParam``.
+    ``MV_CC_SetBayerCCMParam`` 的参数块。
+    """
+
+    _fields_ = [
+        ("bCCMEnable", c_uint),
+        ("nCCMat00", c_int),
+        ("nCCMat01", c_int),
+        ("nCCMat02", c_int),
+        ("nCCMat10", c_int),
+        ("nCCMat11", c_int),
+        ("nCCMat12", c_int),
+        ("nCCMat20", c_int),
+        ("nCCMat21", c_int),
+        ("nCCMat22", c_int),
+        ("nReserved", c_uint * 4),
+    ]
+
+
+class MV_CC_CCM_PARAM_EX(Structure):  # noqa: N801
+    """
+    Parameter block for ``MV_CC_SetBayerCCMParamEx`` (with quantisation).
+    ``MV_CC_SetBayerCCMParamEx`` 的参数块（带量化）。
+    """
+
+    _fields_ = [
+        ("bCCMEnable", c_uint),
+        ("nCCMat00", c_int),
+        ("nCCMat01", c_int),
+        ("nCCMat02", c_int),
+        ("nCCMat10", c_int),
+        ("nCCMat11", c_int),
+        ("nCCMat12", c_int),
+        ("nCCMat20", c_int),
+        ("nCCMat21", c_int),
+        ("nCCMat22", c_int),
+        ("nCCMQuant", c_uint),
+        ("nReserved", c_uint * 4),
+    ]
+
+
+class MV_CC_CONTRAST_PARAM(Structure):  # noqa: N801
+    """
+    Parameter block for ``MV_CC_ImageContrast``.
+    ``MV_CC_ImageContrast`` 的参数块。
+    """
+
+    _fields_ = [
+        ("nWidth", c_uint),
+        ("nHeight", c_uint),
+        ("pSrcBuf", POINTER(c_ubyte)),
+        ("nSrcDataLen", c_uint),
+        ("enSrcPixelType", c_uint),
+        ("pDstBuf", POINTER(c_ubyte)),
+        ("nDstBufSize", c_uint),
+        ("nDstBufLen", c_uint),
+        ("nContrastFactor", c_uint),
+        ("nReserved", c_uint * 4),
+    ]
+
+
+class MV_CC_PURPLE_FRINGING_PARAM(Structure):  # noqa: N801
+    """
+    Parameter block for ``MV_CC_PurpleFringing``.
+    ``MV_CC_PurpleFringing`` 的参数块。
+    """
+
+    _fields_ = [
+        ("nWidth", c_uint),
+        ("nHeight", c_uint),
+        ("pSrcBuf", POINTER(c_ubyte)),
+        ("nSrcDataLen", c_uint),
+        ("enSrcPixelType", c_uint),
+        ("pDstBuf", POINTER(c_ubyte)),
+        ("nDstBufSize", c_uint),
+        ("nDstBufLen", c_uint),
+        ("nPurpleFringingValue", c_uint),
+        ("nReserved", c_uint * 4),
+    ]
+
+
+class MV_CC_IMAGE(Structure):  # noqa: N801
+    """
+    Generic image descriptor used by ISP processing.
+    ISP 处理使用的通用图像描述结构。
+    """
+
+    _fields_ = [
+        ("enImageType", c_uint),
+        ("nWidth", c_uint),
+        ("nHeight", c_uint),
+        ("nImageBufLen", c_uint),
+        ("pImageBuf", POINTER(c_ubyte)),
+        ("nImageLen", c_uint),
+        ("nReserved", c_uint * 8),
+    ]
+
+
+class MV_CC_ISP_CONFIG_PARAM(Structure):  # noqa: N801
+    """
+    ISP configuration parameter block for ``MV_CC_SetISPConfig``.
+    ``MV_CC_SetISPConfig`` 的 ISP 配置参数块。
+
+    The SDK accepts a path to an XML configuration file describing the ISP
+    pipeline.  Other ISP parameters (CCM, gamma, denoise, etc.) are exposed
+    through dedicated APIs.
+    SDK 接受指向描述 ISP 管线的 XML 配置文件路径。其他 ISP 参数
+    （CCM、Gamma、降噪等）通过独立 API 暴露。
+    """
+
+    _fields_ = [
+        ("strConfigFilePath", c_char * 256),
+        ("nReserved", c_uint * 4),
+    ]
+
+
+
+# ---------------------------------------------------------------------------
 # Callback type / 回调类型
 # ---------------------------------------------------------------------------
 
@@ -597,3 +871,57 @@ def _configure_sdk_argtypes(lib: ctypes.CDLL) -> None:  # noqa: PLR0915
 
     # SDK version / SDK 版本
     _set("MV_CC_GetSDKVersion", [], c_uint)
+
+    # ------------------------------------------------------------------
+    # Image processing helpers / 图像处理辅助
+    # ------------------------------------------------------------------
+    # All of the following are optional – older SDK builds may not export
+    # them.  ``_set()`` silently skips missing symbols; the high-level
+    # wrappers must call ``getattr(sdk, name, None)`` and raise
+    # ``FeatureUnsupportedError`` (or fall back) at runtime.
+    # 以下函数均为可选 ── 较旧的 SDK 构建可能未导出。``_set()`` 会静默跳过
+    # 缺失的符号；高层封装应在运行时使用 ``getattr(sdk, name, None)``，
+    # 并在符号缺失时抛出 ``FeatureUnsupportedError``（或回退到其他实现）。
+
+    _set("MV_CC_HB_Decode", [c_void_p, POINTER(MV_CC_HB_DECODE_PARAM)])
+    _set("MV_CC_RotateImage", [c_void_p, POINTER(MV_CC_ROTATE_IMAGE_PARAM)])
+    _set("MV_CC_FlipImage", [c_void_p, POINTER(MV_CC_FLIP_IMAGE_PARAM)])
+    _set(
+        "MV_CC_SaveImageToFileEx",
+        [c_void_p, POINTER(MV_SAVE_IMG_TO_FILE_PARAM_EX)],
+    )
+    _set(
+        "MV_CC_SaveImageToFileEx2",
+        [c_void_p, POINTER(MV_SAVE_IMG_TO_FILE_PARAM_EX)],
+    )
+    _set(
+        "MV_CC_SaveImageEx3",
+        [c_void_p, POINTER(MV_SAVE_IMAGE_PARAM_EX3)],
+    )
+
+    # Bayer / colour pipeline tuning / Bayer / 彩色管线调优
+    _set("MV_CC_SetBayerCvtQuality", [c_void_p, c_uint])
+    _set("MV_CC_SetBayerFilterEnable", [c_void_p, c_uint])
+    _set("MV_CC_SetBayerGammaValue", [c_void_p, c_float])
+    _set("MV_CC_SetGammaValue", [c_void_p, c_uint, c_float])
+    _set(
+        "MV_CC_SetBayerGammaParam",
+        [c_void_p, POINTER(MV_CC_GAMMA_PARAM)],
+    )
+    _set("MV_CC_SetBayerCCMParam", [c_void_p, POINTER(MV_CC_CCM_PARAM)])
+    _set("MV_CC_SetBayerCCMParamEx", [c_void_p, POINTER(MV_CC_CCM_PARAM_EX)])
+    _set("MV_CC_ImageContrast", [c_void_p, POINTER(MV_CC_CONTRAST_PARAM)])
+    _set(
+        "MV_CC_PurpleFringing",
+        [c_void_p, POINTER(MV_CC_PURPLE_FRINGING_PARAM)],
+    )
+    _set("MV_CC_SetISPConfig", [c_void_p, POINTER(MV_CC_ISP_CONFIG_PARAM)])
+    _set(
+        "MV_CC_ISPProcess",
+        [c_void_p, POINTER(MV_CC_IMAGE), POINTER(MV_CC_IMAGE)],
+    )
+
+    # Video recording / 视频录制
+    _set("MV_CC_StartRecord", [c_void_p, POINTER(MV_CC_RECORD_PARAM)])
+    _set("MV_CC_InputOneFrame", [c_void_p, POINTER(MV_CC_INPUT_FRAME_INFO)])
+    _set("MV_CC_StopRecord", [c_void_p])

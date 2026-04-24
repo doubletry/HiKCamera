@@ -637,6 +637,70 @@ class GevDeviceModeCharacterSet(StrEnum):
     UTF8 = "UTF8"
 
 
+# ---------------------------------------------------------------------------
+# Image-processing enums (SDK image-processing / save / record group)
+# 图像处理枚举（SDK 图像处理 / 保存 / 录制相关）
+# ---------------------------------------------------------------------------
+
+class BayerCvtQuality(IntEnum):
+    """
+    Bayer demosaic quality used by ``MV_CC_ConvertPixelTypeEx``.
+    ``MV_CC_ConvertPixelTypeEx`` 使用的 Bayer 去马赛克质量。
+
+    The SDK default for HikCamera is :py:attr:`BEST` to match the MVS
+    desktop application's default output.
+    HikCamera 默认使用 :py:attr:`BEST`，以匹配 MVS 桌面应用的默认输出。
+    """
+
+    FAST = 0
+    BALANCED = 1
+    BEST = 2
+    BEST_PLUS = 3
+
+
+class RotateAngle(IntEnum):
+    """
+    Rotation angle for ``MV_CC_RotateImage``.
+    ``MV_CC_RotateImage`` 的旋转角度。
+    """
+
+    DEG_90 = 1
+    DEG_180 = 2
+    DEG_270 = 3
+
+
+class FlipDirection(IntEnum):
+    """
+    Flip direction for ``MV_CC_FlipImage``.
+    ``MV_CC_FlipImage`` 的翻转方向。
+    """
+
+    VERTICAL = 0
+    HORIZONTAL = 1
+
+
+class ImageFileFormat(IntEnum):
+    """
+    Output file format for ``MV_CC_SaveImageToFileEx`` / ``MV_CC_SaveImageEx3``.
+    ``MV_CC_SaveImageToFileEx`` / ``MV_CC_SaveImageEx3`` 的输出文件格式。
+    """
+
+    BMP = 0
+    JPEG = 1
+    TIFF = 2
+    PNG = 3
+
+
+class RecordFormat(IntEnum):
+    """
+    Container/codec for ``MV_CC_StartRecord``.
+    ``MV_CC_StartRecord`` 的容器/编码格式。
+    """
+
+    AVI = 0
+    MP4 = 1
+
+
 class Hik:
     """
     Library-scoped enum namespace for structured parameter values.
@@ -693,3 +757,9 @@ class Hik:
     TriggerSource = TriggerSource
     UserSetDefault = UserSetDefault
     UserSetSelector = UserSetSelector
+    # Image-processing helpers / 图像处理辅助
+    BayerCvtQuality = BayerCvtQuality
+    RotateAngle = RotateAngle
+    FlipDirection = FlipDirection
+    ImageFileFormat = ImageFileFormat
+    RecordFormat = RecordFormat
