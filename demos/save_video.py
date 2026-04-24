@@ -194,7 +194,8 @@ def main() -> None:
         if not writer.isOpened():
             print(
                 f"Failed to open VideoWriter for {requested_output_path} "
-                f"(codec {fourcc_name})."
+                f"(codec {fourcc_name}). Try --output with an .avi suffix or "
+                "check your OpenCV codec support."
             )
             sys.exit(1)
 
