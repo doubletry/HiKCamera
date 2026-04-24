@@ -295,7 +295,7 @@ def test_save_video_demo_aborts_when_writer_cannot_be_opened(
     captured = capsys.readouterr()
     assert "Failed to open VideoWriter for" in captured.out
     assert "codec mp4v" in captured.out
-    assert "avi suffix" in captured.out
+    assert ".avi suffix" in captured.out
 
     # Writer failed to open before grabbing started, so nothing to stop.
     # 写入器在开始取流之前失败，因此无需停止取流。
