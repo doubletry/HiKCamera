@@ -50,16 +50,17 @@ from hikcamera import (
     SDKNotFoundError,
 )
 
-# Map of output extensions to OpenCV FourCC codes.  ``mp4v`` is bundled with
-# opencv-python on every platform; ``MJPG`` is the most portable AVI codec.
-# 输出扩展名到 OpenCV FourCC 编码的映射。``mp4v`` 在所有平台上的
-# opencv-python 均自带；``MJPG`` 是最通用的 AVI 编码。
-_FOURCC_BY_EXTENSION: dict[str, str] = {
-    ".mp4": "mp4v",
-    ".m4v": "mp4v",
-    ".mov": "mp4v",
-    ".mkv": "mp4v",
-    ".avi": "MJPG",
+# Candidate FourCC codes to try for each output extension.  MP4 support varies
+# by OpenCV build / OS codec pack, so the demo also falls back to MJPG-in-AVI
+# when MP4-like paths cannot be opened.
+# 每种输出扩展名要尝试的 FourCC 候选列表。不同 OpenCV 构建 / 操作系统的 MP4
+# 支持差异较大，因此当 MP4 类路径无法打开时，Demo 还会回退到 AVI+MJPG。
+_FOURCC_CANDIDATES_BY_EXTENSION: dict[str, tuple[str, ...]] = {
+    ".mp4": ("mp4v",),
+    ".m4v": ("mp4v",),
+    ".mov": ("mp4v",),
+    ".mkv": ("mp4v",),
+    ".avi": ("MJPG",),
 }
 
 
@@ -70,12 +71,62 @@ def fourcc_for_path(path: str | Path) -> str:
     """
     suffix = Path(path).suffix.lower() or ".mp4"
     try:
-        return _FOURCC_BY_EXTENSION[suffix]
+        return _FOURCC_CANDIDATES_BY_EXTENSION[suffix][0]
     except KeyError as exc:
         raise ValueError(
             f"Unsupported video extension {suffix!r}; "
-            f"use one of {sorted(_FOURCC_BY_EXTENSION)}"
+            f"use one of {sorted(_FOURCC_CANDIDATES_BY_EXTENSION)}"
         ) from exc
+
+
+def _writer_candidates(path: str | Path) -> list[tuple[Path, str]]:
+    """
+    Return candidate (path, fourcc) pairs for opening a VideoWriter.
+    返回用于打开 VideoWriter 的候选 (path, fourcc) 组合。
+    """
+    output_path = Path(path)
+    suffix = output_path.suffix.lower() or ".mp4"
+    try:
+        fourccs = _FOURCC_CANDIDATES_BY_EXTENSION[suffix]
+    except KeyError as exc:
+        raise ValueError(
+            f"Unsupported video extension {suffix!r}; "
+            f"use one of {sorted(_FOURCC_CANDIDATES_BY_EXTENSION)}"
+        ) from exc
+
+    candidates = [(output_path, fourcc) for fourcc in fourccs]
+    if suffix != ".avi":
+        candidates.append((output_path.with_suffix(".avi"), "MJPG"))
+    return candidates
+
+
+def _open_video_writer(
+    path: str | Path, fps: float, frame_size: tuple[int, int]
+) -> tuple[cv2.VideoWriter, Path]:
+    """
+    Open a VideoWriter, falling back to a more portable AVI+MJPG output when
+    the requested path cannot be opened on the current OpenCV build.
+    在当前 OpenCV 构建无法打开请求的输出路径时，打开 VideoWriter 并回退到
+    兼容性更好的 AVI+MJPG 输出。
+    """
+    attempted: list[str] = []
+    for candidate_path, fourcc_name in _writer_candidates(path):
+        writer = cv2.VideoWriter(
+            str(candidate_path),
+            cv2.VideoWriter_fourcc(*fourcc_name),
+            fps,
+            frame_size,
+        )
+        if writer.isOpened():
+            return writer, candidate_path
+        writer.release()
+        attempted.append(f"{candidate_path.name} ({fourcc_name})")
+
+    attempted_str = ", ".join(attempted)
+    raise RuntimeError(
+        f"Failed to open VideoWriter for {path}. Tried: {attempted_str}. "
+        "Try passing --output with an .avi suffix if your OpenCV build lacks MP4 support."
+    )
 
 
 def parse_args() -> argparse.Namespace:
@@ -155,7 +206,8 @@ def main() -> None:
     # ---------------------------------------------------------------
     # Open and start grabbing / 打开相机并开始取帧
     # ---------------------------------------------------------------
-    output_path = Path(args.output)
+    requested_output_path = Path(args.output)
+    output_path = requested_output_path
     writer: cv2.VideoWriter | None = None
 
     # Shared state between the SDK callback thread and main thread.
@@ -170,7 +222,7 @@ def main() -> None:
         # Only create the output directory once the camera has opened, so a
         # failed connection does not leave behind empty directories.
         # 仅在相机成功打开后再创建输出目录，避免连接失败时遗留空目录。
-        output_path.parent.mkdir(parents=True, exist_ok=True)
+        requested_output_path.parent.mkdir(parents=True, exist_ok=True)
 
         if args.exposure is not None:
             cam.params.AcquisitionControl.ExposureTime.set(args.exposure)
@@ -186,11 +238,16 @@ def main() -> None:
         print(f"Frame size: {width}×{height}")
         print(f"Camera frame rate: {fps:.2f} fps")
 
-        fourcc = cv2.VideoWriter_fourcc(*fourcc_for_path(output_path))
-        writer = cv2.VideoWriter(str(output_path), fourcc, fps, (width, height))
-        if not writer.isOpened():
-            print(f"Failed to open VideoWriter for {output_path}")
+        try:
+            writer, output_path = _open_video_writer(output_path, fps, (width, height))
+        except RuntimeError as exc:
+            print(str(exc))
             sys.exit(1)
+        if output_path != requested_output_path:
+            print(
+                "VideoWriter for "
+                f"{requested_output_path} was unavailable; falling back to {output_path}."
+            )
 
         def on_frame(image: np.ndarray, _info: dict[str, Any]) -> None:
             """

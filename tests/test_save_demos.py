@@ -296,6 +296,48 @@ def test_save_video_demo_aborts_when_writer_cannot_be_opened(tmp_path, monkeypat
     fake_cam.stop_grabbing.assert_not_called()
 
 
+def test_save_video_demo_falls_back_to_avi_when_mp4_writer_cannot_open(
+    tmp_path, monkeypatch
+) -> None:
+    module = _load_demo_module("save_video")
+    fake_cam = _FakeCamera(np.zeros((4, 6, 3), dtype=np.uint8), fps=30.0)
+
+    requested_path = tmp_path / "video.mp4"
+    fallback_path = tmp_path / "video.avi"
+    monkeypatch.setattr(
+        module,
+        "parse_args",
+        lambda: argparse.Namespace(
+            ip=None,
+            sn="DA4860722",
+            output=str(requested_path),
+            duration=0.0,
+            exposure=None,
+            gain=None,
+        ),
+    )
+    monkeypatch.setattr(module.HikCamera, "from_serial_number", lambda sn: fake_cam)
+
+    first_writer = MagicMock()
+    first_writer.isOpened.return_value = False
+    second_writer = MagicMock()
+    second_writer.isOpened.return_value = True
+    writer_factory = MagicMock(side_effect=[first_writer, second_writer])
+    monkeypatch.setattr(module.cv2, "VideoWriter", writer_factory)
+    monkeypatch.setattr(module.cv2, "VideoWriter_fourcc", lambda *args: 0)
+    monkeypatch.setattr(module.time, "monotonic", lambda: 100.0)
+    monkeypatch.setattr(module.time, "sleep", lambda _s: None)
+
+    module.main()
+
+    assert writer_factory.call_args_list[0].args[0] == str(requested_path)
+    assert writer_factory.call_args_list[1].args[0] == str(fallback_path)
+    first_writer.release.assert_called_once()
+    second_writer.release.assert_called_once()
+    fake_cam.start_grabbing.assert_called_once()
+    fake_cam.stop_grabbing.assert_called_once()
+
+
 @pytest.mark.parametrize(
     ("path", "expected"),
     [
@@ -310,6 +352,14 @@ def test_save_video_demo_aborts_when_writer_cannot_be_opened(tmp_path, monkeypat
 def test_save_video_demo_resolves_fourcc_for_extension(path: str, expected: str) -> None:
     module = _load_demo_module("save_video")
     assert module.fourcc_for_path(path) == expected
+
+
+def test_save_video_demo_returns_writer_candidates_with_avi_fallback() -> None:
+    module = _load_demo_module("save_video")
+    assert module._writer_candidates("out.mp4") == [
+        (Path("out.mp4"), "mp4v"),
+        (Path("out.avi"), "MJPG"),
+    ]
 
 
 def test_save_video_demo_rejects_unknown_video_extension() -> None:
