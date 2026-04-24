@@ -355,7 +355,7 @@ def test_save_video_demo_resolves_fourcc_for_extension(path: str, expected: str)
     assert module.fourcc_for_path(path) == expected
 
 
-def test_save_video_demo_returns_writer_candidates_with_avi_fallback() -> None:
+def test_save_video_demo_writer_candidates_include_avi_fallback() -> None:
     module = _load_demo_module("save_video")
     assert module._writer_candidates("out.mp4") == [
         (Path("out.mp4"), "mp4v"),

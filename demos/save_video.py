@@ -207,7 +207,6 @@ def main() -> None:
     # Open and start grabbing / 打开相机并开始取帧
     # ---------------------------------------------------------------
     requested_output_path = Path(args.output)
-    output_path = requested_output_path
     writer: cv2.VideoWriter | None = None
 
     # Shared state between the SDK callback thread and main thread.
@@ -239,7 +238,9 @@ def main() -> None:
         print(f"Camera frame rate: {fps:.2f} fps")
 
         try:
-            writer, output_path = _open_video_writer(output_path, fps, (width, height))
+            writer, output_path = _open_video_writer(
+                requested_output_path, fps, (width, height)
+            )
         except RuntimeError as exc:
             print(str(exc))
             sys.exit(1)
