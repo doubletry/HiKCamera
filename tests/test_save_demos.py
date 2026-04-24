@@ -90,6 +90,30 @@ def test_save_image_demo_runs_without_explicit_bayer_quality(tmp_path, monkeypat
     np.testing.assert_array_equal(saved_image, fake_cam._frame)
 
 
+def test_save_image_demo_raises_when_opencv_cannot_write(tmp_path, monkeypatch) -> None:
+    module = _load_demo_module("save_image")
+    fake_cam = _FakeCamera(np.zeros((4, 6, 3), dtype=np.uint8))
+
+    monkeypatch.setattr(
+        module,
+        "parse_args",
+        lambda: argparse.Namespace(
+            ip=None,
+            sn="DA4860722",
+            output=str(tmp_path / "image.png"),
+            format="BGR8",
+            timeout=1000,
+            exposure=None,
+            gain=None,
+        ),
+    )
+    monkeypatch.setattr(module.HikCamera, "from_serial_number", lambda sn: fake_cam)
+    monkeypatch.setattr(module.cv2, "imwrite", MagicMock(return_value=False))
+
+    with pytest.raises(RuntimeError, match="Failed to save image"):
+        module.main()
+
+
 def test_save_video_demo_writes_frames_via_callback(tmp_path, monkeypatch) -> None:
     module = _load_demo_module("save_video")
     fake_cam = _FakeCamera(np.zeros((4, 6, 3), dtype=np.uint8), fps=30.0)

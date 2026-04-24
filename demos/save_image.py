@@ -112,7 +112,12 @@ def main() -> None:
         output_path = Path(args.output)
         output_path.parent.mkdir(parents=True, exist_ok=True)
         if not cv2.imwrite(str(output_path), image):
-            raise RuntimeError(f"Failed to save image to {output_path}")
+            raise RuntimeError(
+                "Failed to save image to "
+                f"{output_path}. Check that the directory exists, the file "
+                "extension is supported by OpenCV, and the process has write "
+                "permission."
+            )
 
     print(f"Image saved to {output_path}  (shape={image.shape}, dtype={image.dtype})")
 
