@@ -2,10 +2,18 @@
 Demo: Capture a sequence of frames and save them as a video file.
 演示：捕获一系列帧并保存为视频文件。
 
-Uses the SDK-backed :py:meth:`~hikcamera.HikCamera.record` context manager
-together with polling-based acquisition for a simple, robust demo flow.
-使用 SDK 提供的 :py:meth:`~hikcamera.HikCamera.record` 上下文管理器，
-配合轮询取帧实现一个简单、稳健的示例流程。
+Frames are pulled from the SDK in polling mode and written to disk via
+OpenCV's :class:`cv2.VideoWriter`.  This keeps the demo robust on every
+platform (the SDK ``MV_CC_StartRecord`` MP4 path requires a separately
+shipped ``MvFFmpegPlugin``; if the plugin is missing the SDK call can
+block indefinitely while still holding the Python GIL, which also breaks
+Ctrl+C).  Polling with a short timeout returns control to Python every
+~200 ms so signals are delivered promptly.
+帧通过 SDK 轮询模式获取，并通过 OpenCV 的 :class:`cv2.VideoWriter` 写入磁盘。
+SDK 的 ``MV_CC_StartRecord`` MP4 路径在 Windows 上需要厂商单独提供的
+``MvFFmpegPlugin``，缺少插件时该调用可能在 SDK 内部长时间阻塞并持有 GIL，
+导致 Ctrl+C 也无法响应；用 OpenCV 录制可彻底规避该依赖，并配合短超时轮询，
+使 Python 每 ~200 ms 取回一次控制权，保证 Ctrl+C 立即生效。
 
 Usage / 用法::
 
@@ -25,6 +33,8 @@ import sys
 import time
 from pathlib import Path
 
+import cv2
+
 from hikcamera import (
     FrameTimeoutError,
     Hik,
@@ -32,6 +42,33 @@ from hikcamera import (
     HikCameraError,
     SDKNotFoundError,
 )
+
+# Map of output extensions to OpenCV FourCC codes.  ``mp4v`` is bundled with
+# opencv-python on every platform; ``MJPG`` is the most portable AVI codec.
+# 输出扩展名到 OpenCV FourCC 编码的映射。``mp4v`` 在所有平台上的
+# opencv-python 均自带；``MJPG`` 是最通用的 AVI 编码。
+_FOURCC_BY_EXTENSION: dict[str, str] = {
+    ".mp4": "mp4v",
+    ".m4v": "mp4v",
+    ".mov": "mp4v",
+    ".mkv": "mp4v",
+    ".avi": "MJPG",
+}
+
+
+def fourcc_for_path(path: str | Path) -> str:
+    """
+    Return the OpenCV FourCC code matching *path*'s extension.
+    返回与 *path* 扩展名对应的 OpenCV FourCC 编码。
+    """
+    suffix = Path(path).suffix.lower() or ".mp4"
+    try:
+        return _FOURCC_BY_EXTENSION[suffix]
+    except KeyError as exc:
+        raise ValueError(
+            f"Unsupported video extension {suffix!r}; "
+            f"use one of {sorted(_FOURCC_BY_EXTENSION)}"
+        ) from exc
 
 
 def parse_args() -> argparse.Namespace:
@@ -56,22 +93,6 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--exposure", type=float, help="Exposure time in µs")
     parser.add_argument("--gain", type=float, help="Analogue gain value")
     return parser.parse_args()
-
-
-def infer_record_format(path: str | Path) -> Hik.RecordFormat:
-    """
-    Infer the SDK recorder format from the output file extension.
-    根据输出文件扩展名推断 SDK 录制格式。
-    """
-    suffix = Path(path).suffix.lower()
-    if suffix == ".avi":
-        return Hik.RecordFormat.AVI
-    if suffix in {"", ".mp4"}:
-        return Hik.RecordFormat.MP4
-    raise ValueError(
-        f"Cannot infer record format from extension {suffix!r}; "
-        "use a .mp4 or .avi output path"
-    )
 
 
 def main() -> None:
@@ -102,6 +123,11 @@ def main() -> None:
     # ---------------------------------------------------------------
     # Open and start grabbing / 打开相机并开始取帧
     # ---------------------------------------------------------------
+    output_path = Path(args.output)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    total_frames = 0
+    writer: cv2.VideoWriter | None = None
+
     with cam:
         cam.open(Hik.AccessMode.EXCLUSIVE)
         print("Camera opened.")
@@ -111,53 +137,46 @@ def main() -> None:
         if args.gain is not None:
             cam.params.AnalogControl.Gain.set(args.gain)
 
-        # Grab the first frame to get image dimensions
-        # 抓取第一帧以获取图像尺寸
         cam.start_grabbing()
         print(f"Grabbing started. Recording for {args.duration:.1f} seconds …")
-        output_path = Path(args.output)
-        output_path.parent.mkdir(parents=True, exist_ok=True)
-        total_frames = 0
         try:
+            # Grab the first frame to determine image dimensions
+            # 抓取第一帧以确定图像尺寸
             first_frame = cam.get_frame(timeout_ms=5000, output_format=Hik.OutputFormat.BGR8)
             h, w = first_frame.shape[:2]
             print(f"Frame size: {w}×{h}")
 
             # -----------------------------------------------------------
-            # Open the SDK recorder / 打开 SDK 录制器
+            # Open the video writer / 打开视频写入器
             # -----------------------------------------------------------
-            with cam.record(
-                output_path,
-                fps=args.fps,
-                width=w,
-                height=h,
-                fmt=infer_record_format(output_path),
-            ) as recorder:
-                recorder.write(first_frame)
-                total_frames = 1
-                end_time = time.monotonic() + args.duration
+            fourcc = cv2.VideoWriter_fourcc(*fourcc_for_path(output_path))
+            writer = cv2.VideoWriter(str(output_path), fourcc, args.fps, (w, h))
+            if not writer.isOpened():
+                print(f"Failed to open VideoWriter for {output_path}")
+                sys.exit(1)
 
-                try:
-                    # Cache the current time once per loop iteration so timeout
-                    # calculations stay consistent and avoid redundant calls.
-                    # 每轮循环缓存一次当前时间，便于保持超时计算一致并避免重复调用。
-                    now = time.monotonic()
-                    while now < end_time:
-                        remaining_ms = max(1, int((end_time - now) * 1000))
-                        try:
-                            frame = cam.get_frame(
-                                timeout_ms=min(remaining_ms, 1000),
-                                output_format=Hik.OutputFormat.BGR8,
-                            )
-                        except FrameTimeoutError:
-                            now = time.monotonic()
-                            continue
-                        recorder.write(frame)
-                        total_frames += 1
-                        now = time.monotonic()
-                except KeyboardInterrupt:
-                    print("\nCtrl+C received. Stopping recording …")
+            writer.write(first_frame)
+            total_frames = 1
+            end_time = time.monotonic() + args.duration
+
+            try:
+                while time.monotonic() < end_time:
+                    # Short timeout keeps Python responsive to Ctrl+C between frames.
+                    # 短超时使主线程在帧间隔间能及时响应 Ctrl+C。
+                    try:
+                        frame = cam.get_frame(
+                            timeout_ms=200,
+                            output_format=Hik.OutputFormat.BGR8,
+                        )
+                    except FrameTimeoutError:
+                        continue
+                    writer.write(frame)
+                    total_frames += 1
+            except KeyboardInterrupt:
+                print("\nCtrl+C received. Stopping recording …")
         finally:
+            if writer is not None:
+                writer.release()
             try:
                 cam.stop_grabbing()
             except HikCameraError as exc:
