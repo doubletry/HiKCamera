@@ -23,3 +23,11 @@ provide enum member completion directly from the enum type.
    future if stronger editor hints are needed for dynamically created proxy
    objects.
 4. Keep `get_camera_info()` examples aligned with `ParamNode` key access.
+5. **`HikCamera.sdk_convert_pixel`** remains public for backward compatibility
+   but is now considered a low-level helper – the high-level
+   `get_frame*` / callback path goes through the SDK pipeline automatically
+   when `use_sdk_decode=True` (the default). It may be moved to an
+   underscore-prefixed name in a future major release. New code should
+   save / record the returned numpy frames with OpenCV, and only use the
+   library helpers where SDK-side processing is still required
+   (`encode_image`, `rotate_image`, `flip_image`).

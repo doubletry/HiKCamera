@@ -2,14 +2,28 @@
 Demo: Capture a sequence of frames and save them as a video file.
 演示：捕获一系列帧并保存为视频文件。
 
-Uses the callback-based acquisition mode so no frames are dropped
-between calls.
-使用基于回调的采集模式以避免帧丢失。
+Frames are delivered from the SDK via a callback, while access to the OpenCV
+writer is synchronised so shutdown cannot race with an in-flight callback. The
+demo queries the camera for its actual ``ResultingFrameRate`` so the recorded
+file plays back at the same rate the device produces frames — there is no
+``--fps`` option to keep out of sync with reality.
+帧由 SDK 通过回调推送，OpenCV 写入器的访问则通过锁同步，避免关闭阶段与正在
+执行的回调发生竞争。Demo 会查询相机的 ``ResultingFrameRate`` 作为录制帧率，
+使录像的播放速率与相机实际采集速率一致；不再提供 ``--fps`` 参数以避免人为
+帧率与实际帧率不一致。
+
+The OpenCV writer is used instead of the SDK ``MV_CC_StartRecord`` MP4 path
+because that path requires the separately shipped ``MvFFmpegPlugin`` and can
+block while holding the Python GIL when the plugin is missing.  The main
+thread only sleeps in short increments so Ctrl+C is delivered promptly.
+之所以使用 OpenCV 写入器而非 SDK 的 ``MV_CC_StartRecord`` MP4 录制路径，
+是因为该路径需要厂商单独提供的 ``MvFFmpegPlugin``，缺失时可能在持有 GIL
+的情况下阻塞。主线程仅做短暂休眠，确保 Ctrl+C 能立即响应。
 
 Usage / 用法::
 
     python save_video.py [--ip IP] [--sn SN] [--output PATH]
-                         [--fps FPS] [--duration SECONDS]
+                         [--duration SECONDS]
 
 Run ``pip install hikcamera`` (or ``pip install -e .`` from the repo root)
 before executing this script.
@@ -20,8 +34,8 @@ before executing this script.
 from __future__ import annotations
 
 import argparse
-import queue
 import sys
+import threading
 import time
 from pathlib import Path
 from typing import Any
@@ -32,8 +46,36 @@ import numpy as np
 from hikcamera import (
     Hik,
     HikCamera,
+    HikCameraError,
     SDKNotFoundError,
 )
+
+# Map of output extensions to OpenCV FourCC codes.  ``mp4v`` is bundled with
+# opencv-python on every platform; ``MJPG`` is the most portable AVI codec.
+# 输出扩展名到 OpenCV FourCC 编码的映射。``mp4v`` 在所有平台上的
+# opencv-python 均自带；``MJPG`` 是最通用的 AVI 编码。
+_FOURCC_BY_EXTENSION: dict[str, str] = {
+    ".mp4": "mp4v",
+    ".m4v": "mp4v",
+    ".mov": "mp4v",
+    ".mkv": "mp4v",
+    ".avi": "MJPG",
+}
+
+
+def fourcc_for_path(path: str | Path) -> str:
+    """
+    Return the OpenCV FourCC code matching *path*'s extension.
+    返回与 *path* 扩展名对应的 OpenCV FourCC 编码。
+    """
+    suffix = Path(path).suffix.lower() or ".mp4"
+    try:
+        return _FOURCC_BY_EXTENSION[suffix]
+    except KeyError as exc:
+        raise ValueError(
+            f"Unsupported video extension {suffix!r}; "
+            f"use one of {sorted(_FOURCC_BY_EXTENSION)}"
+        ) from exc
 
 
 def parse_args() -> argparse.Namespace:
@@ -48,7 +90,6 @@ def parse_args() -> argparse.Namespace:
         default="captured_video.mp4",
         help="Output video file path (default: captured_video.mp4)",
     )
-    parser.add_argument("--fps", type=float, default=25.0, help="Video frame rate (default: 25)")
     parser.add_argument(
         "--duration",
         type=float,
@@ -58,6 +99,32 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--exposure", type=float, help="Exposure time in µs")
     parser.add_argument("--gain", type=float, help="Analogue gain value")
     return parser.parse_args()
+
+
+def _resolve_camera_fps(cam: HikCamera) -> float:
+    """
+    Read the camera's actual frame rate.
+    读取相机的实际帧率。
+
+    Prefers ``ResultingFrameRate`` (the rate the device is actually
+    delivering after exposure / bandwidth / trigger constraints) and falls
+    back to ``AcquisitionFrameRate`` for cameras that do not expose the
+    resulting node.
+    优先读取 ``ResultingFrameRate``（相机在曝光、带宽、触发等约束下的实际
+    采集帧率）；若相机不支持该节点，则回退至 ``AcquisitionFrameRate``。
+    """
+    acq = cam.params.AcquisitionControl
+    for node in (acq.ResultingFrameRate, acq.AcquisitionFrameRate):
+        try:
+            value = float(node.get())
+        except HikCameraError:
+            continue
+        if value > 0.0:
+            return value
+    raise HikCameraError(
+        "Camera did not report a positive frame rate via ResultingFrameRate "
+        "or AcquisitionFrameRate."
+    )
 
 
 def main() -> None:
@@ -86,99 +153,109 @@ def main() -> None:
         sys.exit(1)
 
     # ---------------------------------------------------------------
-    # Thread-safe frame queue / 线程安全帧队列
-    # ---------------------------------------------------------------
-    frame_queue: queue.Queue[np.ndarray] = queue.Queue(maxsize=256)
-
-    def on_frame(image: np.ndarray, frame_info: dict[str, Any]) -> None:
-        """
-        Enqueue decoded frames (drop oldest if full to avoid blocking).
-        将解码后的帧入队（队列满时丢弃最旧帧以避免阻塞）。
-        """
-        try:
-            frame_queue.put_nowait(image)
-        except queue.Full:
-            try:
-                frame_queue.get_nowait()
-            except queue.Empty:
-                pass
-            frame_queue.put_nowait(image)
-
-    # ---------------------------------------------------------------
     # Open and start grabbing / 打开相机并开始取帧
     # ---------------------------------------------------------------
+    requested_output_path = Path(args.output)
+    writer: cv2.VideoWriter | None = None
+
+    # Shared state between the SDK callback thread and main thread.
+    # 在 SDK 回调线程与主线程之间共享的状态。
+    state_lock = threading.Lock()
+    frame_count = 0
+    stopping = False
+
     with cam:
         cam.open(Hik.AccessMode.EXCLUSIVE)
         print("Camera opened.")
+        # Only create the output directory once the camera has opened, so a
+        # failed connection does not leave behind empty directories.
+        # 仅在相机成功打开后再创建输出目录，避免连接失败时遗留空目录。
+        requested_output_path.parent.mkdir(parents=True, exist_ok=True)
 
         if args.exposure is not None:
             cam.params.AcquisitionControl.ExposureTime.set(args.exposure)
         if args.gain is not None:
             cam.params.AnalogControl.Gain.set(args.gain)
 
-        # Grab the first frame to get image dimensions
-        # 抓取第一帧以获取图像尺寸
-        cam.start_grabbing()
-        print(f"Grabbing started. Recording for {args.duration:.1f} seconds …")
+        # Determine frame size and FPS up-front so the writer can be opened
+        # before the first callback arrives.
+        # 在第一帧回调到达之前先确定帧尺寸与帧率，便于提前打开写入器。
+        width = int(cam.params.ImageFormatControl.Width.get())
+        height = int(cam.params.ImageFormatControl.Height.get())
+        fps = _resolve_camera_fps(cam)
+        print(f"Frame size: {width}×{height}")
+        print(f"Camera frame rate: {fps:.2f} fps")
 
-        # Wait for the first frame to determine size
-        # 等待第一帧以确定尺寸
-        first_frame: np.ndarray | None = None
-        deadline = time.monotonic() + 5.0
-        while first_frame is None and time.monotonic() < deadline:
-            try:
-                first_frame = cam.get_frame(timeout_ms=500, output_format=Hik.OutputFormat.BGR8)
-            except Exception:  # noqa: BLE001
-                continue
-
-        if first_frame is None:
-            print("Failed to receive any frames. Aborting.")
-            cam.stop_grabbing()
-            sys.exit(1)
-
-        h, w = first_frame.shape[:2]
-        print(f"Frame size: {w}×{h}")
-
-        cam.stop_grabbing()
-
-        # Restart with callback / 以回调模式重新启动
-        cam.start_grabbing(callback=on_frame, output_format=Hik.OutputFormat.BGR8)
-
-        # ---------------------------------------------------------------
-        # Set up video writer / 设置视频写入器
-        # ---------------------------------------------------------------
-        output_path = Path(args.output)
-        output_path.parent.mkdir(parents=True, exist_ok=True)
-
-        fourcc = cv2.VideoWriter_fourcc(*"mp4v")
-        writer = cv2.VideoWriter(str(output_path), fourcc, args.fps, (w, h))
+        fourcc_name = fourcc_for_path(requested_output_path)
+        fourcc = cv2.VideoWriter_fourcc(*fourcc_name)
+        writer = cv2.VideoWriter(
+            str(requested_output_path), fourcc, fps, (width, height)
+        )
         if not writer.isOpened():
-            print(f"Failed to open VideoWriter for {output_path}")
-            cam.stop_grabbing()
+            print(
+                f"Failed to open VideoWriter for {requested_output_path} "
+                f"(codec {fourcc_name}). Check that the output path is writable "
+                "and that your OpenCV build supports the requested codec; if "
+                "needed, try --output with an .avi suffix."
+            )
             sys.exit(1)
 
-        # ---------------------------------------------------------------
-        # Write first frame then collect remaining frames
-        # 写入第一帧，然后采集剩余帧
-        # ---------------------------------------------------------------
-        writer.write(first_frame)
-        total_frames = 1
-        end_time = time.monotonic() + args.duration
+        def on_frame(image: np.ndarray, _info: dict[str, Any]) -> None:
+            """
+            SDK callback: write each frame to the OpenCV writer.
+            SDK 回调：将每一帧写入 OpenCV 写入器。
+            """
+            nonlocal frame_count
+            with state_lock:
+                if stopping or writer is None:
+                    return
+                try:
+                    writer.write(image)
+                    frame_count += 1
+                except Exception:  # noqa: BLE001  # never let exceptions cross SDK thread
+                    return
 
-        while time.monotonic() < end_time:
+        cam.start_grabbing(callback=on_frame, output_format=Hik.OutputFormat.BGR8)
+        print(f"Grabbing started. Recording for {args.duration:.1f} seconds …")
+        try:
+            end_time = time.monotonic() + args.duration
             try:
-                frame = frame_queue.get(timeout=0.1)
-                writer.write(frame)
-                total_frames += 1
-            except queue.Empty:
-                continue
+                # Sleep in small slices so KeyboardInterrupt is delivered
+                # promptly between waits — frames are pushed by the callback
+                # thread, no polling is needed here.
+                # 以小步长休眠，确保等待之间能及时响应 KeyboardInterrupt；
+                # 帧由回调线程推送，主线程无需轮询。
+                while True:
+                    remaining = end_time - time.monotonic()
+                    if remaining <= 0:
+                        break
+                    time.sleep(min(0.1, remaining))
+            except KeyboardInterrupt:
+                print("\nCtrl+C received. Stopping recording …")
+        finally:
+            # Mark shutdown under the callback lock so the writer cannot race
+            # with writer.release().
+            # 在与回调相同的锁下标记关闭状态，确保不会与 writer.release() 竞争。
+            with state_lock:
+                stopping = True
+            try:
+                cam.stop_grabbing()
+            except HikCameraError as exc:
+                print(f"Error while stopping grabbing: {exc}")
+            with state_lock:
+                writer_to_release = writer
+                writer = None
+            # Release outside the lock so cleanup does not block the callback
+            # path longer than necessary once the writer reference is detached.
+            # 在锁外释放，避免在 writer 引用已摘除后仍长时间阻塞回调路径。
+            if writer_to_release is not None:
+                writer_to_release.release()
 
-        cam.stop_grabbing()
-        writer.release()
-
+    with state_lock:
+        total_frames = frame_count
     print(
-        f"Video saved to {output_path}  "
-        f"({total_frames} frames, {args.fps:.1f} fps requested)"
+        f"Video saved to {requested_output_path}  "
+        f"({total_frames} frames, {fps:.2f} fps)"
     )
 
 

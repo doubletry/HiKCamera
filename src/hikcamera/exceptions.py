@@ -149,3 +149,12 @@ class ImageConversionError(HikCameraError):
     Raised when an image buffer cannot be converted to a numpy array.
     当图像缓冲区无法转换为 numpy 数组时抛出。
     """
+
+
+class FeatureUnsupportedError(HikCameraError):
+    """
+    Raised when an SDK feature/function is not available in the current
+    SDK build (the symbol is not exported by ``libMvCameraControl``).
+    当某个 SDK 函数在当前 SDK 构建中不可用（``libMvCameraControl`` 未导出该
+    符号）时抛出。
+    """

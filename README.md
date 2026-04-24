@@ -21,7 +21,11 @@ A Python 3.12 library for Hikvision industrial cameras (MVS SDK).
 | **Frame capture – callback** | `start_grabbing(callback=my_fn)` – custom callback receives a numpy array |
 | **Pixel formats** | Mono8/10/12/16, Bayer GR/RG/GB/BG 8/10/12 (packed & planar), RGB/BGR 8, RGBA/BGRA 8, YUV422 (UYVY & YUYV) |
 | **Output formats** | `MONO8`, `MONO16`, `BGR8`, `RGB8`, `BGRA8`, `RGBA8` (all as numpy arrays) |
-| **SDK pixel conversion** | `sdk_convert_pixel()` offloads conversion to the native library |
+| **SDK image processing** | SDK demosaic / colour conversion (`MV_CC_ConvertPixelTypeEx`) is the **default** decode path; OpenCV in `utils.raw_to_numpy` is kept as a fallback. Tunable via `cam.use_sdk_decode` and Bayer / ISP helpers. |
+| **Image save & encode** | Captured frames are numpy arrays; save them with OpenCV (`cv2.imwrite`) and encode in-memory with `cam.encode_image(image, fmt)` when SDK-side compression is needed. |
+| **Rotate / flip** | `cam.rotate_image(image, angle)` and `cam.flip_image(image, direction)` wrap `MV_CC_RotateImage` / `MV_CC_FlipImage` for MONO8/RGB8/BGR8 frames. |
+| **Video recording** | Record returned numpy frames with OpenCV `cv2.VideoWriter`; see `demos/save_video.py` for a callback-based example that uses the camera FPS. |
+| **SDK pixel conversion** | `sdk_convert_pixel()` is kept as a low-level helper (the `get_frame*` / callback pipeline now uses the SDK by default). |
 | **Device disconnect detection** | `on_exception` callback + `device_exception` property for real-time disconnect detection; automatic reconnection pattern |
 | **Demos** | Save single image, record video, exception handling, auto-reconnect |
 
@@ -401,6 +405,98 @@ with HikCamera.from_ip("192.168.1.100") as cam:
     cam.params.UserSetControl.UserSetSave.execute()
 ```
 
+## Matching MVS output
+
+When `use_sdk_decode=True` (the default) `HikCamera` decodes frames through the
+Hikvision SDK image-processing pipeline, so output matches the MVS desktop
+application. The following tuning APIs let you mirror any custom MVS profile:
+
+```python
+cam.set_bayer_cvt_quality(Hik.BayerCvtQuality.BEST)   # default; FAST/BALANCED/BEST/BEST_PLUS
+cam.set_bayer_filter_enable(True)                     # Bayer smooth filter
+cam.set_bayer_gamma(0.45)                             # Bayer gamma value
+cam.set_gamma(Hik.PixelFormat.RGB8_PACKED, 0.45)      # gamma for non-Bayer formats
+cam.set_bayer_ccm([[1024, 0, 0], [0, 1024, 0], [0, 0, 1024]])
+img = cam.image_contrast(img, contrast_factor=120)
+img = cam.purple_fringing(img, purple_value=10)
+cam.set_isp_config("/path/to/isp.xml")
+img = cam.isp_process(img)
+```
+
+Practical guidance:
+
+- `use_sdk_decode=True` (default): recommended when you want output to match MVS,
+  especially for Bayer cameras or when you plan to use Bayer / ISP tuning APIs.
+- `use_sdk_decode=False`: falls back to the OpenCV-based pipeline in
+  `hikcamera.utils.raw_to_numpy`. This is useful when you want the simplest
+  numpy/OpenCV-only decode path or need to compare SDK vs OpenCV output.
+- `set_bayer_cvt_quality(...)` only affects Bayer demosaic in the SDK decode
+  path, so it is only meaningful when `use_sdk_decode=True`.
+- `HikCamera.open()` already applies `Hik.BayerCvtQuality.BEST` by default.
+  Call `cam.set_bayer_cvt_quality(...)` after `open()` and before grabbing if
+  you want a different speed/quality trade-off:
+  - `FAST`: prioritise throughput
+  - `BALANCED`: middle ground
+  - `BEST`: default, close to MVS defaults
+  - `BEST_PLUS`: highest quality, potentially slower
+
+Examples:
+
+```python
+# Match MVS-style output (default behaviour)
+with HikCamera.from_device_info(devices[0]) as cam:
+    cam.open()
+    cam.set_bayer_cvt_quality(Hik.BayerCvtQuality.BEST_PLUS)
+    cam.start_grabbing()
+    frame = cam.get_frame(output_format=Hik.OutputFormat.BGR8)
+    cam.stop_grabbing()
+
+# Force the OpenCV decode path instead of the SDK pipeline
+with HikCamera.from_device_info(devices[0], use_sdk_decode=False) as cam:
+    cam.open()
+    cam.start_grabbing()
+    frame = cam.get_frame(output_format=Hik.OutputFormat.BGR8)
+    cam.stop_grabbing()
+```
+
+## Image save, video save, encode, rotate & flip
+
+```python
+import cv2
+
+with HikCamera.from_ip("192.168.1.100") as cam:
+    cam.open(Hik.AccessMode.EXCLUSIVE)
+    cam.start_grabbing()
+
+    image = cam.get_frame(output_format=Hik.OutputFormat.BGR8)
+
+    # Save the decoded numpy image with OpenCV
+    cv2.imwrite("out.png", image)
+
+    # Encode in-memory to a JPEG byte string via MV_CC_SaveImageEx3
+    jpeg_bytes = cam.encode_image(image, Hik.ImageFileFormat.JPEG)
+
+    # Rotate / flip via MV_CC_RotateImage / MV_CC_FlipImage
+    rotated = cam.rotate_image(image, Hik.RotateAngle.DEG_90)
+    flipped = cam.flip_image(image, Hik.FlipDirection.HORIZONTAL)
+
+    # Record a short MP4 clip from BGR8 frames with OpenCV
+    h, w = image.shape[:2]
+    fps = cam.params.AcquisitionControl.ResultingFrameRate.get()
+    writer = cv2.VideoWriter(
+        "out.mp4",
+        cv2.VideoWriter_fourcc(*"mp4v"),
+        fps,
+        (w, h),
+    )
+    writer.write(image)
+    for _ in range(100):
+        writer.write(cam.get_frame(output_format=Hik.OutputFormat.BGR8))
+    writer.release()
+
+    cam.stop_grabbing()
+```
+
 ## Demos
 
 ```bash
@@ -408,7 +504,7 @@ with HikCamera.from_ip("192.168.1.100") as cam:
 python demos/save_image.py --ip 192.168.1.100 --output image.png --format BGR8
 
 # Record a 10-second video
-python demos/save_video.py --ip 192.168.1.100 --output video.mp4 --fps 25 --duration 10
+python demos/save_video.py --ip 192.168.1.100 --output video.mp4 --duration 10
 
 # Exception handling (disconnect detection)
 python demos/exception_handling.py --ip 192.168.1.100 --duration 30

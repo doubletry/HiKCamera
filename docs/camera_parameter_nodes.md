@@ -154,6 +154,14 @@ with HikCamera.from_ip("192.168.1.100") as cam:
 | `cam.params.AnalogControl.AutoFunctionAOIUsageIntensity` | `bool` | `R/W` | — | — | Auto exposure based on AOI |
 | `cam.params.AnalogControl.AutoFunctionAOIUsageWhiteBalance` | `bool` | `R` | — | — | Auto white balance based on AOI |
 
+> **See also – host-side ISP helpers:** the SDK image-processing pipeline can
+> apply Bayer-quality, gamma, CCM, contrast, purple-fringe and ISP processing
+> on the host without changing GenICam node values. See
+> `cam.set_bayer_cvt_quality`, `cam.set_bayer_filter_enable`,
+> `cam.set_bayer_gamma`, `cam.set_gamma`, `cam.set_bayer_ccm`,
+> `cam.image_contrast`, `cam.purple_fringing`, `cam.set_isp_config` and
+> `cam.isp_process` (defined in `hikcamera.camera`).
+
 ## LUTControl
 
 | Structured path | Data type | Access | Unit | Range | Description |

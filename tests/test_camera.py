@@ -80,6 +80,8 @@ def make_camera_with_sdk(mock_sdk, open_it: bool = True) -> HikCamera:
     cam._on_device_exception = None
     cam._lock = threading.Lock()
     cam._params_proxy = None
+    cam.use_sdk_decode = True
+    cam._is_recording = False
     if open_it:
         cam._is_open = True
     return cam

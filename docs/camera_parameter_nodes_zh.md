@@ -153,6 +153,13 @@ with HikCamera.from_ip("192.168.1.100") as cam:
 | `cam.params.AnalogControl.AutoFunctionAOIUsageIntensity` | `bool` | `R/W` | — | — | 根据 AOI 区域自动曝光 |
 | `cam.params.AnalogControl.AutoFunctionAOIUsageWhiteBalance` | `bool` | `R` | — | — | 根据 AOI 区域自动白平衡 |
 
+> **另见 – 主机端 ISP 辅助方法：** SDK 图像处理管线可在主机端应用
+> Bayer 质量、伽玛、CCM、对比度、紫边校正与 ISP 处理，而无需修改
+> GenICam 节点值。参见 `cam.set_bayer_cvt_quality`、
+> `cam.set_bayer_filter_enable`、`cam.set_bayer_gamma`、`cam.set_gamma`、
+> `cam.set_bayer_ccm`、`cam.image_contrast`、`cam.purple_fringing`、
+> `cam.set_isp_config` 与 `cam.isp_process`（均位于 `hikcamera.camera`）。
+
 ## LUTControl
 
 | 结构化路径 | 数据类型 | 访问权限 | 单位 | 范围 | 说明 |

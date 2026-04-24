@@ -61,6 +61,7 @@ from .exceptions import (
     CameraNotFoundError,
     CameraNotOpenError,
     DeviceDisconnectedError,
+    FeatureUnsupportedError,
     FrameTimeoutError,
     GrabbingError,
     GrabbingNotStartedError,
@@ -133,6 +134,7 @@ __all__ = [
     "ParameterValueError",
     "PixelFormatError",
     "ImageConversionError",
+    "FeatureUnsupportedError",
 ]
 
 try:

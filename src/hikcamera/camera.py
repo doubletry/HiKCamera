@@ -55,9 +55,14 @@ import numpy as np
 
 from .enums import (
     AccessMode,
+    BayerCvtQuality,
+    FlipDirection,
     Hik,
+    ImageFileFormat,
     MvErrorCode,
     OutputFormat,
+    PixelFormat,
+    RotateAngle,
     StreamingMode,
     TransportLayer,
     UserSetSelector,
@@ -68,6 +73,7 @@ from .exceptions import (
     CameraNotFoundError,
     CameraNotOpenError,
     DeviceDisconnectedError,
+    FeatureUnsupportedError,
     FrameTimeoutError,
     GrabbingError,
     GrabbingNotStartedError,
@@ -77,6 +83,7 @@ from .exceptions import (
     ParameterNotSupportedError,
     ParameterReadOnlyError,
     ParameterValueError,
+    PixelFormatError,
 )
 from .params import (
     AcquisitionControl,
@@ -96,10 +103,21 @@ from .params import (
 from .sdk_wrapper import (
     EXCEPTION_CALLBACK,
     IMAGE_CALLBACK,
+    MV_CC_CCM_PARAM,
+    MV_CC_CCM_PARAM_EX,
+    MV_CC_CONTRAST_PARAM,
     MV_CC_DEVICE_INFO,
     MV_CC_DEVICE_INFO_LIST,
+    MV_CC_FLIP_IMAGE_PARAM,
+    MV_CC_GAMMA_PARAM,
+    MV_CC_HB_DECODE_PARAM,
+    MV_CC_IMAGE,
+    MV_CC_ISP_CONFIG_PARAM,
     MV_CC_PIXEL_CONVERT_PARAM_EX,
+    MV_CC_PURPLE_FRINGING_PARAM,
+    MV_CC_ROTATE_IMAGE_PARAM,
     MV_FRAME_OUT_INFO_EX,
+    MV_SAVE_IMAGE_PARAM_EX3,
     MVCC_ENUMVALUE,
     MVCC_FLOATVALUE,
     MVCC_INTVALUE_EX,
@@ -576,7 +594,7 @@ class HikCamera:
     # Construction helpers / 构造辅助方法
     # ------------------------------------------------------------------
 
-    def __init__(self) -> None:
+    def __init__(self, *, use_sdk_decode: bool = True) -> None:
         self._sdk = load_sdk()
         self._handle: c_void_p = c_void_p(None)
         self._device_info: MV_CC_DEVICE_INFO | None = None
@@ -592,6 +610,10 @@ class HikCamera:
         self._on_device_exception: Callable[[DeviceDisconnectedError], None] | None = None
         self._lock: threading.Lock = threading.Lock()
         self._params_proxy: CameraParamsProxy | None = None
+        # SDK-first image-processing pipeline (see :py:mod:`hikcamera.utils`
+        # for the OpenCV fallback).
+        # SDK 优先的图像处理管线（OpenCV 回退见 :py:mod:`hikcamera.utils`）。
+        self.use_sdk_decode: bool = use_sdk_decode
 
     @property
     def params(self) -> CameraParamsProxy:
@@ -886,6 +908,23 @@ class HikCamera:
         # Configure GigE packet size after opening
         # 打开后配置 GigE 包大小
         self._configure_packet_size(packet_size)
+
+        # Apply SDK image-processing defaults: best Bayer demosaic quality.
+        # The MV_CC_SetBayerCvtQuality symbol may be missing on older SDKs;
+        # in that case we silently keep the SDK default quality.
+        # 应用 SDK 图像处理默认值：最佳 Bayer 去马赛克质量。
+        # 旧版 SDK 可能未导出 MV_CC_SetBayerCvtQuality，此时静默使用默认值。
+        if self.use_sdk_decode:
+            try:
+                self.set_bayer_cvt_quality(Hik.BayerCvtQuality.BEST)
+            except FeatureUnsupportedError:
+                logger.debug(
+                    "MV_CC_SetBayerCvtQuality not available; using SDK default quality"
+                )
+            except HikCameraError as exc:
+                # Not fatal – the camera may not have a Bayer pipeline at all.
+                # 非致命错误 ── 相机可能根本不支持 Bayer 管线。
+                logger.debug("MV_CC_SetBayerCvtQuality returned an error: %s", exc)
 
     def close(self) -> None:
         """
@@ -1453,15 +1492,13 @@ class HikCamera:
             return
         try:
             frame_info = p_frame_info.contents
-            frame_len = frame_info.nFrameLen
-            w = frame_info.nWidth
-            h = frame_info.nHeight
-            pf = frame_info.enPixelType
-
             # Copy the buffer so it is safe to use after the callback returns
             # 复制缓冲区，确保回调返回后仍可安全使用
-            buf = np.ctypeslib.as_array(p_data, shape=(frame_len,)).copy()
-            image = raw_to_numpy(buf, w, h, pf, self._output_format_for_callback)
+            buf = np.ctypeslib.as_array(p_data, shape=(frame_info.nFrameLen,)).copy()
+            data_ctypes = (c_ubyte * buf.size).from_buffer(buf)
+            image = self._decode_frame(
+                data_ctypes, frame_info, self._output_format_for_callback
+            )
             meta = _frame_info_to_dict(frame_info)
             self._user_callback(image, meta)
         except Exception:  # noqa: BLE001
@@ -1918,6 +1955,23 @@ class HikCamera:
     # SDK pixel conversion / SDK 像素转换
     # ------------------------------------------------------------------
 
+    # Mapping from OutputFormat to the SDK destination pixel type used by
+    # MV_CC_ConvertPixelTypeEx, plus the number of channels and the
+    # final numpy dtype.  RGBA/BGRA outputs are obtained by demosaicing
+    # to BGR8/RGB8 first, then appending an opaque alpha channel.
+    # OutputFormat 到 SDK 目标像素类型的映射，包含通道数与最终 numpy dtype。
+    # RGBA/BGRA 输出先解码为 BGR8/RGB8，再追加不透明 alpha 通道。
+    _SDK_DST_FORMAT_MAP: dict[OutputFormat, tuple[int, int, type]] = {
+        Hik.OutputFormat.MONO8: (PixelFormat.MONO8, 1, np.uint8),
+        Hik.OutputFormat.MONO16: (PixelFormat.MONO16, 1, np.uint16),
+        Hik.OutputFormat.BGR8: (PixelFormat.BGR8_PACKED, 3, np.uint8),
+        Hik.OutputFormat.RGB8: (PixelFormat.RGB8_PACKED, 3, np.uint8),
+        # Alpha channel appended in Python after demosaic.
+        # alpha 通道在解码后于 Python 端追加。
+        Hik.OutputFormat.BGRA8: (PixelFormat.BGR8_PACKED, 3, np.uint8),
+        Hik.OutputFormat.RGBA8: (PixelFormat.RGB8_PACKED, 3, np.uint8),
+    }
+
     def sdk_convert_pixel(
         self,
         src_data: bytes | np.ndarray,
@@ -1930,10 +1984,15 @@ class HikCamera:
         Convert a raw frame buffer using the SDK's ``MV_CC_ConvertPixelTypeEx``.
         使用 SDK 的 ``MV_CC_ConvertPixelTypeEx`` 转换原始帧缓冲区。
 
-        This is faster than the pure-Python conversion in
-        :py:mod:`hikcamera.utils` for large, high-bit-depth images.
-        对于大尺寸、高位深图像，比 :py:mod:`hikcamera.utils` 中的纯 Python
-        转换更快。
+        .. note::
+
+            This is a **low-level helper**.  The recommended high-level entry
+            points are :py:meth:`get_frame` / :py:meth:`get_frame_ex` (and
+            grabbing-callback mode), which automatically use the SDK pipeline
+            when :py:attr:`use_sdk_decode` is ``True``.
+            这是**底层辅助方法**。推荐的高层入口为 :py:meth:`get_frame` /
+            :py:meth:`get_frame_ex`（以及取帧回调模式），当
+            :py:attr:`use_sdk_decode` 为 ``True`` 时会自动调用 SDK 管线。
 
         Parameters / 参数
         -----------------
@@ -1962,16 +2021,40 @@ class HikCamera:
             When the SDK conversion fails. / 当 SDK 转换失败时抛出。
         """
         self._assert_open()
+        return self._sdk_convert_pixel_raw(src_data, width, height, src_format, dst_format)
+
+    def _sdk_convert_pixel_raw(
+        self,
+        src_data: bytes | np.ndarray | ctypes.Array[c_ubyte],
+        width: int,
+        height: int,
+        src_format: int,
+        dst_format: int,
+        dst_buffer_size: int | None = None,
+    ) -> np.ndarray:
+        """
+        Run ``MV_CC_ConvertPixelTypeEx`` and return the destination buffer.
+        调用 ``MV_CC_ConvertPixelTypeEx`` 并返回目标缓冲区。
+
+        ``dst_buffer_size`` may be specified to size the destination buffer
+        exactly (e.g. ``W*H*3`` for BGR8 instead of the worst-case ``W*H*4``).
+        ``dst_buffer_size`` 可用于精确指定目标缓冲区大小（如 BGR8 时使用
+        ``W*H*3``，而非最差情况的 ``W*H*4``）。
+        """
         if isinstance(src_data, np.ndarray):
             src_bytes = src_data.tobytes()
+        elif isinstance(src_data, (bytes, bytearray)):
+            src_bytes = bytes(src_data)
         else:
+            # ctypes array – take the documented byte length to avoid
+            # copying any trailing padding past the actual frame data.
+            # ctypes 数组 ── 使用其声明的字节长度，避免复制到帧数据之外的
+            # 尾部填充。
             src_bytes = bytes(src_data)
 
-        # Estimate destination buffer size (worst case: 4 bytes/pixel)
-        # 估算目标缓冲区大小（最差情况：4 字节/像素）
-        dst_size = width * height * 4
-        dst_buf = (c_ubyte * dst_size)()
-
+        if dst_buffer_size is None:
+            dst_buffer_size = width * height * 4
+        dst_buf = (c_ubyte * dst_buffer_size)()
         src_buf = (c_ubyte * len(src_bytes)).from_buffer_copy(src_bytes)
 
         params = MV_CC_PIXEL_CONVERT_PARAM_EX()
@@ -1982,16 +2065,619 @@ class HikCamera:
         params.nSrcDataLen = len(src_bytes)
         params.enDstPixelType = dst_format
         params.pDstBuffer = dst_buf
-        params.nDstBufferSize = dst_size
+        params.nDstBufferSize = dst_buffer_size
 
-        ret = self._sdk.MV_CC_ConvertPixelTypeEx(self._handle, ctypes.byref(params))
+        convert_fn = getattr(self._sdk, "MV_CC_ConvertPixelTypeEx", None)
+        if convert_fn is None:
+            raise FeatureUnsupportedError(
+                "MV_CC_ConvertPixelTypeEx is not available in this SDK build"
+            )
+        ret = convert_fn(self._handle, ctypes.byref(params))
         if ret != MvErrorCode.MV_OK:
             code = ret & 0xFFFFFFFF
             raise ImageConversionError(
                 f"MV_CC_ConvertPixelTypeEx failed: 0x{code:08X}", code
             )
+        n = params.nDstLen or dst_buffer_size
+        return np.ctypeslib.as_array(dst_buf, shape=(n,)).copy()
 
-        return np.ctypeslib.as_array(dst_buf, shape=(params.nDstLen,)).copy()
+    def _sdk_decode_frame(
+        self,
+        data: bytes | ctypes.Array[c_ubyte] | np.ndarray,
+        width: int,
+        height: int,
+        src_format: int,
+        src_data_len: int,
+        output_format: OutputFormat,
+    ) -> np.ndarray:
+        """
+        Decode ``data`` to ``output_format`` using SDK image-processing APIs.
+        使用 SDK 图像处理 API 将 ``data`` 解码为 ``output_format``。
+
+        Raises ``ImageConversionError`` / ``FeatureUnsupportedError`` /
+        ``PixelFormatError`` so callers can fall back to the OpenCV
+        pipeline in :py:mod:`hikcamera.utils` when needed.
+        当 SDK 不支持时抛出 ``ImageConversionError`` /
+        ``FeatureUnsupportedError`` / ``PixelFormatError``，
+        调用方可回退至 :py:mod:`hikcamera.utils` 的 OpenCV 管线。
+        """
+        mapping = self._SDK_DST_FORMAT_MAP.get(output_format)
+        if mapping is None:
+            raise PixelFormatError(f"Unknown output format: {output_format!r}")
+        dst_pixel_type, n_channels, dtype = mapping
+
+        # Trim ctypes array down to the documented frame length so we never
+        # feed the SDK trailing padding from an oversized frame buffer.
+        # 将 ctypes 数组裁剪至帧的真实长度，避免将超大帧缓冲区中的尾部
+        # 填充传给 SDK。
+        if isinstance(data, np.ndarray):
+            src_bytes: bytes | ctypes.Array[c_ubyte] = bytes(
+                data.view(np.uint8).ravel()[:src_data_len]
+            )
+        elif isinstance(data, (bytes, bytearray)):
+            src_bytes = bytes(data[:src_data_len])
+        else:
+            src_bytes = ctypes.string_at(ctypes.addressof(data), src_data_len)
+
+        # Pre-decode high-bandwidth (HB) compressed frames.
+        # 预解码高带宽 (HB) 压缩帧。
+        if _is_hb_pixel_type(src_format):
+            src_bytes, src_format = self._sdk_hb_decode(
+                src_bytes, width, height, src_format, dst_pixel_type
+            )
+
+        # Passthrough: source already matches the destination – just reshape.
+        # 直通：源像素格式已与目标一致 ── 直接重塑数组。
+        if src_format == dst_pixel_type:
+            arr = np.frombuffer(src_bytes, dtype=np.uint8)
+            bytes_per_pixel = (1 if dtype == np.uint8 else 2) * n_channels
+            expected = width * height * bytes_per_pixel
+            if arr.size < expected:
+                raise ImageConversionError(
+                    f"Frame buffer too small for passthrough decode: "
+                    f"expected {expected} bytes, got {arr.size}"
+                )
+            arr = arr[:expected]
+            if dtype == np.uint16:
+                arr = arr.view(np.uint16)
+            shape: tuple[int, ...] = (
+                (height, width) if n_channels == 1 else (height, width, n_channels)
+            )
+            decoded = arr.reshape(shape).copy()
+        else:
+            bytes_per_pixel = (1 if dtype == np.uint8 else 2) * n_channels
+            dst_size = width * height * bytes_per_pixel
+            raw = self._sdk_convert_pixel_raw(
+                src_bytes,
+                width,
+                height,
+                src_format,
+                dst_pixel_type,
+                dst_buffer_size=dst_size,
+            )
+            if raw.size < dst_size:
+                raise ImageConversionError(
+                    f"SDK returned smaller-than-expected buffer: "
+                    f"got {raw.size}, expected {dst_size}"
+                )
+            raw = raw[:dst_size]
+            if dtype == np.uint16:
+                raw = raw.view(np.uint16)
+            shape = (height, width) if n_channels == 1 else (height, width, n_channels)
+            decoded = raw.reshape(shape)
+
+        # Append opaque alpha channel for RGBA/BGRA outputs.
+        # 为 RGBA/BGRA 输出追加不透明的 alpha 通道。
+        if output_format in (Hik.OutputFormat.BGRA8, Hik.OutputFormat.RGBA8):
+            alpha = np.full((height, width, 1), 0xFF, dtype=np.uint8)
+            decoded = np.concatenate([decoded, alpha], axis=2)
+
+        return decoded
+
+    def _sdk_hb_decode(
+        self,
+        src_bytes: bytes,
+        width: int,
+        height: int,
+        src_format: int,
+        dst_pixel_type: int,
+    ) -> tuple[bytes, int]:
+        """
+        Decode an HB-coded (high-bandwidth) frame via ``MV_CC_HB_Decode``.
+        通过 ``MV_CC_HB_Decode`` 解码 HB 编码（高带宽）帧。
+        """
+        decode_fn = getattr(self._sdk, "MV_CC_HB_Decode", None)
+        if decode_fn is None:
+            raise FeatureUnsupportedError(
+                "MV_CC_HB_Decode is not available in this SDK build"
+            )
+        # Allocate a safe worst-case destination buffer because the SDK may
+        # decode HB frames into 8-bit mono, 16-bit mono, RGB/BGR, or 4-channel
+        # outputs depending on the requested / returned pixel type.
+        # 分配安全的最差情况目标缓冲区，因为 SDK 可能根据请求 / 返回的像素格式
+        # 将 HB 帧解码为 8 位单通道、16 位单通道、RGB/BGR 或 4 通道输出。
+        dst_size = width * height * 4
+        dst_buf = (c_ubyte * dst_size)()
+        src_buf = (c_ubyte * len(src_bytes)).from_buffer_copy(src_bytes)
+
+        params = MV_CC_HB_DECODE_PARAM()
+        params.pSrcBuf = src_buf
+        params.nSrcLen = len(src_bytes)
+        params.nWidth = width
+        params.nHeight = height
+        params.pDstBuf = dst_buf
+        params.nDstBufSize = dst_size
+        params.enDstPixelType = dst_pixel_type
+
+        ret = decode_fn(self._handle, ctypes.byref(params))
+        if ret != MvErrorCode.MV_OK:
+            code = ret & 0xFFFFFFFF
+            raise ImageConversionError(
+                f"MV_CC_HB_Decode failed: 0x{code:08X}", code
+            )
+        n = int(params.nDstBufLen or dst_size)
+        if n < 0 or n > dst_size:
+            raise ImageConversionError(
+                "MV_CC_HB_Decode returned an invalid output length: "
+                f"{n} > buffer size {dst_size}"
+            )
+        return ctypes.string_at(dst_buf, n), int(params.enDstPixelType)
+
+    # ------------------------------------------------------------------
+    # Bayer / ISP tuning / Bayer / ISP 调优
+    # ------------------------------------------------------------------
+
+    def set_bayer_cvt_quality(self, quality: BayerCvtQuality | int) -> None:
+        """
+        Set the Bayer demosaic quality used by ``MV_CC_ConvertPixelTypeEx``.
+        设置 ``MV_CC_ConvertPixelTypeEx`` 使用的 Bayer 去马赛克质量。
+
+        ``HikCamera.open()`` automatically applies
+        :py:attr:`~hikcamera.enums.BayerCvtQuality.BEST` so the SDK pipeline
+        matches the MVS desktop application's default output.
+        ``HikCamera.open()`` 默认应用
+        :py:attr:`~hikcamera.enums.BayerCvtQuality.BEST`，
+        以便 SDK 管线与 MVS 桌面应用的默认输出一致。
+        """
+        self._assert_open()
+        self._invoke_optional(
+            "MV_CC_SetBayerCvtQuality", c_uint(int(quality))
+        )
+
+    def set_bayer_filter_enable(self, enable: bool) -> None:
+        """
+        Enable or disable the Bayer smooth filter.
+        启用或禁用 Bayer 平滑滤波。
+        """
+        self._assert_open()
+        self._invoke_optional(
+            "MV_CC_SetBayerFilterEnable", c_uint(1 if enable else 0)
+        )
+
+    def set_bayer_gamma(
+        self,
+        value: float | None = None,
+        *,
+        gamma_type: int | None = None,
+    ) -> None:
+        """
+        Configure Bayer gamma using ``MV_CC_SetBayerGammaValue`` or
+        ``MV_CC_SetBayerGammaParam`` when ``gamma_type`` is provided.
+        通过 ``MV_CC_SetBayerGammaValue`` 配置 Bayer 伽玛；
+        若提供 ``gamma_type``，则使用 ``MV_CC_SetBayerGammaParam``。
+        """
+        self._assert_open()
+        if value is None:
+            raise ValueError("`value` is required")
+        if gamma_type is None:
+            self._invoke_optional("MV_CC_SetBayerGammaValue", ctypes.c_float(float(value)))
+            return
+        params = MV_CC_GAMMA_PARAM()
+        params.enGammaType = int(gamma_type)
+        params.fGammaValue = float(value)
+        self._invoke_optional("MV_CC_SetBayerGammaParam", ctypes.byref(params))
+
+    def set_gamma(self, src_pixel_type: int, value: float) -> None:
+        """
+        Configure the gamma value for a non-Bayer pixel type via
+        ``MV_CC_SetGammaValue``.
+        通过 ``MV_CC_SetGammaValue`` 为非 Bayer 像素类型配置伽玛值。
+        """
+        self._assert_open()
+        self._invoke_optional(
+            "MV_CC_SetGammaValue",
+            c_uint(int(src_pixel_type)),
+            ctypes.c_float(float(value)),
+        )
+
+    def set_bayer_ccm(
+        self,
+        matrix: list[list[int]] | None = None,
+        *,
+        enable: bool = True,
+        quant: int | None = None,
+    ) -> None:
+        """
+        Configure the Bayer Color-Correction Matrix (CCM) for the SDK pipeline.
+        为 SDK 管线配置 Bayer 颜色矫正矩阵 (CCM)。
+
+        Prefers ``MV_CC_SetBayerCCMParamEx`` (with quantisation) when the
+        symbol is exported by the loaded SDK, otherwise falls back to
+        ``MV_CC_SetBayerCCMParam``.
+        优先使用已导出的 ``MV_CC_SetBayerCCMParamEx``（含量化），
+        否则回退到 ``MV_CC_SetBayerCCMParam``。
+
+        Parameters / 参数
+        -----------------
+        matrix:
+            A 3×3 nested list of ``int`` coefficients.  Required when
+            *enable* is ``True``.
+            3×3 整数系数嵌套列表。当 *enable* 为 ``True`` 时必填。
+        enable:
+            Whether to enable the CCM. / 是否启用 CCM。
+        quant:
+            Quantisation factor for the ``Ex`` variant (default: SDK default).
+            ``Ex`` 变体的量化系数（默认使用 SDK 默认值）。
+        """
+        self._assert_open()
+        if enable and matrix is None:
+            raise ValueError("`matrix` is required when enable=True")
+
+        ex_fn = getattr(self._sdk, "MV_CC_SetBayerCCMParamEx", None)
+        if ex_fn is not None:
+            params_ex = MV_CC_CCM_PARAM_EX()
+            params_ex.bCCMEnable = 1 if enable else 0
+            if matrix is not None:
+                _populate_ccm_matrix(params_ex, matrix)
+            params_ex.nCCMQuant = int(quant) if quant is not None else 0
+            ret = ex_fn(self._handle, ctypes.byref(params_ex))
+            if ret != MvErrorCode.MV_OK:
+                raise HikCameraError(
+                    f"MV_CC_SetBayerCCMParamEx failed: 0x{ret & 0xFFFFFFFF:08X}",
+                    ret & 0xFFFFFFFF,
+                )
+            return
+
+        params = MV_CC_CCM_PARAM()
+        params.bCCMEnable = 1 if enable else 0
+        if matrix is not None:
+            _populate_ccm_matrix(params, matrix)
+        self._invoke_optional("MV_CC_SetBayerCCMParam", ctypes.byref(params))
+
+    def image_contrast(
+        self,
+        image: np.ndarray,
+        contrast_factor: int,
+        *,
+        src_pixel_type: int | None = None,
+    ) -> np.ndarray:
+        """
+        Apply ``MV_CC_ImageContrast`` to *image*.
+        对 *image* 应用 ``MV_CC_ImageContrast``。
+        """
+        self._assert_open()
+        h, w = image.shape[:2]
+        src_bytes = image.tobytes()
+        dst_size = len(src_bytes)
+        dst_buf = (c_ubyte * dst_size)()
+        src_buf = (c_ubyte * len(src_bytes)).from_buffer_copy(src_bytes)
+
+        params = MV_CC_CONTRAST_PARAM()
+        params.nWidth = w
+        params.nHeight = h
+        params.pSrcBuf = src_buf
+        params.nSrcDataLen = len(src_bytes)
+        params.enSrcPixelType = int(
+            src_pixel_type if src_pixel_type is not None else _infer_pixel_type(image)
+        )
+        params.pDstBuf = dst_buf
+        params.nDstBufSize = dst_size
+        params.nContrastFactor = int(contrast_factor)
+
+        self._invoke_optional("MV_CC_ImageContrast", ctypes.byref(params))
+        n = params.nDstBufLen or dst_size
+        return np.frombuffer(bytes(bytearray(dst_buf)[:n]), dtype=image.dtype).reshape(image.shape)
+
+    def purple_fringing(
+        self,
+        image: np.ndarray,
+        purple_value: int,
+        *,
+        src_pixel_type: int | None = None,
+    ) -> np.ndarray:
+        """
+        Apply ``MV_CC_PurpleFringing`` to *image*.
+        对 *image* 应用 ``MV_CC_PurpleFringing``。
+        """
+        self._assert_open()
+        h, w = image.shape[:2]
+        src_bytes = image.tobytes()
+        dst_size = len(src_bytes)
+        dst_buf = (c_ubyte * dst_size)()
+        src_buf = (c_ubyte * len(src_bytes)).from_buffer_copy(src_bytes)
+
+        params = MV_CC_PURPLE_FRINGING_PARAM()
+        params.nWidth = w
+        params.nHeight = h
+        params.pSrcBuf = src_buf
+        params.nSrcDataLen = len(src_bytes)
+        params.enSrcPixelType = int(
+            src_pixel_type if src_pixel_type is not None else _infer_pixel_type(image)
+        )
+        params.pDstBuf = dst_buf
+        params.nDstBufSize = dst_size
+        params.nPurpleFringingValue = int(purple_value)
+
+        self._invoke_optional("MV_CC_PurpleFringing", ctypes.byref(params))
+        n = params.nDstBufLen or dst_size
+        return np.frombuffer(bytes(bytearray(dst_buf)[:n]), dtype=image.dtype).reshape(image.shape)
+
+    def set_isp_config(self, config_path: str) -> None:
+        """
+        Load an ISP XML configuration via ``MV_CC_SetISPConfig``.
+        通过 ``MV_CC_SetISPConfig`` 加载 ISP XML 配置。
+        """
+        self._assert_open()
+        params = MV_CC_ISP_CONFIG_PARAM()
+        path_bytes = os.fsencode(config_path)
+        if len(path_bytes) >= 256:
+            raise ValueError("ISP config path is too long (max 255 bytes)")
+        params.strConfigFilePath = path_bytes
+        self._invoke_optional("MV_CC_SetISPConfig", ctypes.byref(params))
+
+    def isp_process(
+        self,
+        image: np.ndarray,
+        *,
+        src_pixel_type: int | None = None,
+        dst_pixel_type: int | None = None,
+    ) -> np.ndarray:
+        """
+        Apply the configured ISP pipeline to *image* via ``MV_CC_ISPProcess``.
+        通过 ``MV_CC_ISPProcess`` 对 *image* 应用已配置的 ISP 管线。
+        """
+        self._assert_open()
+        h, w = image.shape[:2]
+        src_bytes = image.tobytes()
+        src_buf = (c_ubyte * len(src_bytes)).from_buffer_copy(src_bytes)
+        # Worst case: BGR8 output of the same dimensions.
+        # 最差情况：与输入相同尺寸的 BGR8 输出。
+        dst_size = max(len(src_bytes), w * h * 3)
+        dst_buf = (c_ubyte * dst_size)()
+
+        src_image = MV_CC_IMAGE()
+        src_image.enImageType = int(
+            src_pixel_type if src_pixel_type is not None else _infer_pixel_type(image)
+        )
+        src_image.nWidth = w
+        src_image.nHeight = h
+        src_image.pImageBuf = src_buf
+        src_image.nImageBufLen = len(src_bytes)
+        src_image.nImageLen = len(src_bytes)
+
+        dst_image = MV_CC_IMAGE()
+        dst_image.enImageType = int(
+            dst_pixel_type if dst_pixel_type is not None else PixelFormat.BGR8_PACKED
+        )
+        dst_image.nWidth = w
+        dst_image.nHeight = h
+        dst_image.pImageBuf = dst_buf
+        dst_image.nImageBufLen = dst_size
+
+        self._invoke_optional(
+            "MV_CC_ISPProcess", ctypes.byref(src_image), ctypes.byref(dst_image)
+        )
+        n = dst_image.nImageLen or dst_size
+        out = np.frombuffer(bytes(bytearray(dst_buf)[:n]), dtype=np.uint8)
+        if dst_image.enImageType in (
+            int(PixelFormat.BGR8_PACKED),
+            int(PixelFormat.RGB8_PACKED),
+        ):
+            return out.reshape(h, w, 3)
+        return out
+
+    # ------------------------------------------------------------------
+    # Image rotate / flip / save  /  图像旋转 / 翻转 / 保存
+    # ------------------------------------------------------------------
+
+    def rotate_image(
+        self,
+        image: np.ndarray,
+        angle: RotateAngle | int,
+        *,
+        src_pixel_type: int | None = None,
+    ) -> np.ndarray:
+        """
+        Rotate *image* by 90/180/270° via ``MV_CC_RotateImage``.
+        通过 ``MV_CC_RotateImage`` 将 *image* 旋转 90/180/270°。
+
+        The SDK only supports MONO8, RGB8 and BGR8 source formats.
+        SDK 仅支持 MONO8、RGB8、BGR8 源格式。
+        """
+        self._assert_open()
+        if image.ndim not in (2, 3) or image.dtype != np.uint8 or (
+            image.ndim == 3 and image.shape[2] != 3
+        ):
+            raise PixelFormatError(
+                "rotate_image only supports MONO8 (H,W) or RGB/BGR8 (H,W,3) uint8 images"
+            )
+        rotate_fn = getattr(self._sdk, "MV_CC_RotateImage", None)
+        if rotate_fn is None:
+            raise FeatureUnsupportedError(
+                "MV_CC_RotateImage is not available in this SDK build"
+            )
+
+        h, w = image.shape[:2]
+        src_bytes = image.tobytes()
+        dst_size = len(src_bytes)
+        src_buf = (c_ubyte * len(src_bytes)).from_buffer_copy(src_bytes)
+        dst_buf = (c_ubyte * dst_size)()
+
+        params = MV_CC_ROTATE_IMAGE_PARAM()
+        params.enPixelType = int(
+            src_pixel_type if src_pixel_type is not None else _infer_pixel_type(image)
+        )
+        params.nWidth = w
+        params.nHeight = h
+        params.pSrcData = src_buf
+        params.nSrcDataLen = len(src_bytes)
+        params.pDstBuf = dst_buf
+        params.nDstBufSize = dst_size
+        params.enRotationAngle = int(angle)
+
+        ret = rotate_fn(self._handle, ctypes.byref(params))
+        if ret != MvErrorCode.MV_OK:
+            raise HikCameraError(
+                f"MV_CC_RotateImage failed: 0x{ret & 0xFFFFFFFF:08X}",
+                ret & 0xFFFFFFFF,
+            )
+        n = params.nDstBufLen or dst_size
+        out = np.frombuffer(bytes(bytearray(dst_buf)[:n]), dtype=np.uint8)
+        # 90 / 270 swap width/height.
+        # 90 / 270 度旋转会交换宽高。
+        if int(angle) in (int(Hik.RotateAngle.DEG_90), int(Hik.RotateAngle.DEG_270)):
+            new_h, new_w = w, h
+        else:
+            new_h, new_w = h, w
+        if image.ndim == 3:
+            return out.reshape(new_h, new_w, 3)
+        return out.reshape(new_h, new_w)
+
+    def flip_image(
+        self,
+        image: np.ndarray,
+        direction: FlipDirection | int,
+        *,
+        src_pixel_type: int | None = None,
+    ) -> np.ndarray:
+        """
+        Flip *image* via ``MV_CC_FlipImage``.
+        通过 ``MV_CC_FlipImage`` 翻转 *image*。
+        """
+        self._assert_open()
+        if image.ndim not in (2, 3) or image.dtype != np.uint8 or (
+            image.ndim == 3 and image.shape[2] != 3
+        ):
+            raise PixelFormatError(
+                "flip_image only supports MONO8 (H,W) or RGB/BGR8 (H,W,3) uint8 images"
+            )
+        flip_fn = getattr(self._sdk, "MV_CC_FlipImage", None)
+        if flip_fn is None:
+            raise FeatureUnsupportedError(
+                "MV_CC_FlipImage is not available in this SDK build"
+            )
+
+        h, w = image.shape[:2]
+        src_bytes = image.tobytes()
+        dst_size = len(src_bytes)
+        src_buf = (c_ubyte * len(src_bytes)).from_buffer_copy(src_bytes)
+        dst_buf = (c_ubyte * dst_size)()
+
+        params = MV_CC_FLIP_IMAGE_PARAM()
+        params.enPixelType = int(
+            src_pixel_type if src_pixel_type is not None else _infer_pixel_type(image)
+        )
+        params.nWidth = w
+        params.nHeight = h
+        params.pSrcData = src_buf
+        params.nSrcDataLen = len(src_bytes)
+        params.pDstBuf = dst_buf
+        params.nDstBufSize = dst_size
+        params.enFlipType = int(direction)
+
+        ret = flip_fn(self._handle, ctypes.byref(params))
+        if ret != MvErrorCode.MV_OK:
+            raise HikCameraError(
+                f"MV_CC_FlipImage failed: 0x{ret & 0xFFFFFFFF:08X}",
+                ret & 0xFFFFFFFF,
+            )
+        n = params.nDstBufLen or dst_size
+        out = np.frombuffer(bytes(bytearray(dst_buf)[:n]), dtype=np.uint8)
+        if image.ndim == 3:
+            return out.reshape(h, w, 3)
+        return out.reshape(h, w)
+
+    def encode_image(
+        self,
+        image: np.ndarray,
+        fmt: ImageFileFormat | int,
+        *,
+        src_pixel_type: int | None = None,
+        jpeg_quality: int = 90,
+    ) -> bytes:
+        """
+        Encode *image* in-memory via ``MV_CC_SaveImageEx3``.
+        通过 ``MV_CC_SaveImageEx3`` 在内存中编码 *image*。
+        """
+        self._assert_open()
+        h, w = image.shape[:2]
+        max_dimension = 65535
+        if not (0 < w <= max_dimension and 0 < h <= max_dimension):
+            raise ValueError(
+                f"image width and height must be in the range [1, {max_dimension}] "
+                f"for MV_CC_SaveImageEx3 (got width={w}, height={h})"
+            )
+        if int(fmt) == int(ImageFileFormat.JPEG) and not (1 <= int(jpeg_quality) <= 100):
+            raise ValueError(
+                "jpeg_quality must be in the range [1, 100] for JPEG encoding "
+                f"(got {jpeg_quality})"
+            )
+        data_bytes = image.tobytes()
+        src_buf = (c_ubyte * len(data_bytes)).from_buffer_copy(data_bytes)
+        # Allocate generously: encoded image rarely exceeds the source size
+        # for BMP/PNG; JPEG is usually much smaller.
+        # 慷慨分配：BMP/PNG 编码后的大小很少超过源数据；JPEG 通常更小。
+        dst_size = max(len(data_bytes) * 2, w * h * 4)
+        dst_buf = (c_ubyte * dst_size)()
+
+        params = MV_SAVE_IMAGE_PARAM_EX3()
+        params.pData = src_buf
+        params.nDataLen = len(data_bytes)
+        params.enPixelType = int(
+            src_pixel_type if src_pixel_type is not None else _infer_pixel_type(image)
+        )
+        params.nWidth = w
+        params.nHeight = h
+        params.pImageBuffer = dst_buf
+        params.nBufferSize = dst_size
+        params.enImageType = int(fmt)
+        params.nJpgQuality = int(jpeg_quality)
+        params.iMethodValue = 0
+
+        save_fn = getattr(self._sdk, "MV_CC_SaveImageEx3", None)
+        if save_fn is None:
+            raise FeatureUnsupportedError(
+                "MV_CC_SaveImageEx3 is not available in this SDK build"
+            )
+        ret = save_fn(self._handle, ctypes.byref(params))
+        if ret != MvErrorCode.MV_OK:
+            raise HikCameraError(
+                f"MV_CC_SaveImageEx3 failed: 0x{ret & 0xFFFFFFFF:08X}",
+                ret & 0xFFFFFFFF,
+            )
+        n = params.nImageLen or 0
+        return bytes(bytearray(dst_buf)[:n])
+
+    # ------------------------------------------------------------------
+    # Helpers / 辅助
+    # ------------------------------------------------------------------
+
+    def _invoke_optional(self, name: str, *args: Any) -> int:
+        """
+        Call an optional SDK function and raise on missing symbol or error.
+        调用一个可选的 SDK 函数；若符号缺失或返回错误则抛异常。
+        """
+        fn = getattr(self._sdk, name, None)
+        if fn is None:
+            raise FeatureUnsupportedError(
+                f"{name} is not available in this SDK build"
+            )
+        ret = fn(self._handle, *args)
+        if ret != MvErrorCode.MV_OK:
+            raise HikCameraError(
+                f"{name} failed: 0x{ret & 0xFFFFFFFF:08X}", ret & 0xFFFFFFFF
+            )
+        return int(ret)
 
     # ------------------------------------------------------------------
     # Private helpers / 内部辅助方法
@@ -2026,12 +2712,79 @@ class HikCamera:
         """
         Decode a frame buffer to a numpy array.
         将帧缓冲区解码为 numpy 数组。
+
+        Tries the SDK pipeline first when :py:attr:`use_sdk_decode` is
+        enabled, then falls back to the OpenCV-based
+        :py:func:`hikcamera.utils.raw_to_numpy` on unsupported pixel
+        format pairs or missing SDK symbols.
+        当 :py:attr:`use_sdk_decode` 启用时优先使用 SDK 管线；
+        若像素格式组合不支持或 SDK 符号缺失，则回退至基于 OpenCV 的
+        :py:func:`hikcamera.utils.raw_to_numpy`。
         """
         w = frame_info.nWidth
         h = frame_info.nHeight
         pf = frame_info.enPixelType
-        buf = np.ctypeslib.as_array(data, shape=(frame_info.nFrameLen,))
+        frame_len = frame_info.nFrameLen
+
+        if self.use_sdk_decode:
+            try:
+                return self._sdk_decode_frame(data, w, h, pf, frame_len, output_format)
+            except (ImageConversionError, FeatureUnsupportedError, PixelFormatError) as exc:
+                logger.debug(
+                    "SDK decode pipeline failed, falling back to OpenCV: %s", exc
+                )
+
+        buf = np.ctypeslib.as_array(data, shape=(frame_len,))
         return raw_to_numpy(buf, w, h, pf, output_format)
+# ---------------------------------------------------------------------------
+# Helpers used by HikCamera / HikCamera 使用的辅助函数
+# ---------------------------------------------------------------------------
+
+# HB-coded pixel-type identifier prefix used by the SDK (PFNC: 0x8...).
+# SDK 中 HB 编码像素类型的标识前缀（PFNC：0x8...）。
+_HB_PIXEL_TYPE_MASK = 0xF0000000
+_HB_PIXEL_TYPE_FLAG = 0x80000000
+
+
+def _is_hb_pixel_type(pixel_type: int) -> bool:
+    """Return True if *pixel_type* is an HB-coded source format."""
+    return (int(pixel_type) & _HB_PIXEL_TYPE_MASK) == _HB_PIXEL_TYPE_FLAG
+
+
+def _infer_pixel_type(image: np.ndarray) -> int:
+    """
+    Infer a sensible source ``PixelFormat`` from a numpy image's shape/dtype.
+    根据 numpy 图像的 shape/dtype 推断合理的源 ``PixelFormat``。
+    """
+    if image.ndim == 2 and image.dtype == np.uint8:
+        return int(PixelFormat.MONO8)
+    if image.ndim == 2 and image.dtype == np.uint16:
+        return int(PixelFormat.MONO16)
+    if image.ndim == 3 and image.dtype == np.uint8 and image.shape[2] == 3:
+        return int(PixelFormat.BGR8_PACKED)
+    if image.ndim == 3 and image.dtype == np.uint8 and image.shape[2] == 4:
+        return int(PixelFormat.BGRA8_PACKED)
+    raise PixelFormatError(
+        f"Cannot infer PixelFormat for image shape={image.shape} dtype={image.dtype}; "
+        "pass src_pixel_type explicitly"
+    )
+
+
+def _populate_ccm_matrix(
+    params: MV_CC_CCM_PARAM | MV_CC_CCM_PARAM_EX,
+    matrix: list[list[int]],
+) -> None:
+    """Validate and copy a 3×3 CCM matrix into *params*."""
+    if len(matrix) != 3 or any(len(row) != 3 for row in matrix):
+        raise ValueError("CCM matrix must be 3x3")
+    fields = (
+        ("nCCMat00", "nCCMat01", "nCCMat02"),
+        ("nCCMat10", "nCCMat11", "nCCMat12"),
+        ("nCCMat20", "nCCMat21", "nCCMat22"),
+    )
+    for row, names in zip(matrix, fields):
+        for value, name in zip(row, names):
+            setattr(params, name, int(value))
 
 
 # ---------------------------------------------------------------------------

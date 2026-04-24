@@ -1,6 +1,6 @@
 """
-Demo: Save a single image from a Hikvision camera.
-演示：从海康威视相机保存单张图像。
+Demo: Save a single frame from a Hikvision camera with OpenCV.
+演示：从海康威视相机采集单帧并用 OpenCV 保存。
 
 Usage / 用法::
 
@@ -29,6 +29,20 @@ from hikcamera import (
     HikCamera,
     SDKNotFoundError,
 )
+
+
+def _image_for_imwrite(
+    image: np.ndarray, output_format: Hik.OutputFormat
+) -> np.ndarray:
+    """
+    Convert RGB/RGBA frames into OpenCV's BGR/BGRA channel order before saving.
+    在保存前将 RGB/RGBA 图像转换为 OpenCV 使用的 BGR/BGRA 通道顺序。
+    """
+    if output_format == Hik.OutputFormat.RGB8:
+        return np.ascontiguousarray(image[..., ::-1])
+    if output_format == Hik.OutputFormat.RGBA8:
+        return np.ascontiguousarray(image[..., [2, 1, 0, 3]])
+    return image
 
 
 def parse_args() -> argparse.Namespace:
@@ -105,24 +119,20 @@ def main() -> None:
         )
         cam.stop_grabbing()
 
-    # ---------------------------------------------------------------
-    # Save image / 保存图像
-    # ---------------------------------------------------------------
-    output_path = Path(args.output)
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-
-    if output_format in (Hik.OutputFormat.MONO8, Hik.OutputFormat.MONO16):
-        cv2.imwrite(str(output_path), image)
-    elif output_format in (Hik.OutputFormat.RGB8, Hik.OutputFormat.RGBA8):
-        # OpenCV expects BGR; convert before saving
-        # OpenCV 需要 BGR 格式；保存前进行转换
-        if output_format == Hik.OutputFormat.RGB8:
-            save_img = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
-        else:
-            save_img = cv2.cvtColor(image, cv2.COLOR_RGBA2BGRA)
-        cv2.imwrite(str(output_path), save_img)
-    else:
-        cv2.imwrite(str(output_path), image)
+        # -----------------------------------------------------------
+        # Save the decoded numpy image with OpenCV.
+        # 通过 OpenCV 保存解码后的 numpy 图像。
+        # -----------------------------------------------------------
+        output_path = Path(args.output)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        image_to_save = _image_for_imwrite(image, output_format)
+        if not cv2.imwrite(str(output_path), image_to_save):
+            raise RuntimeError(
+                "Failed to save image to "
+                f"{output_path}. Check that the directory exists, the file "
+                "extension is supported by OpenCV, and the process has write "
+                "permission."
+            )
 
     print(f"Image saved to {output_path}  (shape={image.shape}, dtype={image.dtype})")
 
