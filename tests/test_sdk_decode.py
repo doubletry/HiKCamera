@@ -242,7 +242,9 @@ class TestHbDecode:
         assert out.shape == (4, 4)
         assert (out == 0x77).all()
 
-    def test_hb_decode_allocates_safe_buffer_for_rgb_outputs(self, camera_with_mock_sdk):
+    def test_hb_decode_allocates_safe_buffer_for_multichannel_outputs(
+        self, camera_with_mock_sdk
+    ):
         cam = camera_with_mock_sdk
 
         from hikcamera.sdk_wrapper import MV_CC_HB_DECODE_PARAM

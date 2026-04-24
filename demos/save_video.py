@@ -237,6 +237,9 @@ def main() -> None:
             with state_lock:
                 writer_to_release = writer
                 writer = None
+            # Release outside the lock so cleanup does not block the callback
+            # path longer than necessary once the writer reference is detached.
+            # 在锁外释放，避免在 writer 引用已摘除后仍长时间阻塞回调路径。
             if writer_to_release is not None:
                 writer_to_release.release()
 
