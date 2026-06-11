@@ -59,6 +59,10 @@ python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
 addopts = ["--tb=short", "-v"]
+markers = [
+    "integration: marks tests as integration tests (require real hardware)",
+    "hardware: marks tests as requiring actual camera hardware",
+]
 
 [tool.ruff]
 line-length = 100

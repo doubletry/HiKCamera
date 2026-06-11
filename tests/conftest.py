@@ -8,6 +8,8 @@ requiring actual hardware or the Hikvision SDK libraries.
 from __future__ import annotations
 
 import ctypes
+import os
+import socket
 
 # Make sure the src package is importable without installing
 import sys
@@ -20,14 +22,65 @@ import pytest
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 import hikcamera.camera as camera_module
-from hikcamera.camera import GIGE_PACKET_SIZE_JUMBO
-from hikcamera.enums import MvErrorCode
+from hikcamera.camera import GIGE_PACKET_SIZE_JUMBO, HikCamera
+from hikcamera.enums import MvErrorCode, OutputFormat
 from hikcamera.sdk_wrapper import (
     MV_CC_DEVICE_INFO,
     MV_CC_DEVICE_INFO_LIST,
     MV_FRAME_OUT_INFO_EX,
     MV_GIGE_DEVICE_INFO,
 )
+
+# ---------------------------------------------------------------------------
+# Real camera configuration / 真实相机配置
+# ---------------------------------------------------------------------------
+
+REAL_CAMERA_IP = os.environ.get("HIKCAMERA_TEST_IP", "192.168.1.1")
+REAL_CAMERA_SN = os.environ.get("HIKCAMERA_TEST_SN", "DA4860722")
+
+
+def is_camera_reachable(ip: str = REAL_CAMERA_IP, timeout: float = 2.0) -> bool:
+    """
+    Check if a camera is reachable via GVCP protocol or ICMP ping.
+    通过 GVCP 协议或 ICMP ping 检查相机是否可达。
+    
+    Tries multiple methods:
+    1. TCP connection to GVCP port (3956) - GigE Vision Control Protocol
+    2. ICMP ping as fallback
+    
+    尝试多种方法：
+    1. TCP连接到GVCP端口(3956) - GigE Vision控制协议
+    2. ICMP ping作为备选方案
+    
+    Note: Industrial cameras use GVCP/GVSP protocols, not HTTP (port 80).
+    注意：工业相机使用GVCP/GVSP协议，不使用HTTP（80端口）。
+    """
+    # Method 1: Try GVCP port (standard for GigE Vision cameras)
+    # 方法1：尝试GVCP端口（GigE Vision相机的标准端口）
+    try:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.settimeout(timeout)
+        result = sock.connect_ex((ip, 3956))  # GVCP port
+        sock.close()
+        if result == 0:
+            return True
+    except Exception:
+        pass
+    
+    # Method 2: Fallback to ICMP ping
+    # 方法2：ICMP ping作为备选
+    try:
+        import subprocess
+        # Windows ping command
+        result = subprocess.run(
+            ['ping', '-n', '1', '-w', str(int(timeout * 1000)), ip],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            timeout=timeout + 1
+        )
+        return result.returncode == 0
+    except Exception:
+        return False
 
 # ---------------------------------------------------------------------------
 # Helpers to build fake SDK structures
@@ -213,3 +266,114 @@ def camera_with_mock_sdk(mock_sdk):
     # Open the camera
     cam._is_open = True  # skip real open for fixture simplicity
     return cam
+
+
+# ---------------------------------------------------------------------------
+# Real camera fixtures / 真实相机 fixtures
+# ---------------------------------------------------------------------------
+
+@pytest.fixture(scope="session")
+def real_camera_ip() -> str:
+    """Return the IP address of the real test camera."""
+    return REAL_CAMERA_IP
+
+
+@pytest.fixture(scope="session")
+def real_camera_sn() -> str:
+    """Return the serial number of the real test camera."""
+    return REAL_CAMERA_SN
+
+
+@pytest.fixture(scope="session")
+def real_camera_available() -> bool:
+    """Check if the real camera is available."""
+    return is_camera_reachable()
+
+
+@pytest.fixture(scope="session")
+def real_camera_session(real_camera_available: bool, real_camera_ip: str):
+    """
+    Provide a session-scoped real camera instance for integration tests.
+    
+    This fixture creates ONE camera instance that is reused across all tests
+    in the session to avoid exclusive access conflicts.
+    
+    提供会话级别的真实相机实例用于集成测试。
+    
+    此 fixture 创建一个相机实例，在会话中的所有测试中复用以避免独占访问冲突。
+    """
+    if not real_camera_available:
+        pytest.skip(f"Real camera at {real_camera_ip} is not available")
+    
+    cam = HikCamera.from_ip(real_camera_ip)
+    cam.open()
+    yield cam
+    # Cleanup at the end of session
+    try:
+        if cam.is_grabbing:
+            cam.stop_grabbing()
+        cam.close()
+    except Exception:
+        pass
+
+
+@pytest.fixture()
+def real_camera(real_camera_session: HikCamera):
+    """
+    Provide the session-scoped camera instance for individual tests.
+    
+    Tests should NOT close this camera - it's managed by the session fixture.
+    
+    为单个测试提供会话级别的相机实例。
+    
+    测试不应关闭此相机 - 它由会话 fixture 管理。
+    """
+    return real_camera_session
+
+
+@pytest.fixture()
+def real_camera_by_sn(real_camera_session: HikCamera):
+    """
+    Return the same camera instance (connected by IP, but SN tests can use it).
+    
+    返回相同的相机实例（通过IP连接，但SN测试可以使用它）。
+    """
+    return real_camera_session
+
+
+@pytest.fixture()
+def real_camera_closed(real_camera_available: bool, real_camera_ip: str, real_camera_session: HikCamera):
+    """
+    Provide a real camera instance that is NOT opened.
+    Useful for testing open/close behavior.
+    
+    Note: This temporarily closes the session camera to test close/open scenarios.
+    The session camera will be reopened after this fixture completes.
+    
+    提供未打开的真实相机实例，用于测试打开/关闭行为。
+    
+    注意：这会临时关闭会话相机以测试关闭/打开场景。
+    此 fixture 完成后会重新打开会话相机。
+    """
+    if not real_camera_available:
+        pytest.skip(f"Real camera at {real_camera_ip} is not available")
+    
+    # Temporarily close session camera to allow new connection tests
+    was_grabbing = real_camera_session.is_grabbing
+    if was_grabbing:
+        real_camera_session.stop_grabbing()
+    real_camera_session.close()
+    
+    try:
+        # Create a new instance for testing
+        cam = HikCamera.from_ip(real_camera_ip)
+        with cam:
+            yield cam
+    finally:
+        # Reopen session camera
+        try:
+            real_camera_session.open()
+            if was_grabbing:
+                real_camera_session.start_grabbing()
+        except Exception:
+            pass
